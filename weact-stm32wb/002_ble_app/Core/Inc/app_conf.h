@@ -647,7 +647,6 @@ typedef enum
 #define CFG_LED_SUPPORTED         1
 #define CFG_BUTTON_SUPPORTED      1
 
-#define PUSH_BUTTON_SW1_EXTI_IRQHandler     EXTI4_IRQHandler
 /* USER CODE END Defines */
 
 /******************************************************************************

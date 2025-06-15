@@ -87,6 +87,11 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
+	HAL_GPIO_WritePin(GPIOE, GPIO_PIN_4, GPIO_PIN_SET);
+
+	volatile uint32_t* cfsr = (volatile uint32_t*)0xE000ED28;  // Configurable Fault Status
+	volatile uint32_t* hfsr = (volatile uint32_t*)0xE000ED2C;  // Hard Fault Status
+	volatile uint32_t* bfar = (volatile uint32_t*)0xE000ED38;  // Bus Fault Address
 
   /* USER CODE END HardFault_IRQn 0 */
   while (1)
@@ -216,6 +221,20 @@ void RTC_WKUP_IRQHandler(void)
 }
 
 /**
+  * @brief This function handles EXTI line0 interrupt.
+  */
+void EXTI0_IRQHandler(void)
+{
+  /* USER CODE BEGIN EXTI0_IRQn 0 */
+
+  /* USER CODE END EXTI0_IRQn 0 */
+  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_0);
+  /* USER CODE BEGIN EXTI0_IRQn 1 */
+
+  /* USER CODE END EXTI0_IRQn 1 */
+}
+
+/**
   * @brief This function handles DMA1 channel1 global interrupt.
   */
 void DMA1_Channel1_IRQHandler(void)
@@ -286,5 +305,8 @@ void HSEM_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
-
+void PUSH_BUTTON_SW1_EXTI_IRQHandler(void) // JOE
+{
+  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_0);
+}
 /* USER CODE END 1 */
