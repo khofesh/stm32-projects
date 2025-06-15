@@ -8,7 +8,7 @@ development using STLINK V3SET
 
 full explanation in https://wiki.st.com/stm32mcu/wiki/Connectivity:STM32WB_BLE_Hardware_Setup
 
-![alt text](image.png)
+![alt text](./images/image.png)
 
 the files needed in `subs/STM32CubeWB/Projects/STM32WB_Copro_Wireless_Binaries/STM32WB5x`
 
@@ -17,10 +17,10 @@ BLE stack: stm32wb5x_BLE_Stack_full_fw.bin
 
 Update FUS
 
-![alt text](image-2.png)
+![alt text](./images/image-2.png)
 
 Update BLE stack
 
-![alt text](image-1.png)
+![alt text](./images/image-1.png)
 
 you could get the start address `0x080D0000` in `Release_Notes.html`
