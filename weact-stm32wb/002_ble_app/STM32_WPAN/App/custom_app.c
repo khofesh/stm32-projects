@@ -100,22 +100,22 @@ void Custom_STM_App_Notification(Custom_STM_App_Notification_evt_t *pNotificatio
     /* My_P2P_Server */
     case CUSTOM_STM_LED_C_READ_EVT:
       /* USER CODE BEGIN CUSTOM_STM_LED_C_READ_EVT */
-    	APP_DBG_MSG("\r\n\r** CUSTOM_STM_LED_C_WRITE_NO_RESP_EVT \n");
-    	APP_DBG_MSG("\r\n\r** Write Data: 0x%02X %02X \n", pNotification->DataTransfered.pPayload[0], pNotification->DataTransfered.pPayload[1]);
-    	if(pNotification->DataTransfered.pPayload[1] == 0x01)
-    	{
-    		HAL_GPIO_WritePin(GPIOB,GPIO_PIN_1,GPIO_PIN_SET);
-    	}
-    	if(pNotification->DataTransfered.pPayload[1] == 0x00)
-    	{
-    		HAL_GPIO_WritePin(GPIOB,GPIO_PIN_1,GPIO_PIN_RESET);
-    	}
+
       /* USER CODE END CUSTOM_STM_LED_C_READ_EVT */
       break;
 
     case CUSTOM_STM_LED_C_WRITE_NO_RESP_EVT:
       /* USER CODE BEGIN CUSTOM_STM_LED_C_WRITE_NO_RESP_EVT */
-
+    	APP_DBG_MSG("\r\n\r** CUSTOM_STM_LED_C_WRITE_NO_RESP_EVT \n");
+    	APP_DBG_MSG("\r\n\r** Write Data: 0x%02X %02X \n", pNotification->DataTransfered.pPayload[0], pNotification->DataTransfered.pPayload[1]);
+    	if(pNotification->DataTransfered.pPayload[1] == 0x01)
+    	{
+    		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET);
+    	}
+    	if(pNotification->DataTransfered.pPayload[1] == 0x00)
+    	{
+    		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET);
+    	}
       /* USER CODE END CUSTOM_STM_LED_C_WRITE_NO_RESP_EVT */
       break;
 

@@ -116,6 +116,8 @@ int main(void)
   /* USER CODE BEGIN 2 */
   HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
+  HAL_GPIO_WritePin(GPIOE,GPIO_PIN_4,GPIO_PIN_SET);
   /* USER CODE END 2 */
 
   /* Init code for STM32_WPAN */
