@@ -84,7 +84,8 @@ static void APPE_SysEvtError(void * pPayload);
 static void Init_Rtc(void);
 
 /* USER CODE BEGIN PFP */
-
+static void Led_Init( void );
+static void Button_Init( void );
 /* USER CODE END PFP */
 
 /* Functions Definition ------------------------------------------------------*/
@@ -515,7 +516,36 @@ static void APPE_SysEvtReadyProcessing(void * pPayload)
 }
 
 /* USER CODE BEGIN FD_LOCAL_FUNCTIONS */
+static void Led_Init( void )
+{
+#if (CFG_LED_SUPPORTED == 1)
+  /**
+   * Leds Initialization
+   */
 
+  BSP_LED_Init(LED_BLUE);
+  BSP_LED_Init(LED_GREEN);
+  BSP_LED_Init(LED_RED);
+
+  BSP_LED_On(LED_GREEN);
+#endif
+
+  return;
+}
+
+static void Button_Init( void )
+{
+#if (CFG_BUTTON_SUPPORTED == 1)
+  /**
+   * Button Initialization
+   */
+
+  BSP_PB_Init(BUTTON_SW1, BUTTON_MODE_EXTI);
+
+#endif
+
+  return;
+}
 /* USER CODE END FD_LOCAL_FUNCTIONS */
 
 /*************************************************************
@@ -590,5 +620,20 @@ void shci_cmd_resp_wait(uint32_t timeout)
 }
 
 /* USER CODE BEGIN FD_WRAP_FUNCTIONS */
+void HAL_GPIO_EXTI_Callback( uint16_t GPIO_Pin )
+{
+  switch (GPIO_Pin)
+  {
+    case BUTTON_SW1_PIN:
+      APP_BLE_Key_Button1_Action();
+      break;
+
+
+    default:
+      break;
+
+  }
+  return;
+}
 
 /* USER CODE END FD_WRAP_FUNCTIONS */
