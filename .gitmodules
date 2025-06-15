@@ -40,3 +40,6 @@
 [submodule "subs/STM32CubeL5"]
 	path = subs/STM32CubeL5
 	url = https://github.com/STMicroelectronics/STM32CubeL5.git
+[submodule "subs/STM32CubeG4"]
+	path = subs/STM32CubeG4
+	url = https://github.com/STMicroelectronics/STM32CubeG4.git
