@@ -5,7 +5,7 @@
 #############################################
 .metadata/
 .settings/
-.project
+# .project
 .cproject
 .launches/
 .pydevproject
