@@ -1,0 +1,45 @@
+[submodule "subs/MiniSTM32H7xx"]
+	path = subs/MiniSTM32H7xx
+	url = https://github.com/WeActStudio/MiniSTM32H7xx.git
+[submodule "subs/WeActStudio.STM32F4_64Pin_CoreBoard"]
+	path = subs/WeActStudio.STM32F4_64Pin_CoreBoard
+	url = https://github.com/WeActStudio/WeActStudio.STM32F4_64Pin_CoreBoard.git
+[submodule "subs/WeActStudio.STM32H5_64Pin_CoreBoard"]
+	path = subs/WeActStudio.STM32H5_64Pin_CoreBoard
+	url = https://github.com/WeActStudio/WeActStudio.STM32H5_64Pin_CoreBoard.git
+[submodule "subs/WeActStudio.STM32WB55CoreBoard"]
+	path = subs/WeActStudio.STM32WB55CoreBoard
+	url = https://github.com/WeActStudio/WeActStudio.STM32WB55CoreBoard.git
+[submodule "subs/STM32CubeF3"]
+	path = subs/STM32CubeF3
+	url = https://github.com/STMicroelectronics/STM32CubeF3.git
+[submodule "subs/STM32CubeH5"]
+	path = subs/STM32CubeH5
+	url = https://github.com/STMicroelectronics/STM32CubeH5.git
+[submodule "subs/STM32CubeF4"]
+	path = subs/STM32CubeF4
+	url = https://github.com/STMicroelectronics/STM32CubeF4.git
+[submodule "subs/STM32CubeH7"]
+	path = subs/STM32CubeH7
+	url = https://github.com/STMicroelectronics/STM32CubeH7.git
+[submodule "subs/STM32CubeWB"]
+	path = subs/STM32CubeWB
+	url = https://github.com/STMicroelectronics/STM32CubeWB.git
+[submodule "subs/STM32CubeF0"]
+	path = subs/STM32CubeF0
+	url = https://github.com/STMicroelectronics/STM32CubeF0.git
+[submodule "subs/STM32CubeL4"]
+	path = subs/STM32CubeL4
+	url = https://github.com/STMicroelectronics/STM32CubeL4.git
+[submodule "subs/STM32CubeF7"]
+	path = subs/STM32CubeF7
+	url = https://github.com/STMicroelectronics/STM32CubeF7.git
+[submodule "subs/STM32CubeU5"]
+	path = subs/STM32CubeU5
+	url = https://github.com/STMicroelectronics/STM32CubeU5.git
+[submodule "subs/STM32CubeL5"]
+	path = subs/STM32CubeL5
+	url = https://github.com/STMicroelectronics/STM32CubeL5.git
+[submodule "subs/STM32CubeMP1"]
+	path = subs/STM32CubeMP1
+	url = https://github.com/STMicroelectronics/STM32CubeMP1.git

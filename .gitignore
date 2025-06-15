@@ -1,0 +1,170 @@
+# STM32 Project .gitignore
+
+#############################################
+# STM32CubeIDE / Eclipse
+#############################################
+.metadata/
+.settings/
+.project
+.cproject
+.launches/
+.pydevproject
+RemoteSystemsTempFiles/
+
+# Debug and Release folders
+Debug/
+Release/
+Drivers/CMSIS/
+Drivers/STM32*HAL_Driver/
+
+#############################################
+# Build outputs
+#############################################
+*.o
+*.elf
+*.bin
+*.hex
+*.map
+*.list
+*.lss
+*.sym
+*.d
+*.su
+*.cyclo
+
+#############################################
+# Keil uVision
+#############################################
+*.uvgui.*
+*.uvopt
+*.uvproj
+*.uvprojx
+Objects/
+Listings/
+*.crf
+*.htm
+*.i
+*.lst
+*.plg
+*.tra
+*.dep
+*.bak
+*.tmp
+*.__i
+*.axf
+*.iex
+*.hex
+*.bin
+
+#############################################
+# IAR Embedded Workbench
+#############################################
+*.eww
+*.ewt
+*.ewd
+*.ewp
+*.ewl
+settings/
+*.dni
+*.wsdt
+*.dep
+*.map
+*.sim
+Debug/Exe/
+Debug/Obj/
+Debug/List/
+*.pbd
+*.pbi
+*.pbd.browse
+*.tmp
+FWLib/
+
+#############################################
+# STM32CubeMX Generated
+#############################################
+# Keep these files but ignore some generated content
+# Uncomment if you want to ignore all CubeMX generated files
+# Src/
+# Inc/
+# startup/
+# Middlewares/ST/
+# Drivers/
+
+# CubeMX backup files
+*.ioc.bak
+*.tmp
+*.bak
+
+#############################################
+# ARM GCC
+#############################################
+*.a
+*.so
+*.dll
+*.dylib
+
+#############################################
+# CMake
+#############################################
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+
+#############################################
+# JLink
+#############################################
+JLinkLog.txt
+JLinkSettings.ini
+
+#############################################
+# VS Code
+#############################################
+.vscode/
+*.code-workspace
+
+#############################################
+# General
+#############################################
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*~
+*.swp
+*.swo
+*.tmp
+*.temp
+*.log
+
+# Archives
+*.7z
+*.jar
+*.rar
+*.zip
+*.gz
+*.bz2
+*.tar
+*.tgz
+
+#############################################
+# Custom - Add your project specific ignores
+#############################################
+# User configuration files
+user_config.h
+secrets.h
+
+# Documentation builds
+docs/build/
+*.pdf
+
+# Simulation files
+*.vcd
+*.ghw
