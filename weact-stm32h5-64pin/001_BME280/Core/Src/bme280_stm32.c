@@ -56,6 +56,11 @@ int8_t user_i2c_write(uint8_t reg_addr, const uint8_t *reg_data, uint32_t len, v
 }
 
 static void delay_us_internal(uint32_t us) {
+    // start timer if not already running
+    if (!(htim6.Instance->CR1 & TIM_CR1_CEN)) {
+        HAL_TIM_Base_Start(&htim6);
+    }
+
     __HAL_TIM_SET_COUNTER(&htim6, 0);
     while(__HAL_TIM_GET_COUNTER(&htim6) < us);
 }
@@ -63,8 +68,7 @@ static void delay_us_internal(uint32_t us) {
 // can't use TIM6 lol
 void user_delay_us(uint32_t period, void *intf_ptr)
 {
-	volatile uint32_t delay_count = period * (SystemCoreClock / 1000000) / 4;
-	    while(delay_count--);
+	delay_us_internal(period);
 }
 
 int8_t bme280_interface_init(struct bme280_dev *dev, uint8_t intf)
