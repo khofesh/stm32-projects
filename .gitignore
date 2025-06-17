@@ -168,3 +168,5 @@ docs/build/
 # Simulation files
 *.vcd
 *.ghw
+
+temp/
