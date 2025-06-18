@@ -15,3 +15,5 @@ Move all stm32 projects into one place
 - https://controllerstech.com/stm32-hal/
 - https://leanpub.com/mastering-stm32-2nd
 - https://github.com/cpq/bare-metal-programming-guide
+- **ST Microelectronics online training** - https://www.st.com/content/st_com/en/support/learning/stm32-education/stm32-online-training/stm32wb-online-training.html
+
