@@ -2,3 +2,7 @@
   - https://github.com/boschsensortec/BME280_SensorAPI
 - [ ] DFRobot Gravity : PM2.5 Air Quality Sensor
   - https://wiki.dfrobot.com/Gravity_PM2.5_Air_Quality_Sensor_SKU_SEN0460
+- [ ] mini arducam module 5MP
+  - https://www.arducam.com/arducam-5mp-plus-spi-cam-arduino-ov5642.html
+  - https://github.com/ArduCAM/Arduino
+  - https://github.com/ArduCAM/STM32
