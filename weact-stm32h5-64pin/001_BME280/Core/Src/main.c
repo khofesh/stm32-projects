@@ -24,6 +24,7 @@
 #include "bme280.h"
 #include <stdio.h>
 #include "bme280_stm32.h"
+#include "lcd.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -48,7 +49,8 @@ I2C_HandleTypeDef hi2c3;
 TIM_HandleTypeDef htim6;
 
 /* USER CODE BEGIN PV */
-
+LCD_HandleTypeDef hlcd;
+HAL_StatusTypeDef status;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -100,6 +102,46 @@ int main(void)
   MX_ICACHE_Init();
   MX_TIM6_Init();
   /* USER CODE BEGIN 2 */
+  // LCD init
+  status = LCD_Init(&hlcd, &hi2c3);
+  if(status != HAL_OK) {
+	  Error_Handler();
+  }
+  HAL_Delay(100);
+
+  LCD_SetRGB(&hlcd, 255, 0, 0);
+
+  // Clear the display
+  status = LCD_Clear(&hlcd);
+  if(status != HAL_OK) {
+	  Error_Handler();
+  }
+  HAL_Delay(10);
+
+  // hello world first line
+  status = LCD_SetCursor(&hlcd, 0, 0);
+  if(status != HAL_OK) {
+	  Error_Handler();
+  }
+  HAL_Delay(10);
+
+  status = LCD_Print(&hlcd, "hola mundo");
+  if(status != HAL_OK) {
+	  Error_Handler();
+  }
+  HAL_Delay(10);
+
+  // second line
+  status = LCD_SetCursor(&hlcd, 0, 1);
+  if(status != HAL_OK) {
+	  Error_Handler();
+  }
+  HAL_Delay(10);
+
+  status = LCD_Print(&hlcd, "weact-stm32h5");
+  if(status != HAL_OK) {
+	  Error_Handler();
+  }
 
   int8_t rslt = bme280_init_sensor(&dev);
 
@@ -116,13 +158,51 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  char line2[16]; // 16 characters per line LCD
+  char line1[16];
   while (1)
   {
 	  rslt = bme280_read_sensor_data(&comp_data, &dev);
 
 	  if (rslt == BME280_OK)
 	  {
+		  // Clear the display
+		  status = LCD_Clear(&hlcd);
+		  if(status != HAL_OK) {
+			  Error_Handler();
+		  }
+		  HAL_Delay(10);
 
+		  // First line - pressure
+		  snprintf(line1, sizeof(line1), "press: %.1f", comp_data.pressure);
+
+		  status = LCD_SetCursor(&hlcd, 0, 0);
+		  if(status != HAL_OK) {
+			  Error_Handler();
+		  }
+		  HAL_Delay(10);
+
+		  status = LCD_Print(&hlcd, line1);
+		  if(status != HAL_OK) {
+			  Error_Handler();
+		  }
+		  HAL_Delay(10);
+
+		  // Second line - temperature and humidity
+		  snprintf(line2, sizeof(line2), "T:%.1fC H:%.1f%%",
+		                 comp_data.temperature, comp_data.humidity);
+
+		  status = LCD_SetCursor(&hlcd, 0, 1);
+		  if(status != HAL_OK) {
+			  Error_Handler();
+		  }
+		  HAL_Delay(10);
+
+		  status = LCD_Print(&hlcd, line2);
+		  if(status != HAL_OK) {
+			  Error_Handler();
+		  }
+		  HAL_Delay(10);
 	  }
 	  else
 	  {
