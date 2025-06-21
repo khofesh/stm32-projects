@@ -1,6 +1,6 @@
 - [x] BME280
   - https://github.com/boschsensortec/BME280_SensorAPI
-- [ ] DFRobot Gravity : PM2.5 Air Quality Sensor
+- [x] DFRobot Gravity : PM2.5 Air Quality Sensor
   - https://wiki.dfrobot.com/Gravity_PM2.5_Air_Quality_Sensor_SKU_SEN0460
   - I unscrewed the module, it's plantower PMS9103M-2022080800255
   - https://breathesafeair.com/inkbird-6-in-1-pth-9a-air-pollution-monitor-review/
@@ -15,3 +15,4 @@
   - https://github.com/Sensirion/embedded-i2c-sgp40
 - [ ] BME280 interrupt
 - [ ] BME280 DMA
+- [ ] PM2.5 Air Quality Sensor interrupt
