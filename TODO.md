@@ -4,6 +4,7 @@
   - https://wiki.dfrobot.com/Gravity_PM2.5_Air_Quality_Sensor_SKU_SEN0460
   - I unscrewed the module, it's plantower PMS9103M-2022080800255
   - https://breathesafeair.com/inkbird-6-in-1-pth-9a-air-pollution-monitor-review/
+  - https://github.com/DFRobot/DFRobot_AirQualitySensor
 - [ ] mini arducam module 5MP
   - https://www.arducam.com/arducam-5mp-plus-spi-cam-arduino-ov5642.html
   - https://github.com/ArduCAM/Arduino

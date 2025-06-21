@@ -43,6 +43,6 @@
 [submodule "subs/STM32CubeG4"]
 	path = subs/STM32CubeG4
 	url = https://github.com/STMicroelectronics/STM32CubeG4.git
-[submodule "modules/BME280_SensorAPI"]
-	path = modules/BME280_SensorAPI
+[submodule "libraries/BME280_SensorAPI"]
+	path = libraries/BME280_SensorAPI
 	url = https://github.com/boschsensortec/BME280_SensorAPI.git
