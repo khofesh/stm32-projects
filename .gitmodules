@@ -46,3 +46,6 @@
 [submodule "libraries/BME280_SensorAPI"]
 	path = libraries/BME280_SensorAPI
 	url = https://github.com/boschsensortec/BME280_SensorAPI.git
+[submodule "libraries/DFRobot_AirQualitySensor"]
+	path = libraries/DFRobot_AirQualitySensor
+	url = https://github.com/DFRobot/DFRobot_AirQualitySensor.git

@@ -1,4 +1,4 @@
-- [ ] BME280
+- [x] BME280
   - https://github.com/boschsensortec/BME280_SensorAPI
 - [ ] DFRobot Gravity : PM2.5 Air Quality Sensor
   - https://wiki.dfrobot.com/Gravity_PM2.5_Air_Quality_Sensor_SKU_SEN0460
@@ -13,4 +13,5 @@
   - https://github.com/Sensirion/embedded-i2c-sen5x
 - [ ] sensirion SGP40
   - https://github.com/Sensirion/embedded-i2c-sgp40
-
+- [ ] BME280 interrupt
+- [ ] BME280 DMA
