@@ -28,7 +28,7 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+#include <string.h>
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -60,7 +60,15 @@ static void MX_I2C1_Init(void);
 static void MX_ICACHE_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
+void UART_Send(uint8_t *data, uint16_t length)
+{
+    HAL_UART_Transmit(&huart1, data, length, HAL_MAX_DELAY);
+}
 
+void UART_SendString(char *str)
+{
+    HAL_UART_Transmit(&huart1, (uint8_t *)str, strlen(str), HAL_MAX_DELAY);
+}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -104,25 +112,35 @@ int main(void)
 
   error = sen5x_device_reset();
   if (error) {
-      printf("Error executing sen5x_device_reset(): %i\n", error);
+	    char msg[50];
+	    sprintf(msg, "Error executing sen5x_device_reset(): %i\r\n", error);
+	    UART_SendString(msg);
   }
 
   unsigned char serial_number[32];
   uint8_t serial_number_size = 32;
   error = sen5x_get_serial_number(serial_number, serial_number_size);
   if (error) {
-      printf("Error executing sen5x_get_serial_number(): %i\n", error);
+	    char msg[60];
+	    sprintf(msg, "Error executing sen5x_get_serial_number(): %i\r\n", error);
+	    UART_SendString(msg);
   } else {
-      printf("Serial number: %s\n", serial_number);
+	    char msg[60];
+	    sprintf(msg, "Serial number: %s\r\n", serial_number);
+	    UART_SendString(msg);
   }
 
   unsigned char product_name[32];
   uint8_t product_name_size = 32;
   error = sen5x_get_product_name(product_name, product_name_size);
   if (error) {
-      printf("Error executing sen5x_get_product_name(): %i\n", error);
+	  char msg[60];
+	  sprintf(msg, "Error executing sen5x_get_product_name(): %i\r\n", error);
+	  UART_SendString(msg);
   } else {
-      printf("Product name: %s\n", product_name);
+	  char msg[60];
+	  sprintf(msg, "Product name: %s\r\n", product_name);
+	  UART_SendString(msg);
   }
 
   uint8_t firmware_major;
@@ -137,10 +155,14 @@ int main(void)
                             &protocol_minor);
 
   if (error) {
-      printf("Error executing sen5x_get_version(): %i\n", error);
+	  char msg[60];
+	  sprintf(msg, "Error executing sen5x_get_version(): %i\r\n", error);
+	  UART_SendString(msg);
   } else {
-      printf("Firmware: %u.%u, Hardware: %u.%u\n", firmware_major,
-             firmware_minor, hardware_major, hardware_minor);
+	  char msg[80];
+	  sprintf(msg, "Firmware: %u.%u, Hardware: %u.%u\r\n", firmware_major,
+			  firmware_minor, hardware_major, hardware_minor);
+	  UART_SendString(msg);
   }
 
   // Adjust temp_offset in degrees celsius to account for additional
@@ -151,78 +173,26 @@ int main(void)
   error = sen5x_set_temperature_offset_parameters(
       (int16_t)(200 * temp_offset), default_slope, default_time_constant);
   if (error) {
-      printf(
-          "Error executing sen5x_set_temperature_offset_parameters(): %i\n",
-          error);
+	    char msg[80];
+	    sprintf(msg, "Error executing sen5x_set_temperature_offset_parameters(): %i\r\n", error);
+	    UART_SendString(msg);
   } else {
-      printf("Temperature Offset set to %.2f °C (SEN54/SEN55 only)\n",
-             temp_offset);
+	    char msg[80];
+	    sprintf(msg, "Temperature Offset set to %.2f °C (SEN54/SEN55 only)\r\n", temp_offset);
+	    UART_SendString(msg);
   }
 
-  // Start Measurement
+  // start Measurement
   error = sen5x_start_measurement();
   if (error) {
-      printf("Error executing sen5x_start_measurement(): %i\n", error);
+      char msg[60];
+      sprintf(msg, "Error executing sen5x_start_measurement(): %i\r\n", error);
+      UART_SendString(msg);
+  } else {
+      UART_SendString("Sensor measurement started successfully\r\n");
   }
 
-  for (int i = 0; i < 60; i++) {
-      // Read Measurement
-      sensirion_i2c_hal_sleep_usec(1000000);
 
-      uint16_t mass_concentration_pm1p0;
-      uint16_t mass_concentration_pm2p5;
-      uint16_t mass_concentration_pm4p0;
-      uint16_t mass_concentration_pm10p0;
-      int16_t ambient_humidity;
-      int16_t ambient_temperature;
-      int16_t voc_index;
-      int16_t nox_index;
-
-      error = sen5x_read_measured_values(
-          &mass_concentration_pm1p0, &mass_concentration_pm2p5,
-          &mass_concentration_pm4p0, &mass_concentration_pm10p0,
-          &ambient_humidity, &ambient_temperature, &voc_index, &nox_index);
-
-      if (error) {
-          printf("Error executing sen5x_read_measured_values(): %i\n", error);
-      } else {
-          printf("Mass concentration pm1p0: %.1f µg/m³\n",
-                 mass_concentration_pm1p0 / 10.0f);
-          printf("Mass concentration pm2p5: %.1f µg/m³\n",
-                 mass_concentration_pm2p5 / 10.0f);
-          printf("Mass concentration pm4p0: %.1f µg/m³\n",
-                 mass_concentration_pm4p0 / 10.0f);
-          printf("Mass concentration pm10p0: %.1f µg/m³\n",
-                 mass_concentration_pm10p0 / 10.0f);
-          if (ambient_humidity == 0x7fff) {
-              printf("Ambient humidity: n/a\n");
-          } else {
-              printf("Ambient humidity: %.1f %%RH\n",
-                     ambient_humidity / 100.0f);
-          }
-          if (ambient_temperature == 0x7fff) {
-              printf("Ambient temperature: n/a\n");
-          } else {
-              printf("Ambient temperature: %.1f °C\n",
-                     ambient_temperature / 200.0f);
-          }
-          if (voc_index == 0x7fff) {
-              printf("Voc index: n/a\n");
-          } else {
-              printf("Voc index: %.1f\n", voc_index / 10.0f);
-          }
-          if (nox_index == 0x7fff) {
-              printf("Nox index: n/a\n");
-          } else {
-              printf("Nox index: %.1f\n", nox_index / 10.0f);
-          }
-      }
-  }
-
-  error = sen5x_stop_measurement();
-  if (error) {
-      printf("Error executing sen5x_stop_measurement(): %i\n", error);
-  }
   /* USER CODE END 2 */
 
   /* Initialize leds */
@@ -246,7 +216,76 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  HAL_Delay(1000);
 
+	  uint16_t mass_concentration_pm1p0;
+	  uint16_t mass_concentration_pm2p5;
+	  uint16_t mass_concentration_pm4p0;
+	  uint16_t mass_concentration_pm10p0;
+	  int16_t ambient_humidity;
+	  int16_t ambient_temperature;
+	  int16_t voc_index;
+	  int16_t nox_index;
+
+	  error = sen5x_read_measured_values(
+			  &mass_concentration_pm1p0, &mass_concentration_pm2p5,
+			  &mass_concentration_pm4p0, &mass_concentration_pm10p0,
+			  &ambient_humidity, &ambient_temperature, &voc_index, &nox_index);
+
+	  if (error) {
+		  char msg[60];
+		  sprintf(msg, "Error executing sen5x_read_measured_values(): %i\r\n", error);
+		  UART_SendString(msg);
+	  } else {
+		  char msg[100];
+
+		  // PM concentrations
+		  sprintf(msg, "PM1.0: %.1f µg/m³\r\n", mass_concentration_pm1p0 / 10.0f);
+		  UART_SendString(msg);
+
+		  sprintf(msg, "PM2.5: %.1f µg/m³\r\n", mass_concentration_pm2p5 / 10.0f);
+		  UART_SendString(msg);
+
+		  sprintf(msg, "PM4.0: %.1f µg/m³\r\n", mass_concentration_pm4p0 / 10.0f);
+		  UART_SendString(msg);
+
+		  sprintf(msg, "PM10.0: %.1f µg/m³\r\n", mass_concentration_pm10p0 / 10.0f);
+		  UART_SendString(msg);
+
+		  // humidity
+		  if (ambient_humidity == 0x7fff) {
+			  UART_SendString("Humidity: n/a\r\n");
+		  } else {
+			  sprintf(msg, "Humidity: %.1f %%RH\r\n", ambient_humidity / 100.0f);
+			  UART_SendString(msg);
+		  }
+
+		  // temperature
+		  if (ambient_temperature == 0x7fff) {
+			  UART_SendString("Temperature: n/a\r\n");
+		  } else {
+			  sprintf(msg, "Temperature: %.1f °C\r\n", ambient_temperature / 200.0f);
+			  UART_SendString(msg);
+		  }
+
+		  // VOC index
+		  if (voc_index == 0x7fff) {
+			  UART_SendString("VOC index: n/a\r\n");
+		  } else {
+			  sprintf(msg, "VOC index: %.1f\r\n", voc_index / 10.0f);
+			  UART_SendString(msg);
+		  }
+
+		  // NOx index
+		  if (nox_index == 0x7fff) {
+			  UART_SendString("NOx index: n/a\r\n");
+		  } else {
+			  sprintf(msg, "NOx index: %.1f\r\n", nox_index / 10.0f);
+			  UART_SendString(msg);
+		  }
+
+		  UART_SendString("---\r\n"); // separator
+	  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
