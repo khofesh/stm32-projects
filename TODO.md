@@ -16,3 +16,7 @@
 - [ ] BME280 interrupt
 - [ ] BME280 DMA
 - [ ] PM2.5 Air Quality Sensor interrupt
+- [ ] Fermion: 1.8" 128x160 IPS TFT LCD Display with MicroSD Card Slot (Breakout) By DFRobot
+  - https://wiki.dfrobot.com/SKU_DFR0928_Fermion_1.8_Inches_128_160_IPS_TFT_LCD_Display_with_MicroSD_Card_Slot_Breakout
+  - https://github.com/DFRobot/DFRobot_GDL
+
