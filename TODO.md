@@ -9,7 +9,7 @@
   - https://www.arducam.com/arducam-5mp-plus-spi-cam-arduino-ov5642.html
   - https://github.com/ArduCAM/Arduino
   - https://github.com/ArduCAM/STM32
-- [ ] sensirion SEN55
+- [x] sensirion SEN55
   - https://github.com/Sensirion/embedded-i2c-sen5x
 - [ ] sensirion SGP40
   - https://github.com/Sensirion/embedded-i2c-sgp40
@@ -19,4 +19,7 @@
 - [ ] Fermion: 1.8" 128x160 IPS TFT LCD Display with MicroSD Card Slot (Breakout) By DFRobot
   - https://wiki.dfrobot.com/SKU_DFR0928_Fermion_1.8_Inches_128_160_IPS_TFT_LCD_Display_with_MicroSD_Card_Slot_Breakout
   - https://github.com/DFRobot/DFRobot_GDL
+  - https://github.com/afiskon/stm32-st7735
+- [ ] ssd1306
+  - https://github.com/afiskon/stm32-ssd1306
 
