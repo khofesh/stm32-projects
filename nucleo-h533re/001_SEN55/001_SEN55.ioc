@@ -1,4 +1,7 @@
 #MicroXplorer Configuration settings - do not modify
+BOOTPATH.BootPathName=LEGACY
+BOOTPATH.IPParameters=BootPathName
+BOOTPATH.UserSelectedBootPath=LEGACY
 BSP_IP_NAME=NUCLEO-H533RE
 CAD.formats=
 CAD.pinconfig=
@@ -64,6 +67,7 @@ NVIC.DebugMonitor_IRQn=true\:0\:0\:false\:false\:true\:false\:false\:false
 NVIC.EXTI13_IRQn=true\:0\:0\:false\:false\:true\:false\:true\:true
 NVIC.ForceEnableDMAVector=true
 NVIC.HardFault_IRQn=true\:0\:0\:false\:false\:true\:false\:false\:false
+NVIC.I2C1_EV_IRQn=true\:0\:0\:false\:false\:true\:true\:true\:true
 NVIC.MemoryManagement_IRQn=true\:0\:0\:false\:false\:true\:false\:false\:false
 NVIC.NonMaskableInt_IRQn=true\:0\:0\:false\:false\:true\:false\:false\:false
 NVIC.PendSV_IRQn=true\:0\:0\:false\:false\:true\:false\:false\:false
@@ -137,7 +141,7 @@ ProjectManager.ToolChainLocation=
 ProjectManager.UAScriptAfterPath=
 ProjectManager.UAScriptBeforePath=
 ProjectManager.UnderRoot=true
-ProjectManager.functionlistsort=1-SystemClock_Config-RCC-false-HAL-false,2-MX_GPIO_Init-GPIO-false-HAL-true,0-MX_CORTEX_M33_NS_Init-CORTEX_M33_NS-false-HAL-true,0-MX_PWR_Init-PWR-false-HAL-true,false-0--NUCLEO-H533RE-true-HAL-true
+ProjectManager.functionlistsort=1-SystemClock_Config-RCC-false-HAL-false,2-MX_GPIO_Init-GPIO-false-HAL-true,3-MX_I2C1_Init-I2C1-false-HAL-true,4-MX_ICACHE_Init-ICACHE-false-HAL-true,5-MX_USART1_UART_Init-USART1-false-HAL-true,0-MX_CORTEX_M33_NS_Init-CORTEX_M33_NS-false-HAL-true,0-MX_PWR_Init-PWR-false-HAL-true,false-0--NUCLEO-H533RE-true-HAL-true
 RCC.ADCFreq_Value=32000000
 RCC.AHBFreq_Value=32000000
 RCC.APB1Freq_Value=32000000

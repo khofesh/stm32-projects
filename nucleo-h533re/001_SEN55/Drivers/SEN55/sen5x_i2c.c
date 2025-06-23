@@ -36,10 +36,10 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <sensirion_i2c_hal.h>
 #include "sen5x_i2c.h"
 #include "sensirion_common.h"
 #include "sensirion_i2c.h"
-#include "sensirion_i2c_hal.h"
 
 #define SEN5X_I2C_ADDRESS 0x69
 
