@@ -39,4 +39,6 @@
   - google "stm32 wii nunchuck wii uext"
 - [ ] dht20
   - https://github.com/libdriver/dht20
+- [ ] MCP3008 - 8 channel
+  - https://github.com/adafruit/Adafruit_MCP3008
 
