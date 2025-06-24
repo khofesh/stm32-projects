@@ -22,4 +22,14 @@
   - https://github.com/afiskon/stm32-st7735
 - [ ] ssd1306
   - https://github.com/afiskon/stm32-ssd1306
+- [ ] BMP280
+- [ ] DS1820
+- [ ] L3GD20H
+- [ ] TC74A0-3.3VAT
+  - microchip board mount temperature sensors
+- [ ] WII nunchuk + olimex MOD-WII-UEXT
+  - https://www.partsnotincluded.com/using-wii-nunchuk-with-arduino/
+  - https://www.mouser.co.id/ProductDetail/Olimex-Ltd/MOD-WII-UEXT?qs=C3feHhap9PrGuR8SxCxmyQ%3D%3D
+  - https://acassis.wordpress.com/2015/06/26/using-the-nintendo-wii-nunchuk-joystick-in-the-stm32f4discovery-running-nuttx/
+  - google "stm32 wii nunchuck wii uext"
 
