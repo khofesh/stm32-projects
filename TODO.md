@@ -23,8 +23,13 @@
 - [ ] ssd1306
   - https://github.com/afiskon/stm32-ssd1306
 - [ ] BMP280
+  - https://github.com/libdriver/bmp280
 - [ ] DS1820
+  - https://github.com/libdriver/ds18b20
 - [ ] L3GD20H
+  - https://github.com/STMicroelectronics/l3gd20h-pid
+  - https://github.com/STMicroelectronics/STMems_Standard_C_drivers/blob/master/l3gd20h_STdC/examples/README.md
+  - https://www.st.com/en/mems-and-sensors/l3gd20.html
 - [ ] TC74A0-3.3VAT
   - microchip board mount temperature sensors
 - [ ] WII nunchuk + olimex MOD-WII-UEXT
@@ -32,4 +37,6 @@
   - https://www.mouser.co.id/ProductDetail/Olimex-Ltd/MOD-WII-UEXT?qs=C3feHhap9PrGuR8SxCxmyQ%3D%3D
   - https://acassis.wordpress.com/2015/06/26/using-the-nintendo-wii-nunchuk-joystick-in-the-stm32f4discovery-running-nuttx/
   - google "stm32 wii nunchuck wii uext"
+- [ ] dht20
+  - https://github.com/libdriver/dht20
 
