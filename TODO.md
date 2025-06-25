@@ -41,4 +41,5 @@
   - https://github.com/libdriver/dht20
 - [ ] MCP3008 - 8 channel
   - https://github.com/adafruit/Adafruit_MCP3008
+  - https://www.microchip.com/en-us/product/mcp3008#Documentation
 
