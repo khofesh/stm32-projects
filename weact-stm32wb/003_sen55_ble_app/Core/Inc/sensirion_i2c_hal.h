@@ -38,6 +38,17 @@
 extern "C" {
 #endif /* __cplusplus */
 
+typedef struct {
+    uint16_t pm1_0;
+    uint16_t pm2_5;
+    uint16_t pm4_0;
+    uint16_t pm10;
+    int16_t temperature;
+    int16_t humidity;
+    int16_t voc_index;
+    int16_t nox_index;
+} __attribute__((packed)) sen55_data_t;
+
 /**
  * Select the current i2c bus by index.
  * All following i2c operations will be directed at that bus.
@@ -104,6 +115,8 @@ int8_t sensirion_i2c_hal_write(uint8_t address, const uint8_t* data,
  * @param useconds the sleep time in microseconds
  */
 void sensirion_i2c_hal_sleep_usec(uint32_t useconds);
+
+HAL_StatusTypeDef SEN55_ReadAllData(sen55_data_t *data);
 
 #ifdef __cplusplus
 }
