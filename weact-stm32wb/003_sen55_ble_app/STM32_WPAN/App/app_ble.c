@@ -234,10 +234,11 @@ uint8_t index_con_int, mutex;
 /**
  * Advertising Data
  */
-uint8_t a_AdvData[15] =
+uint8_t a_AdvData[19] =
 {
   2, AD_TYPE_TX_POWER_LEVEL, 0 /* -0.15dBm */, /* Transmission Power */
   6, AD_TYPE_COMPLETE_LOCAL_NAME, 'M', 'y', 'C', 'S', 'T',  /* Complete name */
+  3, AD_TYPE_16_BIT_SERV_UUID_CMPLT_LIST, 0x00, 0x00,
   4, AD_TYPE_MANUFACTURER_SPECIFIC_DATA, 0x30, 0x00, 0x00 /*  */,
 };
 /**

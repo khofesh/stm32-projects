@@ -64,7 +64,7 @@ extern uint16_t Connection_Handle;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-uint16_t SizeSen55_C = 2;
+uint16_t SizeSen55_C = 16;
 
 /**
  * START of Section BLE_DRIVER_CONTEXT
@@ -120,6 +120,8 @@ static SVCCTL_EvtAckStatus_t Custom_STM_Event_Handler(void *Event)
   SVCCTL_EvtAckStatus_t return_value;
   hci_event_pckt *event_pckt;
   evt_blecore_aci *blecore_evt;
+  aci_gatt_attribute_modified_event_rp0 *attribute_modified;
+  aci_gatt_read_permit_req_event_rp0    *read_req;
   aci_gatt_notification_complete_event_rp0    *notification_complete;
   Custom_STM_App_Notification_evt_t     Notification;
   /* USER CODE BEGIN Custom_STM_Event_Handler_1 */
@@ -139,6 +141,51 @@ static SVCCTL_EvtAckStatus_t Custom_STM_Event_Handler(void *Event)
           /* USER CODE BEGIN EVT_BLUE_GATT_ATTRIBUTE_MODIFIED_BEGIN */
 
           /* USER CODE END EVT_BLUE_GATT_ATTRIBUTE_MODIFIED_BEGIN */
+          attribute_modified = (aci_gatt_attribute_modified_event_rp0*)blecore_evt->data;
+          if (attribute_modified->Attr_Handle == (CustomContext.CustomSen55_CHdle + CHARACTERISTIC_DESCRIPTOR_ATTRIBUTE_OFFSET))
+          {
+            return_value = SVCCTL_EvtAckFlowEnable;
+            /* USER CODE BEGIN CUSTOM_STM_Service_1_Char_1 */
+
+            /* USER CODE END CUSTOM_STM_Service_1_Char_1 */
+            switch (attribute_modified->Attr_Data[0])
+            {
+              /* USER CODE BEGIN CUSTOM_STM_Service_1_Char_1_attribute_modified */
+
+              /* USER CODE END CUSTOM_STM_Service_1_Char_1_attribute_modified */
+
+              /* Disabled Notification management */
+              case (!(COMSVC_Notification)):
+                /* USER CODE BEGIN CUSTOM_STM_Service_1_Char_1_Disabled_BEGIN */
+
+                /* USER CODE END CUSTOM_STM_Service_1_Char_1_Disabled_BEGIN */
+                Notification.Custom_Evt_Opcode = CUSTOM_STM_SEN55_C_NOTIFY_DISABLED_EVT;
+                Custom_STM_App_Notification(&Notification);
+                /* USER CODE BEGIN CUSTOM_STM_Service_1_Char_1_Disabled_END */
+
+                /* USER CODE END CUSTOM_STM_Service_1_Char_1_Disabled_END */
+                break;
+
+              /* Enabled Notification management */
+              case COMSVC_Notification:
+                /* USER CODE BEGIN CUSTOM_STM_Service_1_Char_1_COMSVC_Notification_BEGIN */
+
+                /* USER CODE END CUSTOM_STM_Service_1_Char_1_COMSVC_Notification_BEGIN */
+                Notification.Custom_Evt_Opcode = CUSTOM_STM_SEN55_C_NOTIFY_ENABLED_EVT;
+                Custom_STM_App_Notification(&Notification);
+                /* USER CODE BEGIN CUSTOM_STM_Service_1_Char_1_COMSVC_Notification_END */
+
+                /* USER CODE END CUSTOM_STM_Service_1_Char_1_COMSVC_Notification_END */
+                break;
+
+              default:
+                /* USER CODE BEGIN CUSTOM_STM_Service_1_Char_1_default */
+
+                /* USER CODE END CUSTOM_STM_Service_1_Char_1_default */
+              break;
+            }
+          }  /* if (attribute_modified->Attr_Handle == (CustomContext.CustomSen55_CHdle + CHARACTERISTIC_DESCRIPTOR_ATTRIBUTE_OFFSET))*/
+
           /* USER CODE BEGIN EVT_BLUE_GATT_ATTRIBUTE_MODIFIED_END */
 
           /* USER CODE END EVT_BLUE_GATT_ATTRIBUTE_MODIFIED_END */
@@ -148,6 +195,18 @@ static SVCCTL_EvtAckStatus_t Custom_STM_Event_Handler(void *Event)
           /* USER CODE BEGIN EVT_BLUE_GATT_READ_PERMIT_REQ_BEGIN */
 
           /* USER CODE END EVT_BLUE_GATT_READ_PERMIT_REQ_BEGIN */
+          read_req = (aci_gatt_read_permit_req_event_rp0*)blecore_evt->data;
+          if (read_req->Attribute_Handle == (CustomContext.CustomSen55_CHdle + CHARACTERISTIC_VALUE_ATTRIBUTE_OFFSET))
+          {
+            return_value = SVCCTL_EvtAckFlowEnable;
+            /*USER CODE BEGIN CUSTOM_STM_Service_1_Char_1_ACI_GATT_READ_PERMIT_REQ_VSEVT_CODE_1 */
+
+            /*USER CODE END CUSTOM_STM_Service_1_Char_1_ACI_GATT_READ_PERMIT_REQ_VSEVT_CODE_1*/
+            aci_gatt_allow_read(read_req->Connection_Handle);
+            /*USER CODE BEGIN CUSTOM_STM_Service_1_Char_1_ACI_GATT_READ_PERMIT_REQ_VSEVT_CODE_2 */
+
+            /*USER CODE END CUSTOM_STM_Service_1_Char_1_ACI_GATT_READ_PERMIT_REQ_VSEVT_CODE_2*/
+          } /* if (read_req->Attribute_Handle == (CustomContext.CustomSen55_CHdle + CHARACTERISTIC_VALUE_ATTRIBUTE_OFFSET))*/
           /* USER CODE BEGIN EVT_BLUE_GATT_READ_PERMIT_REQ_END */
 
           /* USER CODE END EVT_BLUE_GATT_READ_PERMIT_REQ_END */
@@ -238,12 +297,13 @@ void SVCCTL_InitCustomSvc(void)
    * Max_Attribute_Records = 1 + 2*1 + 1*no_of_char_with_notify_or_indicate_property + 1*no_of_char_with_broadcast_property
    * service_max_attribute_record = 1 for SEN55_P2P_server +
    *                                2 for My_SEN55_Char +
-   *                              = 3
+   *                                1 for My_SEN55_Char configuration descriptor +
+   *                              = 4
    *
    * This value doesn't take into account number of descriptors manually added
    * In case of descriptors added, please update the max_attr_record value accordingly in the next SVCCTL_InitService User Section
    */
-  max_attr_record = 3;
+  max_attr_record = 4;
 
   /* USER CODE BEGIN SVCCTL_InitService1 */
   /* max_attr_record to be updated if descriptors have been added */
@@ -272,9 +332,9 @@ void SVCCTL_InitCustomSvc(void)
   ret = aci_gatt_add_char(CustomContext.CustomP2PsHdle,
                           UUID_TYPE_128, &uuid,
                           SizeSen55_C,
-                          CHAR_PROP_NONE,
+                          CHAR_PROP_READ | CHAR_PROP_NOTIFY,
                           ATTR_PERMISSION_NONE,
-                          GATT_NOTIFY_ATTRIBUTE_WRITE | GATT_NOTIFY_WRITE_REQ_AND_WAIT_FOR_APPL_RESP | GATT_NOTIFY_READ_REQ_AND_WAIT_FOR_APPL_RESP,
+                          GATT_NOTIFY_ATTRIBUTE_WRITE | GATT_NOTIFY_READ_REQ_AND_WAIT_FOR_APPL_RESP,
                           0x10,
                           CHAR_VALUE_LEN_VARIABLE,
                           &(CustomContext.CustomSen55_CHdle));

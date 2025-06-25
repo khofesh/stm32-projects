@@ -149,7 +149,9 @@
 #define CFG_USE_SMPS    0
 
 /* USER CODE BEGIN Generic_Parameters */
-
+#define ADV_TYPE                          ADV_IND
+#define BLE_ADDR_TYPE                     GAP_PUBLIC_ADDR
+#define ADV_FILTER                        NO_WHITE_LIST_USE
 /* USER CODE END Generic_Parameters */
 
 /**< specific parameters */
@@ -584,7 +586,7 @@ typedef enum
  * This shall be set to 0 in a final product
  *
  */
-#define CFG_HW_RESET_BY_FW         0
+#define CFG_HW_RESET_BY_FW         1
 
 /**
  * keep debugger enabled while in any low power mode when set to 1
@@ -679,7 +681,7 @@ typedef enum
 #endif
   CFG_TASK_HCI_ASYNCH_EVT_ID,
   /* USER CODE BEGIN CFG_Task_Id_With_HCI_Cmd_t */
-
+  CFG_TASK_SEN55_FETCHING_ID,
   /* USER CODE END CFG_Task_Id_With_HCI_Cmd_t */
   CFG_LAST_TASK_ID_WITH_HCICMD,                                               /**< Shall be LAST in the list */
 } CFG_Task_Id_With_HCI_Cmd_t;
