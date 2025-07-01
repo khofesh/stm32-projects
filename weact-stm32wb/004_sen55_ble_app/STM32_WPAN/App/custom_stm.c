@@ -337,7 +337,7 @@ void SVCCTL_InitCustomSvc(void)
                           ATTR_PERMISSION_NONE,
                           GATT_NOTIFY_ATTRIBUTE_WRITE,
                           0x10,
-                          CHAR_VALUE_LEN_CONSTANT,
+                          CHAR_VALUE_LEN_VARIABLE,
                           &(CustomContext.CustomLed_CHdle));
   if (ret != BLE_STATUS_SUCCESS)
   {
@@ -363,7 +363,7 @@ void SVCCTL_InitCustomSvc(void)
                           ATTR_PERMISSION_NONE,
                           GATT_NOTIFY_ATTRIBUTE_WRITE,
                           0x10,
-                          CHAR_VALUE_LEN_CONSTANT,
+                          CHAR_VALUE_LEN_VARIABLE,
                           &(CustomContext.CustomSen55_CHdle));
   if (ret != BLE_STATUS_SUCCESS)
   {

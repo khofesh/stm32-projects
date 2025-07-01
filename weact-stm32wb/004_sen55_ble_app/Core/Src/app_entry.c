@@ -134,7 +134,6 @@ void MX_APPE_Init(void)
    * received on the system channel before starting the Stack
    * This system event is received with APPE_SysUserEvtRx()
    */
-
 /* USER CODE BEGIN APPE_Init_2 */
 
 /* USER CODE END APPE_Init_2 */
