@@ -34,7 +34,7 @@
 
 #include "sensirion_common.h"
 #include "sensirion_config.h"
-
+#include "sen5x_i2c.h"
 // defined in main.c
 extern I2C_HandleTypeDef hi2c1;
 /*
@@ -135,3 +135,33 @@ void sensirion_i2c_hal_sleep_usec(uint32_t useconds) {
 
     HAL_Delay(msec);
 }
+
+HAL_StatusTypeDef SEN55_ReadAllData(sen55_data_t *data) {
+	uint16_t mass_concentration_pm1p0;
+	uint16_t mass_concentration_pm2p5;
+	uint16_t mass_concentration_pm4p0;
+	uint16_t mass_concentration_pm10p0;
+	int16_t ambient_humidity;
+	int16_t ambient_temperature;
+	int16_t voc_index;
+	int16_t nox_index;
+	int16_t error = sen5x_read_measured_values(
+			  &mass_concentration_pm1p0, &mass_concentration_pm2p5,
+			  &mass_concentration_pm4p0, &mass_concentration_pm10p0,
+			  &ambient_humidity, &ambient_temperature, &voc_index, &nox_index);
+
+	data->pm1_0 = mass_concentration_pm1p0;
+	data->pm2_5 = mass_concentration_pm2p5;
+	data->pm4_0 = mass_concentration_pm4p0;
+	data->pm10 = mass_concentration_pm10p0;
+	data->humidity = ambient_humidity;
+	data->temperature = ambient_temperature;
+	data->voc_index = voc_index;
+	data->nox_index = nox_index;
+
+	if (error) {
+		return HAL_ERROR;
+	}
+	return HAL_OK;
+}
+

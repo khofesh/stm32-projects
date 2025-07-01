@@ -171,7 +171,8 @@ typedef struct
 #define BD_ADDR_SIZE_LOCAL    6
 
 /* USER CODE BEGIN PD */
-
+#define SEN55_READ_TIMER_ID  1
+#define SEN55_READ_PERIOD_MS 5000  // read every 5 seconds
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -234,7 +235,8 @@ uint8_t a_AdvData[22] =
 };
 
 /* USER CODE BEGIN PV */
-
+static uint8_t SEN55_TimerID;
+static void APP_BLE_SEN55_Timer_Callback(void);
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -386,7 +388,8 @@ void APP_BLE_Init(void)
   Custom_APP_Init();
 
   /* USER CODE BEGIN APP_BLE_Init_3 */
-
+  HW_TS_Create(CFG_TIM_PROC_ID_ISR, &SEN55_TimerID, hw_ts_Repeated, APP_BLE_SEN55_Timer_Callback);
+    HW_TS_Start(SEN55_TimerID, SEN55_READ_PERIOD_MS * 1000 / CFG_TS_TICK_VAL);
   /* USER CODE END APP_BLE_Init_3 */
 
   /**
@@ -1171,6 +1174,14 @@ static void Connection_Interval_Update_Req(void)
 void APP_BLE_SEN55_Action()
 {
 	P2PS_APP_SEN55_Action();
+}
+
+// called periodically (e.g., every 5 seconds)
+static void APP_BLE_SEN55_Timer_Callback(void)
+{
+    if (APP_BLE_Get_Server_Connection_Status() == APP_BLE_CONNECTED_SERVER) {
+        APP_BLE_SEN55_Action();
+    }
 }
 /* USER CODE END FD_SPECIFIC_FUNCTIONS */
 /*************************************************************

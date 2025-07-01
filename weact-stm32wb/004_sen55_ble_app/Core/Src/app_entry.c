@@ -125,7 +125,21 @@ void MX_APPE_Init(void)
    */
   UTIL_LPM_SetOffMode(1 << CFG_LPM_APP, UTIL_LPM_DISABLE);
 
-  sensirion_i2c_hal_init();
+//  sensirion_i2c_hal_init();
+
+  // initialize SEN55 sensor
+  int16_t error = sen5x_device_reset();
+  if (error) {
+      APP_DBG_MSG("Error executing sen5x_device_reset(): %i\r\n", error);
+  }
+
+  // start measurement
+  error = sen5x_start_measurement();
+  if (error) {
+      APP_DBG_MSG("Error executing sen5x_start_measurement(): %i\r\n", error);
+  } else {
+      APP_DBG_MSG("SEN55 measurement started successfully\r\n");
+  }
 /* USER CODE END APPE_Init_1 */
   appe_Tl_Init();	/* Initialize all transport layers */
 

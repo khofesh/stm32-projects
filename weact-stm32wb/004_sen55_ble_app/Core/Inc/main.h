@@ -34,7 +34,10 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "sensirion_i2c_hal.h"
+#include "sen5x_i2c.h"
+#include "sensirion_common.h"
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/

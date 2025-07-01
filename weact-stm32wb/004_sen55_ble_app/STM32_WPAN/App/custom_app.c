@@ -29,7 +29,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "sensirion_i2c_hal.h"
+#include "sen5x_i2c.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -238,22 +239,39 @@ void Custom_Sen55_c_Send_Notification(void) /* Property Notification */
   /* USER CODE BEGIN Sen55_c_NS_1*/
   if (Custom_App_Context.Sen55_c_Notification_Status)
   {
-	  updateflag = 1;
+	  sen55_data_t sensor_data;
 
-	  if (Custom_App_Context.SEN55_Status == 0)
-	  {
-		  Custom_App_Context.SEN55_Status = 1;
-		  NotifyCharData[0] = 0x00;
-		  NotifyCharData[1] = 0x01;
-	  }
-	  else
-	  {
-		  Custom_App_Context.SEN55_Status = 0;
-		  NotifyCharData[0] = 0x00;
-		  NotifyCharData[1] = 0x00;
-	  }
+	  // read sensor data
+	  if (SEN55_ReadAllData(&sensor_data) == HAL_OK) {
+		  updateflag = 1;
 
-	  APP_DBG_MSG("-- CUSTOM APPLICATION SERVER  : INFORM CLIENT BUTTON 1 PUSHED \n");
+		  // pack sensor data into notification buffer
+		  // format: [PM1.0(2)] [PM2.5(2)] [PM4.0(2)] [PM10(2)] [Temp(2)] [Hum(2)] [VOC(2)] [NOx(2)]
+		  NotifyCharData[0] = (uint8_t)(sensor_data.pm1_0 & 0xFF);
+		  NotifyCharData[1] = (uint8_t)(sensor_data.pm1_0 >> 8);
+		  NotifyCharData[2] = (uint8_t)(sensor_data.pm2_5 & 0xFF);
+		  NotifyCharData[3] = (uint8_t)(sensor_data.pm2_5 >> 8);
+		  NotifyCharData[4] = (uint8_t)(sensor_data.pm4_0 & 0xFF);
+		  NotifyCharData[5] = (uint8_t)(sensor_data.pm4_0 >> 8);
+		  NotifyCharData[6] = (uint8_t)(sensor_data.pm10 & 0xFF);
+		  NotifyCharData[7] = (uint8_t)(sensor_data.pm10 >> 8);
+		  NotifyCharData[8] = (uint8_t)(sensor_data.temperature & 0xFF);
+		  NotifyCharData[9] = (uint8_t)(sensor_data.temperature >> 8);
+		  NotifyCharData[10] = (uint8_t)(sensor_data.humidity & 0xFF);
+		  NotifyCharData[11] = (uint8_t)(sensor_data.humidity >> 8);
+		  NotifyCharData[12] = (uint8_t)(sensor_data.voc_index & 0xFF);
+		  NotifyCharData[13] = (uint8_t)(sensor_data.voc_index >> 8);
+		  NotifyCharData[14] = (uint8_t)(sensor_data.nox_index & 0xFF);
+		  NotifyCharData[15] = (uint8_t)(sensor_data.nox_index >> 8);
+
+		  APP_DBG_MSG("-- CUSTOM APPLICATION SERVER : SENDING SEN55 DATA\n");
+		  APP_DBG_MSG("PM1.0: %.1f µg/m³, PM2.5: %.1f µg/m³\n",
+				  sensor_data.pm1_0 / 10.0f, sensor_data.pm2_5 / 10.0f);
+		  APP_DBG_MSG("Temperature: %.1f °C, Humidity: %.1f %%RH\n",
+				  sensor_data.temperature / 200.0f, sensor_data.humidity / 100.0f);
+	  } else {
+		  APP_DBG_MSG("-- CUSTOM APPLICATION : ERROR READING SEN55 DATA\n");
+	  }
   }
   else
   {
@@ -263,7 +281,7 @@ void Custom_Sen55_c_Send_Notification(void) /* Property Notification */
 
   if (updateflag != 0)
   {
-    Custom_STM_App_Update_Char(CUSTOM_STM_SEN55_C, (uint8_t *)NotifyCharData);
+	  Custom_STM_App_Update_Char(CUSTOM_STM_SEN55_C, (uint8_t *)NotifyCharData);
   }
 
   /* USER CODE BEGIN Sen55_c_NS_Last*/

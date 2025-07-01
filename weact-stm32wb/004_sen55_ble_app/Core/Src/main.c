@@ -115,7 +115,7 @@ int main(void)
   MX_I2C1_Init();
   MX_RF_Init();
   /* USER CODE BEGIN 2 */
-  HAL_GPIO_WritePin(GPIOE,GPIO_PIN_4,GPIO_PIN_SET);
+
   /* USER CODE END 2 */
 
   /* Init code for STM32_WPAN */
