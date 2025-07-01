@@ -116,7 +116,7 @@ void Custom_STM_App_Notification(Custom_STM_App_Notification_evt_t *pNotificatio
     	{
     		HAL_GPIO_WritePin(GPIOE, BOARD_LED_Pin, GPIO_PIN_RESET);
     	}
-      /* USER CODE END CUSTOM_STM_LED_C_WRITE_NO_RESP_EVT */
+    	/* USER CODE END CUSTOM_STM_LED_C_WRITE_NO_RESP_EVT */
       break;
 
     case CUSTOM_STM_SEN55_C_NOTIFY_ENABLED_EVT:
