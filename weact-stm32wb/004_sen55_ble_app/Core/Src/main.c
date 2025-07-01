@@ -63,7 +63,6 @@ static void MX_DMA_Init(void);
 static void MX_IPCC_Init(void);
 static void MX_RTC_Init(void);
 static void MX_I2C1_Init(void);
-void MX_USART1_UART_Init(void);
 static void MX_RF_Init(void);
 /* USER CODE BEGIN PFP */
 
@@ -114,7 +113,6 @@ int main(void)
   MX_DMA_Init();
   MX_RTC_Init();
   MX_I2C1_Init();
-  MX_USART1_UART_Init();
   MX_RF_Init();
   /* USER CODE BEGIN 2 */
 
