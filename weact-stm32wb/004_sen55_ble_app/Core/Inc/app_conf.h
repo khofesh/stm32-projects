@@ -59,14 +59,17 @@
  */
 #define CFG_BLE_ADDRESS_TYPE              GAP_PUBLIC_ADDR
 
-#define CFG_FAST_CONN_ADV_INTERVAL_MIN    (0x80)      /**< 80ms */
-#define CFG_FAST_CONN_ADV_INTERVAL_MAX    (0xA0)      /**< 100ms */
+#define CFG_FAST_CONN_ADV_INTERVAL_MIN    (0x0080)      /**< 80ms */
+#define CFG_FAST_CONN_ADV_INTERVAL_MAX    (0x00A0)      /**< 100ms */
 #define CFG_LP_CONN_ADV_INTERVAL_MIN      (0x640)     /**< 1s */
 #define CFG_LP_CONN_ADV_INTERVAL_MAX      (0xFA0)     /**< 2.5s */
+#define ADV_TYPE                          ADV_IND
+#define BLE_ADDR_TYPE                     GAP_PUBLIC_ADDR
+#define ADV_FILTER                        NO_WHITE_LIST_USE
 /**
  * Define IO Authentication
  */
-#define CFG_BONDING_MODE                 (1)
+#define CFG_BONDING_MODE                 (0)
 #define CFG_FIXED_PIN                    (111111)
 #define CFG_USED_FIXED_PIN               (0)
 #define CFG_ENCRYPTION_KEY_SIZE_MAX      (16)
@@ -117,8 +120,8 @@
 /**
  * Device name configuration for Generic Access Service
  */
-#define CFG_GAP_DEVICE_NAME             "TEMPLATE"
-#define CFG_GAP_DEVICE_NAME_LENGTH      (8)
+#define CFG_GAP_DEVICE_NAME             "SEN55_APP"
+#define CFG_GAP_DEVICE_NAME_LENGTH      (9)
 
 /**
  * Define PHY
@@ -154,21 +157,6 @@
 
 /**< specific parameters */
 /*****************************************************/
-
-#define P2P_SERVER1    1    /*1 = Device is Peripherique*/
-#define P2P_SERVER2    0
-#define P2P_SERVER3    0
-#define P2P_SERVER4    0
-#define P2P_SERVER5    0
-#define P2P_SERVER6    0
-
-#define CFG_DEV_ID_P2P_SERVER1                  (0x83)
-#define CFG_DEV_ID_P2P_SERVER2                  (0x84)
-#define CFG_DEV_ID_P2P_SERVER3                  (0x87)
-#define CFG_DEV_ID_P2P_SERVER4                  (0x88)
-#define CFG_DEV_ID_P2P_SERVER5                  (0x89)
-#define CFG_DEV_ID_P2P_SERVER6                  (0x8A)
-#define CFG_DEV_ID_P2P_ROUTER                   (0x85)
 
 #define  RADIO_ACTIVITY_EVENT   1          /* 1 for OOB Demo */
 
@@ -451,7 +439,7 @@
 /**
  * Select UART interfaces
  */
-#define CFG_DEBUG_TRACE_UART    0
+#define CFG_DEBUG_TRACE_UART    hw_uart1
 #define CFG_CONSOLE_MENU        0
 /******************************************************************************
  * USB interface
@@ -584,7 +572,7 @@ typedef enum
  * This shall be set to 0 in a final product
  *
  */
-#define CFG_HW_RESET_BY_FW         0
+#define CFG_HW_RESET_BY_FW         1
 
 /**
  * keep debugger enabled while in any low power mode when set to 1
@@ -595,12 +583,12 @@ typedef enum
 /**
  * When set to 1, the traces are enabled in the BLE services
  */
-#define CFG_DEBUG_BLE_TRACE     0
+#define CFG_DEBUG_BLE_TRACE     1
 
 /**
  * Enable or Disable traces in application
  */
-#define CFG_DEBUG_APP_TRACE     0
+#define CFG_DEBUG_APP_TRACE     1
 
 #if (CFG_DEBUG_APP_TRACE != 0)
 #define APP_DBG_MSG                 PRINT_MESG_DBG
@@ -627,7 +615,7 @@ typedef enum
  * When both are set to 1,  CFG_DEBUG_TRACE_FULL is selected
  */
 #define CFG_DEBUG_TRACE_LIGHT     0
-#define CFG_DEBUG_TRACE_FULL      0
+#define CFG_DEBUG_TRACE_FULL      1
 
 #if (( CFG_DEBUG_TRACE != 0 ) && ( CFG_DEBUG_TRACE_LIGHT == 0 ) && (CFG_DEBUG_TRACE_FULL == 0))
 #undef CFG_DEBUG_TRACE_FULL
