@@ -68,7 +68,7 @@ typedef struct
 void Custom_APP_Init(void);
 void Custom_APP_Notification(Custom_App_ConnHandle_Not_evt_t *pNotification);
 /* USER CODE BEGIN EF */
-
+void P2PS_APP_SEN55_Action();
 /* USER CODE END EF */
 
 #ifdef __cplusplus
