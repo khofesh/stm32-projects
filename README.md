@@ -17,3 +17,7 @@ Move all stm32 projects into one place
 - https://github.com/cpq/bare-metal-programming-guide
 - **ST Microelectronics online training** - https://www.st.com/content/st_com/en/support/learning/stm32-education/stm32-online-training/stm32wb-online-training.html
 
+## bluetooth
+
+- https://www.bluez.org/study-guide-for-linux-developer/
+- https://www.bluetooth.com/bluetooth-resources/bluetooth-for-linux/
