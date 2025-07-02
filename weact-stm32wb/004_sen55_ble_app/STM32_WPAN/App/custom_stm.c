@@ -207,6 +207,14 @@ static SVCCTL_EvtAckStatus_t Custom_STM_Event_Handler(void *Event)
         case ACI_GATT_READ_PERMIT_REQ_VSEVT_CODE :
           /* USER CODE BEGIN EVT_BLUE_GATT_READ_PERMIT_REQ_BEGIN */
 
+        	aci_gatt_read_permit_req_event_rp0 *read_req = (aci_gatt_read_permit_req_event_rp0*)blecore_evt->data;
+
+        	if (read_req->Attribute_Handle == (CustomContext.CustomSen55_CHdle + CHARACTERISTIC_VALUE_ATTRIBUTE_OFFSET)) {
+        		// Allow read and update with current sensor data
+        		aci_gatt_allow_read(read_req->Connection_Handle);
+
+
+        	}
           /* USER CODE END EVT_BLUE_GATT_READ_PERMIT_REQ_BEGIN */
           /* USER CODE BEGIN EVT_BLUE_GATT_READ_PERMIT_REQ_END */
 
@@ -360,7 +368,7 @@ void SVCCTL_InitCustomSvc(void)
   ret = aci_gatt_add_char(CustomContext.CustomP2PsHdle,
                           UUID_TYPE_128, &uuid,
                           SizeSen55_C,
-                          CHAR_PROP_NOTIFY,
+                          CHAR_PROP_READ | CHAR_PROP_NOTIFY,
                           ATTR_PERMISSION_NONE,
                           GATT_NOTIFY_ATTRIBUTE_WRITE,
                           0x10,

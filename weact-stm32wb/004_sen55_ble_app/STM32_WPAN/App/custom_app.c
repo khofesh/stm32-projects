@@ -117,7 +117,13 @@ void Custom_STM_App_Notification(Custom_STM_App_Notification_evt_t *pNotificatio
     	{
     		HAL_GPIO_WritePin(GPIOE, BOARD_LED_Pin, GPIO_PIN_RESET);
     	}
-    	/* USER CODE END CUSTOM_STM_LED_C_WRITE_NO_RESP_EVT */
+      /* USER CODE END CUSTOM_STM_LED_C_WRITE_NO_RESP_EVT */
+      break;
+
+    case CUSTOM_STM_SEN55_C_READ_EVT:
+      /* USER CODE BEGIN CUSTOM_STM_SEN55_C_READ_EVT */
+
+      /* USER CODE END CUSTOM_STM_SEN55_C_READ_EVT */
       break;
 
     case CUSTOM_STM_SEN55_C_NOTIFY_ENABLED_EVT:
@@ -281,7 +287,7 @@ void Custom_Sen55_c_Send_Notification(void) /* Property Notification */
 
   if (updateflag != 0)
   {
-	  Custom_STM_App_Update_Char(CUSTOM_STM_SEN55_C, (uint8_t *)NotifyCharData);
+    Custom_STM_App_Update_Char(CUSTOM_STM_SEN55_C, (uint8_t *)NotifyCharData);
   }
 
   /* USER CODE BEGIN Sen55_c_NS_Last*/
