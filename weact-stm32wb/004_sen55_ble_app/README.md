@@ -5,12 +5,12 @@
 
 ## connection:
 
-PB7 (TX) --> waveshare RX
+PB7 (TX) --> waveshare RX \n
 PB6 (RX) --> waveshare TX
 
 PE4 -> board LED
 
-PB8 (SCL) --> yellow cable (SCL)
+PB8 (SCL) --> yellow cable (SCL) \n
 PB9 (SDA) --> white cable (SDA)
 
 ![the sensor](./6280451413775599031.jpg)
