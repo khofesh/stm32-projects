@@ -14,3 +14,9 @@ PB8 (SCL) --> yellow cable (SCL) \
 PB9 (SDA) --> white cable (SDA)
 
 ![the sensor](./6280451413775599031.jpg)
+
+## reading data
+
+see `stm32-projects/applications/sen55-reader` on how to read SEN55 data
+
+![alt text](image.png)
