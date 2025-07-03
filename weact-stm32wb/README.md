@@ -24,3 +24,8 @@ Update BLE stack
 ![alt text](./images/image-1.png)
 
 you could get the start address `0x080D0000` in `Release_Notes.html`
+
+## create BLE application
+
+- https://wiki.st.com/stm32mcu/wiki/Connectivity:STM32WB_BLE_STM32CubeMX
+
