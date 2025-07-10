@@ -1,3 +1,6 @@
+//go:build linux || darwin || windows
+// +build linux darwin windows
+
 // This example scans and then connects to a specific Bluetooth peripheral
 // and then display SEN55 data
 //

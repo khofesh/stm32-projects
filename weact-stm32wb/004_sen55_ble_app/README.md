@@ -13,7 +13,7 @@ PE4 -> board LED
 PB8 (SCL) --> yellow cable (SCL) \
 PB9 (SDA) --> white cable (SDA)
 
-![the sensor](./6280451413775599031.jpg)
+![the sensor](./6287527797597524002.jpg)
 
 ## reading data
 
