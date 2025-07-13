@@ -21,7 +21,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "driver_st7789.h"
+#include "driver_st7789_interface.h"
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,7 +49,7 @@ DMA_HandleTypeDef hdma_spi1_tx;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-
+st7789_handle_t st7789_handle;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -74,6 +76,8 @@ int main(void)
 
   /* USER CODE BEGIN 1 */
 
+	char test_str3[] ="TEST ST7789 + STM32";
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -98,7 +102,181 @@ int main(void)
   MX_SPI1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  st7789_interface_debug_print("Starting ST7789 initialization...\r\n");
 
+  st7789_handle_t gs_handle;
+  uint8_t res;
+
+  // Link interface functions
+  DRIVER_ST7789_LINK_INIT(&gs_handle, st7789_handle_t);
+  DRIVER_ST7789_LINK_SPI_INIT(&gs_handle, st7789_interface_spi_init);
+  DRIVER_ST7789_LINK_SPI_DEINIT(&gs_handle, st7789_interface_spi_deinit);
+  DRIVER_ST7789_LINK_SPI_WRITE_COMMAND(&gs_handle, st7789_interface_spi_write_cmd);
+  DRIVER_ST7789_LINK_COMMAND_DATA_GPIO_INIT(&gs_handle, st7789_interface_cmd_data_gpio_init);
+  DRIVER_ST7789_LINK_COMMAND_DATA_GPIO_DEINIT(&gs_handle, st7789_interface_cmd_data_gpio_deinit);
+  DRIVER_ST7789_LINK_COMMAND_DATA_GPIO_WRITE(&gs_handle, st7789_interface_cmd_data_gpio_write);
+  DRIVER_ST7789_LINK_RESET_GPIO_INIT(&gs_handle, st7789_interface_reset_gpio_init);
+  DRIVER_ST7789_LINK_RESET_GPIO_DEINIT(&gs_handle, st7789_interface_reset_gpio_deinit);
+  DRIVER_ST7789_LINK_RESET_GPIO_WRITE(&gs_handle, st7789_interface_reset_gpio_write);
+  DRIVER_ST7789_LINK_DELAY_MS(&gs_handle, st7789_interface_delay_ms);
+  DRIVER_ST7789_LINK_DEBUG_PRINT(&gs_handle, st7789_interface_debug_print);
+
+  // Initialize the display
+  st7789_interface_debug_print("Calling st7789_init()...\r\n");
+  res = st7789_init(&gs_handle);
+  if (res != 0)
+  {
+      st7789_interface_debug_print("ST7789 init failed: %d\r\n", res);
+      Error_Handler();
+  }
+
+  // wait
+  st7789_interface_delay_ms(120);
+  // turn on the display
+  st7789_display_on(&gs_handle);
+
+  // set display parameters (240x240 for 1.54" ST7789)
+  st7789_interface_debug_print("Setting display size to 240x240...\r\n");
+  res = st7789_set_column(&gs_handle, 240);
+  if (res != 0)
+  {
+      st7789_interface_debug_print("st7789: set column failed.\n");
+      Error_Handler();
+  }
+
+  res = st7789_set_row(&gs_handle, 240);
+  if (res != 0)
+  {
+	  st7789_interface_debug_print("st7789: set row failed.\n");
+	  Error_Handler();
+  }
+
+  /* sleep out */
+  res = st7789_sleep_out(&gs_handle);
+  if (res != 0)
+  {
+      st7789_interface_debug_print("st7789: sleep out failed.\n");
+      Error_Handler();
+  }
+
+  /* idle mode off */
+  res = st7789_idle_mode_off(&gs_handle);
+  if (res != 0)
+  {
+      st7789_interface_debug_print("st7789: idle mode off failed.\n");
+      Error_Handler();
+  }
+
+  /* normal display mode on */
+  res = st7789_normal_display_mode_on(&gs_handle);
+  if (res != 0)
+  {
+      st7789_interface_debug_print("st7789: normal display mode on failed.\n");
+      (void)st7789_deinit(&gs_handle);
+
+      return 1;
+  }
+
+  /* display inversion on */
+  res = st7789_display_inversion_on(&gs_handle);
+  if (res != 0)
+  {
+      st7789_interface_debug_print("st7789: display inversion on failed.\n");
+      Error_Handler();
+  }
+
+  /* set gamma */
+  res = st7789_set_gamma(&gs_handle, ST7789_GAMMA_CURVE_1);
+  if (res != 0)
+  {
+      st7789_interface_debug_print("st7789: set gamma failed.\n");
+      Error_Handler();
+  }
+
+  /* set memory data access control */
+  res = st7789_set_memory_data_access_control(&gs_handle, ST7789_ORDER_PAGE_TOP_TO_BOTTOM | ST7789_ORDER_COLUMN_LEFT_TO_RIGHT |
+                                                          ST7789_ORDER_PAGE_COLUMN_NORMAL | ST7789_ORDER_LINE_TOP_TO_BOTTOM |
+                                                          ST7789_ORDER_COLOR_RGB | ST7789_ORDER_REFRESH_LEFT_TO_RIGHT);
+  if (res != 0)
+  {
+      st7789_interface_debug_print("st7789: set memory data access control failed.\n");
+      Error_Handler();
+  }
+
+  // set pixel format to RGB565 (16-bit color)
+  st7789_interface_debug_print("Setting pixel format to RGB565...\r\n");
+  res = st7789_set_interface_pixel_format(&gs_handle, ST7789_RGB_INTERFACE_COLOR_FORMAT_262K, ST7789_CONTROL_INTERFACE_COLOR_FORMAT_16_BIT);
+  if (res != 0)
+  {
+      st7789_interface_debug_print("ST7789 set pixel format failed: %d\r\n", res);
+      Error_Handler();
+  }
+
+  res = st7789_set_display_brightness(&gs_handle, 0xFF);
+  if (res != 0)
+  {
+      st7789_interface_debug_print("st7789: set display brightness failed.\n");
+      Error_Handler();
+  }
+
+  /* disable brightness control */
+  res = st7789_set_display_control(&gs_handle, ST7789_BOOL_FALSE, ST7789_BOOL_FALSE, ST7789_BOOL_FALSE);
+  if (res != 0)
+  {
+      st7789_interface_debug_print("st7789: set display control failed.\n");
+      Error_Handler();
+  }
+
+  /* enable color enhancement */
+  res = st7789_set_brightness_control_and_color_enhancement(&gs_handle, ST7789_BOOL_TRUE,
+                                                            ST7789_COLOR_ENHANCEMENT_MODE_USER_INTERFACE, ST7789_COLOR_ENHANCEMENT_LEVEL_HIGH);
+  if (res != 0)
+  {
+      st7789_interface_debug_print("st7789: set brightness control and color enhancement failed.\n");
+      Error_Handler();
+  }
+
+  /* set 0x00 */
+  res = st7789_set_cabc_minimum_brightness(&gs_handle, 0x00);
+  if (res != 0)
+  {
+      st7789_interface_debug_print("st7789: set cabc minimum brightness failed.\n");
+      Error_Handler();
+  }
+
+  st7789_interface_debug_print("Turning display on...\r\n");
+  res = st7789_display_on(&gs_handle);
+  if (res != 0)
+  {
+      st7789_interface_debug_print("ST7789 display on failed: %d\r\n", res);
+      Error_Handler();
+  }
+
+  // Set memory access control (orientation and color order)
+  res = st7789_set_ram_control(&gs_handle,
+                               ST7789_RAM_ACCESS_MCU,
+                               ST7789_DISPLAY_MODE_MCU,
+                               ST7789_FRAME_TYPE_0,
+                               ST7789_DATA_MODE_MSB,
+                               ST7789_RGB_BUS_WIDTH_18_BIT,
+                               ST7789_PIXEL_TYPE_0);
+  if (res != 0)
+  {
+      st7789_interface_debug_print("st7789: set ram control failed.\n");
+
+
+      return 1;
+  }
+
+  // Clear the display
+  st7789_interface_debug_print("Clearing display...\r\n");
+  res = st7789_clear(&gs_handle);
+  if (res != 0)
+  {
+      st7789_interface_debug_print("ST7789 clear failed: %d\r\n", res);
+  }
+
+  st7789_interface_debug_print("ST7789 initialized successfully!\r\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -108,6 +286,62 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	    /* rand point test */
+	    st7789_interface_debug_print("st7789: rand point test.\n");
+
+	    for (int i = 0; i < 240; i++)
+	    {
+	        for (int j = 0; j < 240; j++)
+	        {
+	            if ((rand() % 2) != 0)
+	            {
+	                res = st7789_draw_point(&gs_handle, i, j, 0xFFFFU);
+	                if (res != 0)
+	                {
+	                    st7789_interface_debug_print("st7789: draw point failed.\n");
+
+
+	                    return 1;
+	                }
+	            }
+	        }
+	    }
+
+	    /* delay 1000ms */
+	    st7789_interface_delay_ms(1000);
+
+	    /* clear */
+	    res = st7789_clear(&gs_handle);
+	    if (res != 0)
+	    {
+	        st7789_interface_debug_print("st7789: clear failed.\n");
+
+
+	        return 1;
+	    }
+
+	    /* write string */
+	    res = st7789_write_string(&gs_handle, 20, 100, test_str3, (uint16_t)strlen(test_str3), 0x003FU, ST7789_FONT_16);
+	    if (res != 0)
+	    {
+	        st7789_interface_debug_print("st7789: write string failed.\n");
+	        (void)st7789_deinit(&gs_handle);
+
+	        return 1;
+	    }
+
+	    /* delay 1000ms */
+	    st7789_interface_delay_ms(1000);
+
+	    /* clear */
+	    res = st7789_clear(&gs_handle);
+	    if (res != 0)
+	    {
+	        st7789_interface_debug_print("st7789: clear failed.\n");
+
+
+	        return 1;
+	    }
   }
   /* USER CODE END 3 */
 }
@@ -188,8 +422,8 @@ static void MX_SPI1_Init(void)
   hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi1.Init.NSS = SPI_NSS_HARD_INPUT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -272,10 +506,10 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, LCD_DC_Pin|LCD_RST_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, LCD_DC_Pin|LCD_RST_Pin|GPIO_PIN_4, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : LCD_DC_Pin LCD_RST_Pin */
-  GPIO_InitStruct.Pin = LCD_DC_Pin|LCD_RST_Pin;
+  /*Configure GPIO pins : LCD_DC_Pin LCD_RST_Pin PA4 */
+  GPIO_InitStruct.Pin = LCD_DC_Pin|LCD_RST_Pin|GPIO_PIN_4;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
