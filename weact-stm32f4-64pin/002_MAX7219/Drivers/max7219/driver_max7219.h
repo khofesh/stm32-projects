@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2015 - present LibDriver All rights reserved
- * 
+ *
  * The MIT License (MIT)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -19,7 +19,7 @@
  * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE. 
+ * SOFTWARE.
  *
  * @file      driver_max7219.h
  * @brief     driver max7219 header file
@@ -126,7 +126,7 @@ typedef enum
     MAX7219_NO_DECODE_FONT_7     = 0x70,        /**< no decode font 7 */
     MAX7219_NO_DECODE_FONT_8     = 0x7F,        /**< no decode font 8 */
     MAX7219_NO_DECODE_FONT_9     = 0x7B,        /**< no decode font 9 */
-    MAX7219_NO_DECODE_FONT_LINE  = 0x01,        /**< no decode font line */ 
+    MAX7219_NO_DECODE_FONT_LINE  = 0x01,        /**< no decode font line */
     MAX7219_NO_DECODE_FONT_E     = 0x4F,        /**< no decode font e */
     MAX7219_NO_DECODE_FONT_H     = 0x37,        /**< no decode font h */
     MAX7219_NO_DECODE_FONT_L     = 0x0E,        /**< no decode font l */

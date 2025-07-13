@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2015 - present LibDriver All rights reserved
- * 
+ *
  * The MIT License (MIT)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -19,7 +19,7 @@
  * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE. 
+ * SOFTWARE.
  *
  * @file      driver_max7219.c
  * @brief     driver max7219 source file
@@ -34,7 +34,7 @@
  * <tr><td>2020/12/05  <td>1.0      <td>Shifeng Li  <td>first upload
  * </table>
  */
-  
+
 #include "driver_max7219.h"
 
 /**
@@ -73,7 +73,7 @@
 uint8_t max7219_set_display(max7219_handle_t *handle, max7219_digital_t digital, uint8_t data)
 {
     uint8_t res;
-    
+
     if (handle == NULL)                                         /* check handle */
     {
         return 2;                                               /* return error */
@@ -82,15 +82,15 @@ uint8_t max7219_set_display(max7219_handle_t *handle, max7219_digital_t digital,
     {
         return 3;                                               /* return error */
     }
-    
+
     res = handle->spi_write(digital, &data, 1);                 /* spi write data */
     if (res != 0)                                               /* check result */
     {
         handle->debug_print("max7219: write failed.\n");        /* write failed */
-       
+
         return 1;                                               /* return error */
     }
-    
+
     return 0;                                                   /* success return 0 */
 }
 
@@ -109,7 +109,7 @@ uint8_t max7219_set_matrix(max7219_handle_t *handle, uint8_t matrix[8])
 {
     uint8_t res;
     uint8_t i;
-    
+
     if (handle == NULL)                                             /* check handle */
     {
         return 2;                                                   /* return error */
@@ -118,18 +118,18 @@ uint8_t max7219_set_matrix(max7219_handle_t *handle, uint8_t matrix[8])
     {
         return 3;                                                   /* return error */
     }
-    
+
     for (i = 0; i < 8; i++)
     {
         res = handle->spi_write(i + 1, &matrix[i], 1);              /* spi write data */
         if (res != 0)                                               /* check result */
         {
             handle->debug_print("max7219: write failed.\n");        /* write failed */
-           
+
             return 1;                                               /* return error */
         }
     }
-    
+
     return 0;                                                       /* success return 0 */
 }
 
@@ -149,7 +149,7 @@ uint8_t max7219_set_cascade(max7219_handle_t *handle, max7219_cascade_t *cascade
 {
     uint8_t res;
     uint16_t i;
-    
+
     if (handle == NULL)                                                                 /* check handle */
     {
         return 2;                                                                       /* return error */
@@ -158,14 +158,14 @@ uint8_t max7219_set_cascade(max7219_handle_t *handle, max7219_cascade_t *cascade
     {
         return 3;                                                                       /* return error */
     }
-    
+
     if (len > MAX7219_MAX_CASCADE_SIZE)                                                 /* check length */
     {
         handle->debug_print("max7219: len is over MAX7219_MAX_CASCADE_SIZE.\n");        /* write failed */
-       
+
         return 3;                                                                       /* return error */
     }
-    
+
     for (i = 0; i < len; i++)                                                           /* set buf */
     {
         handle->buf[i * 2 + 0] = cascade[i].command;                                    /* set command */
@@ -175,10 +175,10 @@ uint8_t max7219_set_cascade(max7219_handle_t *handle, max7219_cascade_t *cascade
     if (res != 0)                                                                       /* check result */
     {
         handle->debug_print("max7219: write command failed.\n");                        /* write failed */
-       
+
         return 1;                                                                       /* return error */
     }
-    
+
     return 0;                                                                           /* success return 0 */
 }
 
@@ -197,7 +197,7 @@ uint8_t max7219_set_decode(max7219_handle_t *handle, max7219_decode_t decode)
 {
     uint8_t res;
     uint8_t d;
-    
+
     if (handle == NULL)                                                   /* check handle */
     {
         return 2;                                                         /* return error */
@@ -206,16 +206,16 @@ uint8_t max7219_set_decode(max7219_handle_t *handle, max7219_decode_t decode)
     {
         return 3;                                                         /* return error */
     }
-    
+
     d = (uint8_t)decode;                                                  /* set the decode */
     res = handle->spi_write(MAX7219_REG_DECODE, (uint8_t *)&d, 1);        /* spi write data */
     if (res != 0)                                                         /* check result */
     {
         handle->debug_print("max7219: set decode failed.\n");             /* write failed */
-       
+
         return 1;                                                         /* return error */
     }
-    
+
     return 0;                                                             /* success return 0 */
 }
 
@@ -234,7 +234,7 @@ uint8_t max7219_set_mode(max7219_handle_t *handle, max7219_mode_t mode)
 {
     uint8_t res;
     uint8_t m;
-    
+
     if (handle == NULL)                                                      /* check handle */
     {
         return 2;                                                            /* return error */
@@ -243,16 +243,16 @@ uint8_t max7219_set_mode(max7219_handle_t *handle, max7219_mode_t mode)
     {
         return 3;                                                            /* return error */
     }
-    
+
     m = (uint8_t)mode;                                                       /* set the mode */
     res = handle->spi_write(MAX7219_REG_SHUT_DOWN, (uint8_t *)&m, 1);        /* spi write data */
     if (res != 0)                                                            /* check result */
     {
         handle->debug_print("max7219: set mode failed.\n");                  /* write failed */
-       
+
         return 1;                                                            /* return error */
     }
-    
+
     return 0;                                                                /* success return 0 */
 }
 
@@ -271,7 +271,7 @@ uint8_t max7219_set_display_test_mode(max7219_handle_t *handle, max7219_display_
 {
     uint8_t res;
     uint8_t m;
-    
+
     if (handle == NULL)                                                         /* check handle */
     {
         return 2;                                                               /* return error */
@@ -280,16 +280,16 @@ uint8_t max7219_set_display_test_mode(max7219_handle_t *handle, max7219_display_
     {
         return 3;                                                               /* return error */
     }
-    
+
     m = (uint8_t)mode;                                                          /* set the mode */
     res = handle->spi_write(MAX7219_REG_DISPLAY_TEST, (uint8_t *)&m, 1);        /* spi write data */
     if (res != 0)                                                               /* check result */
     {
         handle->debug_print("max7219: set mode failed.\n");                     /* write failed */
-       
+
         return 1;                                                               /* return error */
     }
-    
+
     return 0;                                                                   /* success return 0 */
 }
 
@@ -308,7 +308,7 @@ uint8_t max7219_set_intensity(max7219_handle_t *handle, max7219_intensity_t inte
 {
     uint8_t res;
     uint8_t in;
-    
+
     if (handle == NULL)                                                       /* check handle */
     {
         return 2;                                                             /* return error */
@@ -317,16 +317,16 @@ uint8_t max7219_set_intensity(max7219_handle_t *handle, max7219_intensity_t inte
     {
         return 3;                                                             /* return error */
     }
-    
+
     in = (uint8_t)intensity;                                                  /* set the intensity */
     res = handle->spi_write(MAX7219_REG_INTENSITY, (uint8_t *)&in, 1);        /* spi write data */
     if (res != 0)                                                             /* check result */
     {
         handle->debug_print("max7219: set intensity failed.\n");              /* write failed */
-       
+
         return 1;                                                             /* return error */
     }
-    
+
     return 0;                                                                 /* success return 0 */
 }
 
@@ -345,7 +345,7 @@ uint8_t max7219_set_scan_limit(max7219_handle_t *handle, max7219_scan_limit_t li
 {
     uint8_t res;
     uint8_t l;
-    
+
     if (handle == NULL)                                                       /* check handle */
     {
         return 2;                                                             /* return error */
@@ -354,16 +354,16 @@ uint8_t max7219_set_scan_limit(max7219_handle_t *handle, max7219_scan_limit_t li
     {
         return 3;                                                             /* return error */
     }
-    
+
     l = (uint8_t)limit;                                                       /* set the limit */
     res = handle->spi_write(MAX7219_REG_SCAN_LIMIT, (uint8_t *)&l, 1);        /* spi write data */
     if (res != 0)                                                             /* check result */
     {
         handle->debug_print("max7219: set scan limit failed.\n");             /* write failed */
-       
+
         return 1;                                                             /* return error */
     }
-    
+
     return 0;                                                                 /* success return 0 */
 }
 
@@ -390,42 +390,42 @@ uint8_t max7219_init(max7219_handle_t *handle)
     if (handle->spi_init == NULL)                                        /* check spi_init */
     {
         handle->debug_print("max7219: spi_init is null.\n");             /* spi_init is null */
-       
+
         return 3;                                                        /* return error */
     }
     if (handle->spi_deinit == NULL)                                      /* check spi_deinit */
     {
         handle->debug_print("max7219: spi_deinit is null.\n");           /* spi_deinit is null */
-       
+
         return 3;                                                        /* return error */
     }
     if (handle->spi_write_cmd == NULL)                                   /* check spi_write_cmd */
     {
         handle->debug_print("max7219: spi_write_cmd is null.\n");        /* spi_write_cmd is null */
-       
+
         return 3;                                                        /* return error */
     }
     if (handle->spi_write == NULL)                                       /* check spi_write */
     {
         handle->debug_print("max7219: spi_write is null.\n");            /* spi_write is null */
-       
+
         return 3;                                                        /* return error */
     }
     if (handle->delay_ms == NULL)                                        /* check delay_ms */
     {
         handle->debug_print("max7219: delay_ms is null.\n");             /* delay_ms is null */
-       
+
         return 3;                                                        /* return error */
     }
-    
+
     if (handle->spi_init() != 0)                                         /* spi init */
     {
         handle->debug_print("max7219: spi init failed.\n");              /* spi init failed */
-       
+
         return 1;                                                        /* return error */
     }
     handle->inited = 1;                                                  /* flag finish initialization */
-    
+
     return 0;                                                            /* success return 0 */
 }
 
@@ -444,7 +444,7 @@ uint8_t max7219_deinit(max7219_handle_t *handle)
 {
     uint8_t res;
     uint8_t mode = (uint8_t)MAX7219_MODE_SHUT_DOWN;
-    
+
     if (handle == NULL)                                                         /* check handle */
     {
         return 2;                                                               /* return error */
@@ -453,23 +453,23 @@ uint8_t max7219_deinit(max7219_handle_t *handle)
     {
         return 3;                                                               /* return error */
     }
-    
+
     res = handle->spi_write(MAX7219_REG_SHUT_DOWN, (uint8_t *)&mode, 1);        /* spi write data */
     if (res != 0)                                                               /* check result */
     {
         handle->debug_print("max7219: set mode failed.\n");                     /* write failed */
-       
+
         return 4;                                                               /* return error */
     }
     res = handle->spi_deinit();                                                 /* spi deinit */
     if (res != 0)                                                               /* check result */
     {
         handle->debug_print("max7219: spi deinit failed.\n");                   /* spi deinit failed */
-       
+
         return 1;                                                               /* return error */
     }
     handle->inited = 0;                                                         /* flag close */
-    
+
     return 0;                                                                   /* success return 0 */
 }
 
@@ -496,7 +496,7 @@ uint8_t max7219_set_reg(max7219_handle_t *handle, uint8_t reg, uint8_t *buf, uin
     {
         return 3;                                     /* return error */
     }
-    
+
     if (handle->spi_write(reg, buf, len) != 0)        /* write data */
     {
         return 1;                                     /* return error */
@@ -521,7 +521,7 @@ uint8_t max7219_info(max7219_info_t *info)
     {
         return 2;                                                   /* return error */
     }
-    
+
     memset(info, 0, sizeof(max7219_info_t));                        /* initialize max7219 info structure */
     strncpy(info->chip_name, CHIP_NAME, 32);                        /* copy chip name */
     strncpy(info->manufacturer_name, MANUFACTURER_NAME, 32);        /* copy manufacturer name */
@@ -532,6 +532,6 @@ uint8_t max7219_info(max7219_info_t *info)
     info->temperature_max = TEMPERATURE_MAX;                        /* set minimal temperature */
     info->temperature_min = TEMPERATURE_MIN;                        /* set maximum temperature */
     info->driver_version = DRIVER_VERSION;                          /* set driver version */
-    
+
     return 0;                                                       /* success return 0 */
 }

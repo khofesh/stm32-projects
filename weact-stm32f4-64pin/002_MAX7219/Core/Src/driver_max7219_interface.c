@@ -36,6 +36,12 @@
  */
 
 #include "driver_max7219_interface.h"
+#include "main.h"
+#include <stdarg.h>
+#include <stdio.h>
+
+extern SPI_HandleTypeDef hspi1;
+extern UART_HandleTypeDef huart1;
 
 /**
  * @brief  interface spi bus init
@@ -72,7 +78,18 @@ uint8_t max7219_interface_spi_deinit(void)
  */
 uint8_t max7219_interface_spi_write_cmd(uint8_t *buf, uint16_t len)
 {
-    return 0;
+    HAL_StatusTypeDef status;
+
+    // pull CS low
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
+
+    // send data
+    status = HAL_SPI_Transmit(&hspi1, buf, len, 100);
+
+    // pull CS high
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
+
+    return (status == HAL_OK) ? 0 : 1;
 }
 
 /**
@@ -87,7 +104,20 @@ uint8_t max7219_interface_spi_write_cmd(uint8_t *buf, uint16_t len)
  */
 uint8_t max7219_interface_spi_write(uint8_t reg, uint8_t *buf, uint16_t len)
 {
-    return 0;
+    HAL_StatusTypeDef status;
+    uint8_t tx_data[2];
+
+    tx_data[0] = reg;
+    tx_data[1] = buf[0];
+
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
+
+    // send register + data
+    status = HAL_SPI_Transmit(&hspi1, tx_data, 2, 100);
+
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
+
+    return (status == HAL_OK) ? 0 : 1;
 }
 
 /**
@@ -97,7 +127,7 @@ uint8_t max7219_interface_spi_write(uint8_t reg, uint8_t *buf, uint16_t len)
  */
 void max7219_interface_delay_ms(uint32_t ms)
 {
-
+	HAL_Delay(ms);
 }
 
 /**
@@ -107,5 +137,13 @@ void max7219_interface_delay_ms(uint32_t ms)
  */
 void max7219_interface_debug_print(const char *const fmt, ...)
 {
+    char str[200];
+    va_list args;
 
+    va_start(args, fmt);
+    vsnprintf(str, sizeof(str), fmt, args);
+    va_end(args);
+
+    // send debug message via UART
+    HAL_UART_Transmit(&huart1, (uint8_t*)str, strlen(str), 100);
 }
