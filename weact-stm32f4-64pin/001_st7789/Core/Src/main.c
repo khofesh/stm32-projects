@@ -321,7 +321,7 @@ int main(void)
 	    }
 
 	    /* write string */
-	    res = st7789_write_string(&gs_handle, 20, 100, test_str3, (uint16_t)strlen(test_str3), 0x003FU, ST7789_FONT_16);
+	    res = st7789_write_string(&gs_handle, 20, 100, test_str3, (uint16_t)strlen(test_str3), 0xFFFFU, ST7789_FONT_16);
 	    if (res != 0)
 	    {
 	        st7789_interface_debug_print("st7789: write string failed.\n");
@@ -342,6 +342,8 @@ int main(void)
 
 	        return 1;
 	    }
+
+
   }
   /* USER CODE END 3 */
 }
