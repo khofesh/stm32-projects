@@ -19,3 +19,5 @@ USART1 pin connection:
 
 - PA10 (USART1_RX) ->
 - PA9 (USART1_TX) ->
+
+![the image](./6312270739117556866.jpg)
