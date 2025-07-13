@@ -137,13 +137,17 @@ void max7219_interface_delay_ms(uint32_t ms)
  */
 void max7219_interface_debug_print(const char *const fmt, ...)
 {
-    char str[200];
+    char str[256];
+    uint16_t len;
     va_list args;
 
+    memset((char *)str, 0, sizeof(char) * 256);
     va_start(args, fmt);
-    vsnprintf(str, sizeof(str), fmt, args);
+    vsnprintf((char *)str, 255, (char const *)fmt, args);
     va_end(args);
 
+    len = strlen((char *)str);
+
     // send debug message via UART
-    HAL_UART_Transmit(&huart1, (uint8_t*)str, strlen(str), 100);
+    HAL_UART_Transmit(&huart1, (uint8_t*)str, len, 100);
 }
