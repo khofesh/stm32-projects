@@ -68,6 +68,7 @@ static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp,
 static void tx_com( uint8_t *tx_buffer, uint16_t len );
 static void platform_delay(uint32_t ms);
 static void platform_init(void);
+void test_spi_communication(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -115,15 +116,36 @@ int main(void)
   dev_ctx.write_reg = platform_write;
   dev_ctx.read_reg = platform_read;
   dev_ctx.mdelay = platform_delay;
+  dev_ctx.handle = &hspi1;
+  l3gd20h_i2c_interface_set(&dev_ctx, L3GD20H_I2C_DISABLE);
+  platform_delay(10);
 
+  test_spi_communication();
   /* Check device ID */
   l3gd20h_dev_id_get(&dev_ctx, &whoamI);
 
-  if (whoamI != L3GD20H_ID ) {
-    while (1) {
-      /* manage here device not found */
-    }
+
+  if (whoamI != L3GD20H_ID )
+  {
+	  snprintf((char *)tx_buffer, sizeof(tx_buffer), "WHO_AM_I Error: 0x%02X (expected 0x%02X)\r\n", whoamI, L3GD20H_ID);
+	  tx_com(tx_buffer, strlen((char*)tx_buffer));
+	  while (1)
+	  {
+		  /* manage here device not found */
+	  }
   }
+  /* Restore default configuration */
+  l3gd20h_dev_reset_set(&dev_ctx, PROPERTY_ENABLE);
+
+  do {
+    l3gd20h_dev_reset_get(&dev_ctx, &rst);
+  } while (rst);
+  /* Enable Block Data Update */
+  l3gd20h_block_data_update_set(&dev_ctx, PROPERTY_ENABLE);
+  /* Set full scale */
+  l3gd20h_gy_full_scale_set(&dev_ctx, L3GD20H_2000dps);
+  /* Set Output Data Rate / Power mode */
+  l3gd20h_gy_data_rate_set(&dev_ctx, L3GD20H_50Hz);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -133,6 +155,23 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  /* Read device status register */
+	  l3gd20h_dev_status_get(&dev_ctx, &status);
+
+	  if ( status.zyxda ) {
+		  /* Read imu data */
+		  memset(data_raw_angular_rate, 0x00, 3 * sizeof(int16_t));
+		  l3gd20h_angular_rate_raw_get(&dev_ctx, data_raw_angular_rate);
+		  angular_rate_mdps[0] = l3gd20h_from_fs2000_to_mdps(
+				  data_raw_angular_rate[0]);
+		  angular_rate_mdps[1] = l3gd20h_from_fs2000_to_mdps(
+				  data_raw_angular_rate[1]);
+		  angular_rate_mdps[2] = l3gd20h_from_fs2000_to_mdps(
+				  data_raw_angular_rate[2]);
+		  snprintf((char *)tx_buffer, sizeof(tx_buffer), "[mdps]:%4.2f\t%4.2f\t%4.2f\r\n",
+				  angular_rate_mdps[0], angular_rate_mdps[1], angular_rate_mdps[2]);
+		  tx_com(tx_buffer, strlen((char*)tx_buffer));
+	  }
   }
   /* USER CODE END 3 */
 }
@@ -198,10 +237,10 @@ static void MX_SPI1_Init(void)
   hspi1.Init.Mode = SPI_MODE_MASTER;
   hspi1.Init.Direction = SPI_DIRECTION_2LINES;
   hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_HIGH;
+  hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -286,28 +325,32 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-static int32_t platform_write(void *handle, uint8_t reg, const uint8_t *bufp,
-                              uint16_t len)
+static int32_t platform_write(void *handle, uint8_t reg, const uint8_t *bufp, uint16_t len)
 {
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(handle, &reg, 1, 1000);
-	HAL_SPI_Transmit(handle, (uint8_t*) bufp, len, 1000);
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
+    HAL_Delay(1);
+    HAL_SPI_Transmit((SPI_HandleTypeDef*)handle, &reg, 1, 1000);
+    HAL_SPI_Transmit((SPI_HandleTypeDef*)handle, (uint8_t*)bufp, len, 1000);
+    HAL_Delay(1);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
+    return 0;
 }
 
-static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp,
-                             uint16_t len)
+static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp, uint16_t len)
 {
-	reg |= 0x80;
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
-	HAL_SPI_Transmit(handle, &reg, 1, 1000);
-	HAL_SPI_Receive(handle, bufp, len, 1000);
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
+    reg |= 0x80;  // Set read bit
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
+    HAL_Delay(1);
+    HAL_SPI_Transmit((SPI_HandleTypeDef*)handle, &reg, 1, 1000);
+    HAL_SPI_Receive((SPI_HandleTypeDef*)handle, bufp, len, 1000);
+    HAL_Delay(1);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
+    return 0;
 }
 
 static void tx_com( uint8_t *tx_buffer, uint16_t len )
 {
-
+	HAL_UART_Transmit(&huart1, tx_buffer, len, 1000);
 }
 
 static void platform_delay(uint32_t ms)
@@ -318,6 +361,26 @@ static void platform_delay(uint32_t ms)
 static void platform_init(void)
 {
 
+}
+
+void test_spi_communication(void)
+{
+    uint8_t test_reg = 0x0F | 0x80;  // WHO_AM_I register with read bit
+    uint8_t received_data = 0;
+
+    snprintf((char *)tx_buffer, sizeof(tx_buffer), "Testing SPI communication...\r\n");
+    HAL_UART_Transmit(&huart1, tx_buffer, strlen((char*)tx_buffer), 1000);
+
+    // SPI transaction
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
+    HAL_Delay(1);
+    HAL_SPI_Transmit(&hspi1, &test_reg, 1, 1000);
+    HAL_SPI_Receive(&hspi1, &received_data, 1, 1000);
+    HAL_Delay(1);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
+
+    snprintf((char *)tx_buffer, sizeof(tx_buffer), "Manual test - WHO_AM_I: 0x%02X\r\n", received_data);
+    HAL_UART_Transmit(&huart1, tx_buffer, strlen((char*)tx_buffer), 1000);
 }
 /* USER CODE END 4 */
 
