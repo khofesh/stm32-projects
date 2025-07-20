@@ -9,8 +9,8 @@ links:
 pin connection:
 
 - SCL -> PA5 (SCK)
-- SDA -> PA6 (MISO)
-- SA0 -> PA7 (MOSI)
+- SDA -> PA7 (MOSI)
+- SA0 -> PA6 (MISO)
 - CS -> PA4
 - DRDY -> PA1 (gpio input)
 - INT1 -> PA2 (gpio input)
