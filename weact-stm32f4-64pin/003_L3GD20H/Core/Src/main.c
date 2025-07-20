@@ -21,7 +21,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <string.h>
+#include <stdio.h>
+#include "l3gd20h_reg.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,7 +33,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define    BOOT_TIME   10 //ms
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -45,7 +47,12 @@ SPI_HandleTypeDef hspi1;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-
+static int16_t data_raw_angular_rate[3];
+static float_t angular_rate_mdps[3];
+static uint8_t whoamI;
+static l3gd20h_status_reg_t status;
+static uint8_t rst;
+static uint8_t tx_buffer[1000];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -54,7 +61,13 @@ static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+static int32_t platform_write(void *handle, uint8_t reg, const uint8_t *bufp,
+                              uint16_t len);
+static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp,
+                             uint16_t len);
+static void tx_com( uint8_t *tx_buffer, uint16_t len );
+static void platform_delay(uint32_t ms);
+static void platform_init(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -95,6 +108,22 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  platform_delay(BOOT_TIME);
+  /* Initialize magnetic sensors driver interface */
+
+  stmdev_ctx_t dev_ctx;
+  dev_ctx.write_reg = platform_write;
+  dev_ctx.read_reg = platform_read;
+  dev_ctx.mdelay = platform_delay;
+
+  /* Check device ID */
+  l3gd20h_dev_id_get(&dev_ctx, &whoamI);
+
+  if (whoamI != L3GD20H_ID ) {
+    while (1) {
+      /* manage here device not found */
+    }
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -257,7 +286,39 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+static int32_t platform_write(void *handle, uint8_t reg, const uint8_t *bufp,
+                              uint16_t len)
+{
+	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
+	HAL_SPI_Transmit(handle, &reg, 1, 1000);
+	HAL_SPI_Transmit(handle, (uint8_t*) bufp, len, 1000);
+	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
+}
 
+static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp,
+                             uint16_t len)
+{
+	reg |= 0x80;
+	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
+	HAL_SPI_Transmit(handle, &reg, 1, 1000);
+	HAL_SPI_Receive(handle, bufp, len, 1000);
+	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
+}
+
+static void tx_com( uint8_t *tx_buffer, uint16_t len )
+{
+
+}
+
+static void platform_delay(uint32_t ms)
+{
+	HAL_Delay(ms);
+}
+
+static void platform_init(void)
+{
+
+}
 /* USER CODE END 4 */
 
 /**
