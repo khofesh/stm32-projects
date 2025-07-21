@@ -1,1 +1,3 @@
 # STM32F3DISCOVERY
+
+![the board](./6337103823411200976.jpg)
