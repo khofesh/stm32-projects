@@ -1,20 +1,20 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2025 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file           : main.c
+ * @brief          : Main program body
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2025 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -35,7 +35,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define    BOOT_TIME   10 //ms
+#define BOOT_TIME 10 // ms
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -53,7 +53,7 @@ static int16_t data_raw_angular_rate[3];
 static float_t angular_rate_mdps[3];
 static uint8_t whoamI;
 static l3gd20h_status_reg_t status;
-static uint8_t rst;
+// static uint8_t rst;
 static uint8_t tx_buffer[1000];
 RingBuffer txBuf, rxBuf;
 /* USER CODE END PV */
@@ -68,11 +68,12 @@ static int32_t platform_write(void *handle, uint8_t reg, const uint8_t *bufp,
                               uint16_t len);
 static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp,
                              uint16_t len);
-static void tx_com( uint8_t *tx_buffer, uint16_t len );
+static void tx_com(uint8_t *tx_buffer, uint16_t len);
 static void platform_delay(uint32_t ms);
-//static void platform_init(void);
+// static void platform_init(void);
 void test_spi_communication(void);
 uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len);
+void l3gd20h_init(stmdev_ctx_t *dev_ctx);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -81,9 +82,9 @@ uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len);
 /* USER CODE END 0 */
 
 /**
-  * @brief  The application entry point.
-  * @retval int
-  */
+ * @brief  The application entry point.
+ * @retval int
+ */
 int main(void)
 {
 
@@ -117,41 +118,35 @@ int main(void)
 
   platform_delay(BOOT_TIME);
   /* Initialize magnetic sensors driver interface */
-
   stmdev_ctx_t dev_ctx;
   dev_ctx.write_reg = platform_write;
   dev_ctx.read_reg = platform_read;
   dev_ctx.mdelay = platform_delay;
   dev_ctx.handle = &hspi1;
-  l3gd20h_i2c_interface_set(&dev_ctx, L3GD20H_I2C_DISABLE);
-  platform_delay(10);
 
+  // test SPI communication
   test_spi_communication();
-  /* Check device ID */
+
+  // initialization
+  l3gd20h_init(&dev_ctx);
+
+  /* check device ID */
   l3gd20h_dev_id_get(&dev_ctx, &whoamI);
 
-
-  if (whoamI != L3GD20H_ID )
+  if (whoamI != L3GD20H_ID)
   {
-	  snprintf((char *)tx_buffer, sizeof(tx_buffer), "WHO_AM_I Error: 0x%02X (expected 0x%02X)\r\n", whoamI, L3GD20H_ID);
-	  tx_com(tx_buffer, strlen((char*)tx_buffer));
-	  while (1)
-	  {
-		  /* manage here device not found */
-	  }
+    snprintf((char *)tx_buffer, sizeof(tx_buffer), "WHO_AM_I Error: 0x%02X (expected 0x%02X)\r\n", whoamI, L3GD20H_ID);
+    tx_com(tx_buffer, strlen((char *)tx_buffer));
+    while (1)
+    {
+      /* manage here device not found */
+    }
   }
-  /* Restore default configuration */
-  l3gd20h_dev_reset_set(&dev_ctx, PROPERTY_ENABLE);
-
-  do {
-    l3gd20h_dev_reset_get(&dev_ctx, &rst);
-  } while (rst);
-  /* Enable Block Data Update */
-  l3gd20h_block_data_update_set(&dev_ctx, PROPERTY_ENABLE);
-  /* Set full scale */
-  l3gd20h_gy_full_scale_set(&dev_ctx, L3GD20H_2000dps);
-  /* Set Output Data Rate / Power mode */
-  l3gd20h_gy_data_rate_set(&dev_ctx, L3GD20H_50Hz);
+  else
+  {
+    snprintf((char *)tx_buffer, sizeof(tx_buffer), "L3GD20H detected successfully! WHO_AM_I: 0x%02X\r\n", whoamI);
+    tx_com(tx_buffer, strlen((char *)tx_buffer));
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -161,44 +156,69 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  /* Read device status register */
-	  l3gd20h_dev_status_get(&dev_ctx, &status);
+    /* Read device status register */
+    l3gd20h_dev_status_get(&dev_ctx, &status);
 
-	  if ( status.zyxda ) {
-		  /* Read imu data */
-		  memset(data_raw_angular_rate, 0x00, 3 * sizeof(int16_t));
-		  l3gd20h_angular_rate_raw_get(&dev_ctx, data_raw_angular_rate);
-		  angular_rate_mdps[0] = l3gd20h_from_fs2000_to_mdps(
-				  data_raw_angular_rate[0]);
-		  angular_rate_mdps[1] = l3gd20h_from_fs2000_to_mdps(
-				  data_raw_angular_rate[1]);
-		  angular_rate_mdps[2] = l3gd20h_from_fs2000_to_mdps(
-				  data_raw_angular_rate[2]);
-		  snprintf((char *)tx_buffer, sizeof(tx_buffer), "[mdps]:%4.2f\t%4.2f\t%4.2f\r\n",
-				  angular_rate_mdps[0], angular_rate_mdps[1], angular_rate_mdps[2]);
-		  tx_com(tx_buffer, strlen((char*)tx_buffer));
-	  }
+    if (status.zyxda)
+    {
+      /* Read IMU data */
+      memset(data_raw_angular_rate, 0x00, 3 * sizeof(int16_t));
+
+      if (l3gd20h_angular_rate_raw_get(&dev_ctx, data_raw_angular_rate) == 0)
+      {
+        // convert to milli-degrees per second
+        angular_rate_mdps[0] = l3gd20h_from_fs2000_to_mdps(data_raw_angular_rate[0]);
+        angular_rate_mdps[1] = l3gd20h_from_fs2000_to_mdps(data_raw_angular_rate[1]);
+        angular_rate_mdps[2] = l3gd20h_from_fs2000_to_mdps(data_raw_angular_rate[2]);
+
+        // print both raw and converted values for debugging
+        snprintf((char *)tx_buffer, sizeof(tx_buffer),
+                 "Raw: X=%d Y=%d Z=%d | mdps: X=%.2f Y=%.2f Z=%.2f\r\n",
+                 data_raw_angular_rate[0], data_raw_angular_rate[1], data_raw_angular_rate[2],
+                 angular_rate_mdps[0], angular_rate_mdps[1], angular_rate_mdps[2]);
+        tx_com(tx_buffer, strlen((char *)tx_buffer));
+      }
+      else
+      {
+        snprintf((char *)tx_buffer, sizeof(tx_buffer), "Failed to read angular rate data\r\n");
+        tx_com(tx_buffer, strlen((char *)tx_buffer));
+      }
+    }
+    else
+    {
+      // print status for debugging
+      static uint32_t no_data_counter = 0;
+      no_data_counter++;
+      if (no_data_counter % 1000000 == 0)
+      {
+        snprintf((char *)tx_buffer, sizeof(tx_buffer), "No new data available. Status: 0x%02X\r\n",
+                 *(uint8_t *)&status);
+        tx_com(tx_buffer, strlen((char *)tx_buffer));
+      }
+    }
+
+    HAL_Delay(1000);
   }
   /* USER CODE END 3 */
 }
 
 /**
-  * @brief System Clock Configuration
-  * @retval None
-  */
+ * @brief System Clock Configuration
+ * @retval None
+ */
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
   /** Configure the main internal regulator output voltage
-  */
+   */
   __HAL_RCC_PWR_CLK_ENABLE();
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
 
   /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
+   * in the RCC_OscInitTypeDef structure.
+   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
@@ -209,9 +229,8 @@ void SystemClock_Config(void)
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+   */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
@@ -224,10 +243,10 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief SPI1 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief SPI1 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_SPI1_Init(void)
 {
 
@@ -258,14 +277,13 @@ static void MX_SPI1_Init(void)
   /* USER CODE BEGIN SPI1_Init 2 */
 
   /* USER CODE END SPI1_Init 2 */
-
 }
 
 /**
-  * @brief USART1 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief USART1 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_USART1_UART_Init(void)
 {
 
@@ -291,14 +309,13 @@ static void MX_USART1_UART_Init(void)
   /* USER CODE BEGIN USART1_Init 2 */
 
   /* USER CODE END USART1_Init 2 */
-
 }
 
 /**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief GPIO Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -313,7 +330,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : PA1 PA2 */
-  GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_2;
+  GPIO_InitStruct.Pin = GPIO_PIN_1 | GPIO_PIN_2;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
@@ -333,80 +350,172 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 static int32_t platform_write(void *handle, uint8_t reg, const uint8_t *bufp, uint16_t len)
 {
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
-    HAL_Delay(1);
-    HAL_SPI_Transmit((SPI_HandleTypeDef*)handle, &reg, 1, 1000);
-    HAL_SPI_Transmit((SPI_HandleTypeDef*)handle, (uint8_t*)bufp, len, 1000);
-    HAL_Delay(1);
+  // for L3GD20H, we need to clear the MSB for write operations
+  uint8_t write_reg = reg & 0x7F;
+
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
+  HAL_Delay(1);
+
+  // send register address
+  if (HAL_SPI_Transmit((SPI_HandleTypeDef *)handle, &write_reg, 1, 1000) != HAL_OK)
+  {
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
-    return 0;
+    return -1;
+  }
+
+  // send data
+  if (HAL_SPI_Transmit((SPI_HandleTypeDef *)handle, (uint8_t *)bufp, len, 1000) != HAL_OK)
+  {
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
+    return -1;
+  }
+
+  HAL_Delay(1);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
+  return 0;
 }
 
 static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp, uint16_t len)
 {
-    reg |= 0x80;  // Set read bit
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
-    HAL_Delay(1);
-    HAL_SPI_Transmit((SPI_HandleTypeDef*)handle, &reg, 1, 1000);
-    HAL_SPI_Receive((SPI_HandleTypeDef*)handle, bufp, len, 1000);
-    HAL_Delay(1);
+  // for L3GD20H, set MSB for read operations, and if reading multiple bytes, set bit 6 for auto-increment
+  uint8_t read_reg = reg | 0x80;
+  if (len > 1)
+  {
+    // auto-increment for multi-byte reads
+    read_reg |= 0x40;
+  }
+
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
+  HAL_Delay(1);
+
+  // send register address with read bit set
+  if (HAL_SPI_Transmit((SPI_HandleTypeDef *)handle, &read_reg, 1, 1000) != HAL_OK)
+  {
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
-    return 0;
+    return -1;
+  }
+
+  // read data
+  if (HAL_SPI_Receive((SPI_HandleTypeDef *)handle, bufp, len, 1000) != HAL_OK)
+  {
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
+    return -1;
+  }
+
+  HAL_Delay(1);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
+  return 0;
 }
 
-static void tx_com( uint8_t *tx_buffer, uint16_t len )
+static void tx_com(uint8_t *tx_buffer, uint16_t len)
 {
-//	HAL_UART_Transmit(&huart1, tx_buffer, len, 1000);
-	UART_Transmit(&huart1, tx_buffer, len);
+  //	HAL_UART_Transmit(&huart1, tx_buffer, len, 1000);
+  UART_Transmit(&huart1, tx_buffer, len);
 }
 
 static void platform_delay(uint32_t ms)
 {
-	HAL_Delay(ms);
+  HAL_Delay(ms);
 }
 
-//static void platform_init(void)
+// static void platform_init(void)
 //{
 //
-//}
+// }
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART1)
+  {
+    uint8_t data[100];
+    uint16_t len = RingBuffer_Read(&txBuf, data, sizeof(data));
+    if (len > 0)
+    {
+      HAL_UART_Transmit_IT(huart, data, len);
+    }
+  }
+}
 
 uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
 {
-  if(HAL_UART_Transmit_IT(huart, pData, len) != HAL_OK)
+  if (huart->gState == HAL_UART_STATE_READY)
   {
-    if(RingBuffer_Write(&txBuf, pData, len) != RING_BUFFER_OK)
-      return 0;
+    if (HAL_UART_Transmit_IT(huart, pData, len) == HAL_OK)
+    {
+      return 1;
+    }
   }
-  return 1;
+
+  // If UART is busy, store in ring buffer
+  if (RingBuffer_Write(&txBuf, pData, len) == RING_BUFFER_OK)
+  {
+    return 1;
+  }
+
+  return 0;
 }
 
 void test_spi_communication(void)
 {
-    uint8_t test_reg = 0x0F | 0x80;  // WHO_AM_I register with read bit
-    uint8_t received_data = 0;
+  uint8_t received_data = 0;
 
-    snprintf((char *)tx_buffer, sizeof(tx_buffer), "Testing SPI communication...\r\n");
-//    HAL_UART_Transmit(&huart1, tx_buffer, strlen((char*)tx_buffer), 1000);
-    UART_Transmit(&huart1, (uint8_t*)tx_buffer, strlen((char*)tx_buffer));
+  snprintf((char *)tx_buffer, sizeof(tx_buffer), "Testing SPI communication...\r\n");
+  UART_Transmit(&huart1, (uint8_t *)tx_buffer, strlen((char *)tx_buffer));
 
-    // SPI transaction
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
-    HAL_Delay(1);
-    HAL_SPI_Transmit(&hspi1, &test_reg, 1, 1000);
-    HAL_SPI_Receive(&hspi1, &received_data, 1, 1000);
-    HAL_Delay(1);
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
-
+  // Read WHO_AM_I register directly
+  if (platform_read(&hspi1, L3GD20H_WHO_AM_I, &received_data, 1) == 0)
+  {
     snprintf((char *)tx_buffer, sizeof(tx_buffer), "Manual test - WHO_AM_I: 0x%02X\r\n", received_data);
-//    HAL_UART_Transmit(&huart1, tx_buffer, strlen((char*)tx_buffer), 1000);
-    UART_Transmit(&huart1, (uint8_t*)tx_buffer, strlen((char*)tx_buffer));
+  }
+  else
+  {
+    snprintf((char *)tx_buffer, sizeof(tx_buffer), "Manual test - SPI communication failed\r\n");
+  }
+  UART_Transmit(&huart1, (uint8_t *)tx_buffer, strlen((char *)tx_buffer));
+}
+
+void l3gd20h_init(stmdev_ctx_t *dev_ctx)
+{
+  uint8_t rst;
+
+  // 1. Disable I2C interface to ensure SPI mode
+  l3gd20h_i2c_interface_set(dev_ctx, L3GD20H_I2C_DISABLE);
+  platform_delay(10);
+
+  // 2. Software reset
+  l3gd20h_dev_reset_set(dev_ctx, PROPERTY_ENABLE);
+  do
+  {
+    l3gd20h_dev_reset_get(dev_ctx, &rst);
+    platform_delay(1);
+  } while (rst);
+
+  platform_delay(50);
+
+  // 3. Enable Block Data Update
+  l3gd20h_block_data_update_set(dev_ctx, PROPERTY_ENABLE);
+
+  // 4. Set full scale
+  l3gd20h_gy_full_scale_set(dev_ctx, L3GD20H_2000dps);
+
+  // 5. Set Output Data Rate
+  l3gd20h_gy_data_rate_set(dev_ctx, L3GD20H_100Hz);
+
+  // 6. Enable all axis
+  l3gd20h_gy_axis_t axis_enable = {0};
+  axis_enable.xen = PROPERTY_ENABLE;
+  axis_enable.yen = PROPERTY_ENABLE;
+  axis_enable.zen = PROPERTY_ENABLE;
+  l3gd20h_gy_axis_set(dev_ctx, axis_enable);
+
+  platform_delay(100);
 }
 /* USER CODE END 4 */
 
 /**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
+ * @brief  This function is executed in case of error occurrence.
+ * @retval None
+ */
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
@@ -419,12 +528,12 @@ void Error_Handler(void)
 }
 #ifdef USE_FULL_ASSERT
 /**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
+ * @brief  Reports the name of the source file and the source line number
+ *         where the assert_param error has occurred.
+ * @param  file: pointer to the source file name
+ * @param  line: assert_param error line source number
+ * @retval None
+ */
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
