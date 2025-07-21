@@ -21,7 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "ringbuffer.h"
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,12 +34,17 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define WELCOME_MSG "Welcome to the Nucleo management console\r\n"
+#define MAIN_MENU   "Select the option you are interested in:\r\n\t1. Toggle LD2 LED\r\n\t2. Read USER BUTTON status\r\n\t3. Clear screen and print this message "
+#define PROMPT "\r\n> "
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+char readBuf[1];
+uint8_t txData;
+__IO ITStatus UartReady = SET;
+RingBuffer txBuf, rxBuf;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -54,7 +62,8 @@ static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+void printWelcomeMessage(void);
+uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -94,6 +103,10 @@ int main(void)
   MX_SPI1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(USART1_IRQn);
+
+//  printWelcomeMessage();
 
   /* USER CODE END 2 */
 
@@ -101,6 +114,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  UART_Transmit(&huart1, (uint8_t*)WELCOME_MSG, strlen(WELCOME_MSG));
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -240,7 +254,38 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
+{
+  if(HAL_UART_Transmit_IT(huart, pData, len) != HAL_OK)
+  {
+    if(RingBuffer_Write(&txBuf, pData, len) != RING_BUFFER_OK)
+      return 0;
+  }
+  return 1;
+}
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle)
+{
+ /* Set transmission flag: transfer complete*/
+ UartReady = SET;
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if(RingBuffer_GetDataLength(&txBuf) > 0)
+  {
+    RingBuffer_Read(&txBuf, &txData, 1);
+    HAL_UART_Transmit_IT(huart, &txData, 1);
+  }
+}
+
+void printWelcomeMessage(void)
+{
+  char *strings[] = {"\033[0;0H", "\033[2J", WELCOME_MSG, MAIN_MENU, PROMPT};
+
+  for (uint8_t i = 0; i < 5; i++)
+    UART_Transmit(&huart1, (uint8_t*)strings[i], strlen(strings[i]));
+}
 /* USER CODE END 4 */
 
 /**

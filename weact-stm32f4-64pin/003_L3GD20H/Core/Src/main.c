@@ -21,8 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "ringbuffer.h"
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "l3gd20h_reg.h"
 /* USER CODE END Includes */
 
@@ -53,6 +55,7 @@ static uint8_t whoamI;
 static l3gd20h_status_reg_t status;
 static uint8_t rst;
 static uint8_t tx_buffer[1000];
+RingBuffer txBuf, rxBuf;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -67,8 +70,9 @@ static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp,
                              uint16_t len);
 static void tx_com( uint8_t *tx_buffer, uint16_t len );
 static void platform_delay(uint32_t ms);
-static void platform_init(void);
+//static void platform_init(void);
 void test_spi_communication(void);
+uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -108,6 +112,8 @@ int main(void)
   MX_SPI1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(USART1_IRQn);
 
   platform_delay(BOOT_TIME);
   /* Initialize magnetic sensors driver interface */
@@ -350,7 +356,8 @@ static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp, uint16_t 
 
 static void tx_com( uint8_t *tx_buffer, uint16_t len )
 {
-	HAL_UART_Transmit(&huart1, tx_buffer, len, 1000);
+//	HAL_UART_Transmit(&huart1, tx_buffer, len, 1000);
+	UART_Transmit(&huart1, tx_buffer, len);
 }
 
 static void platform_delay(uint32_t ms)
@@ -358,9 +365,19 @@ static void platform_delay(uint32_t ms)
 	HAL_Delay(ms);
 }
 
-static void platform_init(void)
-{
+//static void platform_init(void)
+//{
+//
+//}
 
+uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
+{
+  if(HAL_UART_Transmit_IT(huart, pData, len) != HAL_OK)
+  {
+    if(RingBuffer_Write(&txBuf, pData, len) != RING_BUFFER_OK)
+      return 0;
+  }
+  return 1;
 }
 
 void test_spi_communication(void)
@@ -369,7 +386,8 @@ void test_spi_communication(void)
     uint8_t received_data = 0;
 
     snprintf((char *)tx_buffer, sizeof(tx_buffer), "Testing SPI communication...\r\n");
-    HAL_UART_Transmit(&huart1, tx_buffer, strlen((char*)tx_buffer), 1000);
+//    HAL_UART_Transmit(&huart1, tx_buffer, strlen((char*)tx_buffer), 1000);
+    UART_Transmit(&huart1, (uint8_t*)tx_buffer, strlen((char*)tx_buffer));
 
     // SPI transaction
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
@@ -380,7 +398,8 @@ void test_spi_communication(void)
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_SET);
 
     snprintf((char *)tx_buffer, sizeof(tx_buffer), "Manual test - WHO_AM_I: 0x%02X\r\n", received_data);
-    HAL_UART_Transmit(&huart1, tx_buffer, strlen((char*)tx_buffer), 1000);
+//    HAL_UART_Transmit(&huart1, tx_buffer, strlen((char*)tx_buffer), 1000);
+    UART_Transmit(&huart1, (uint8_t*)tx_buffer, strlen((char*)tx_buffer));
 }
 /* USER CODE END 4 */
 
