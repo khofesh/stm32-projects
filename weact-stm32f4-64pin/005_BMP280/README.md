@@ -2,9 +2,7 @@
 
 links:
 
-- https://github.com/STMicroelectronics/l3gd20h-pid
-- example: https://github.com/STMicroelectronics/STMems_Standard_C_drivers/blob/master/l3gd20h_STdC/README.md
-- https://www.adafruit.com/product/1032
+- https://github.com/libdriver/bmp280
 
 pin connection:
 
