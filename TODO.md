@@ -26,7 +26,7 @@
   - https://github.com/libdriver/bmp280
 - [ ] DS1820
   - https://github.com/libdriver/ds18b20
-- [ ] L3GD20H
+- [x] L3GD20H
   - https://github.com/STMicroelectronics/l3gd20h-pid
   - https://github.com/STMicroelectronics/STMems_Standard_C_drivers/blob/master/l3gd20h_STdC/examples/README.md
   - https://www.st.com/en/mems-and-sensors/l3gd20.html
@@ -42,4 +42,3 @@
 - [ ] MCP3008 - 8 channel
   - https://github.com/adafruit/Adafruit_MCP3008
   - https://www.microchip.com/en-us/product/mcp3008#Documentation
-
