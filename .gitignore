@@ -152,7 +152,7 @@ Thumbs.db
 *.gz
 *.bz2
 *.tar
-*.tgz
+# *.tgz
 
 #############################################
 # Custom - Add your project specific ignores
