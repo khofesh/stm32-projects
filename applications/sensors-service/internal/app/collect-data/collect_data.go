@@ -1,0 +1,5 @@
+package collectdata
+
+func CollectData() {
+
+}

@@ -1,0 +1,11 @@
+# /etc/systemd/system/sensor-collect.timer
+[Unit]
+Description=Collect SEN55 sensor data
+Requires=sen55-collect.service
+
+[Timer]
+OnCalendar=*:*:00  # every minute at :00 seconds
+Persistent=true    
+
+[Install]
+WantedBy=timers.target
