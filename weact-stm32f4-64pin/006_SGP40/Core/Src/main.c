@@ -29,6 +29,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdarg.h>
+#include "sensirion_gas_index_algorithm.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -54,6 +55,7 @@ UART_HandleTypeDef huart1;
 /* USER CODE BEGIN PV */
 //static uint8_t tx_buffer[1000];
 RingBuffer txBuf, rxBuf;
+GasIndexAlgorithmParams voc_algorithm_params;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -64,6 +66,8 @@ static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void interface_debug_print(const char *const fmt, ...);
 void debug_i2c_status(void);
+void init_voc_algorithm(void);
+int32_t process_voc_measurement(uint16_t sraw_voc);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -107,6 +111,8 @@ int main(void)
   /* USER CODE BEGIN 2 */
   debug_i2c_status();
 
+  init_voc_algorithm();
+
   error = sgp40_get_serial_number(serial_number, serial_number_size);
 
   if (error) {
@@ -126,6 +132,7 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
   while (1)
   {
 	    // Start Measurement
@@ -134,20 +141,42 @@ int main(void)
 	    uint16_t default_rh = 0x8000;
 	    uint16_t default_t = 0x6666;
 
-	    for (int i = 0; i < 60; i++) {
-	        uint16_t sraw_voc;
+	    uint16_t sraw_voc;
 
-	        sensirion_i2c_hal_sleep_usec(1000000);
 
-	        error = sgp40_measure_raw_signal(default_rh, default_t, &sraw_voc);
-	        if (error) {
-	        	interface_debug_print("Error executing sgp40_measure_raw_signal(): "
-	                   "%i\r\n",
-	                   error);
-	        } else {
-	        	interface_debug_print("SRAW VOC: %u\r\n", sraw_voc);
-	        }
+
+	    error = sgp40_measure_raw_signal(default_rh, default_t, &sraw_voc);
+	    if (error) {
+	    	interface_debug_print("Error executing sgp40_measure_raw_signal(): "
+	    			"%i\r\n",
+					error);
+	    	continue;
 	    }
+	    else
+	    {
+	    	int32_t voc_index = process_voc_measurement(sraw_voc);
+	    	interface_debug_print("Raw: %u, VOC Index: %ld\r\n", sraw_voc, voc_index);
+
+	    	if (voc_index <= 100)
+	    	{
+	    		interface_debug_print("Air Quality: Good\r\n");
+	    	}
+	    	else if (voc_index <= 200)
+	    	{
+	    		interface_debug_print("Air Quality: Moderate\r\n");
+	    	}
+	    	else if (voc_index <= 300)
+	    	{
+	    		interface_debug_print("Air Quality: Poor\r\n");
+	    	}
+	    	else
+	    	{
+	    		interface_debug_print("Air Quality: Very Poor\r\n");
+	    	}
+	    }
+
+	    sensirion_i2c_hal_sleep_usec(1000000);
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -318,7 +347,8 @@ void interface_debug_print(const char *const fmt, ...)
     HAL_UART_Transmit(&huart1, (uint8_t *)str, len, 1000);
 }
 
-void debug_i2c_status(void) {
+void debug_i2c_status(void)
+{
     interface_debug_print("\nI2C State: %d\r\n", hi2c1.State);
     interface_debug_print("I2C Error: 0x%08lx\r\n", hi2c1.ErrorCode);
 
@@ -332,6 +362,26 @@ void debug_i2c_status(void) {
         interface_debug_print("SGP40 device NOT found at address 0x59\r\n");
         interface_debug_print("HAL Error: 0x%08lx\r\n", hi2c1.ErrorCode);
     }
+}
+
+void init_voc_algorithm(void)
+{
+    // init VOC measurement
+    GasIndexAlgorithm_init(&voc_algorithm_params, GasIndexAlgorithm_ALGORITHM_TYPE_VOC);
+    interface_debug_print("VOC Algorithm initialized\r\n");
+}
+
+int32_t process_voc_measurement(uint16_t sraw_voc)
+{
+    int32_t voc_index_value;
+
+    // convert uint16_t to int32_t as required by the algorithm
+    int32_t voc_raw_value = (int32_t)sraw_voc;
+
+    // process the raw value to get VOC index (0-500)
+    GasIndexAlgorithm_process(&voc_algorithm_params, voc_raw_value, &voc_index_value);
+
+    return voc_index_value;
 }
 /* USER CODE END 4 */
 
