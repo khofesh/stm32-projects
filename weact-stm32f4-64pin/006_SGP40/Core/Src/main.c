@@ -21,7 +21,14 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "sensirion_common.h"
+#include "sensirion_i2c_hal.h"
+#include "sgp40_i2c.h"
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdint.h>
+#include <stdarg.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,7 +52,8 @@ I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-
+//static uint8_t tx_buffer[1000];
+RingBuffer txBuf, rxBuf;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -54,7 +62,8 @@ static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+void interface_debug_print(const char *const fmt, ...);
+void debug_i2c_status(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -70,7 +79,9 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+	int16_t error = 0;
+	uint16_t serial_number[3];
+	uint8_t serial_number_size = 3;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -94,13 +105,49 @@ int main(void)
   MX_I2C1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  debug_i2c_status();
 
+  error = sgp40_get_serial_number(serial_number, serial_number_size);
+
+  if (error) {
+	  interface_debug_print("Error executing sgp40_get_serial_number(): %i\n", error);
+
+	  return 1;
+  } else {
+	  // printf("Serial number: %" PRIu64 "\n",
+	  //         (((uint64_t)serial_number[0]) << 32) |
+	  //         (((uint64_t)serial_number[1]) << 16) |
+	  //         ((uint64_t)serial_number[2]));
+	  interface_debug_print("serial: 0x%04x%04x%04x\n", serial_number[0], serial_number[1],
+			  serial_number[2]);
+	  interface_debug_print("\r\n");
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	    // Start Measurement
+
+	    // Parameters for deactivated humidity compensation:
+	    uint16_t default_rh = 0x8000;
+	    uint16_t default_t = 0x6666;
+
+	    for (int i = 0; i < 60; i++) {
+	        uint16_t sraw_voc;
+
+	        sensirion_i2c_hal_sleep_usec(1000000);
+
+	        error = sgp40_measure_raw_signal(default_rh, default_t, &sraw_voc);
+	        if (error) {
+	        	interface_debug_print("Error executing sgp40_measure_raw_signal(): "
+	                   "%i\r\n",
+	                   error);
+	        } else {
+	        	interface_debug_print("SRAW VOC: %u\r\n", sraw_voc);
+	        }
+	    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -237,7 +284,55 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
+{
+  if (huart->gState == HAL_UART_STATE_READY)
+  {
+    if (HAL_UART_Transmit_IT(huart, pData, len) == HAL_OK)
+    {
+      return 1;
+    }
+  }
 
+  // If UART is busy, store in ring buffer
+  if (RingBuffer_Write(&txBuf, pData, len) == RING_BUFFER_OK)
+  {
+    return 1;
+  }
+
+  return 0;
+}
+
+void interface_debug_print(const char *const fmt, ...)
+{
+	char str[256];
+	uint16_t len;
+	va_list args;
+
+    memset((char *)str, 0, sizeof(char) * 256);
+    va_start(args, fmt);
+    vsnprintf((char *)str, 255, (char const *)fmt, args);
+    va_end(args);
+
+    len = strlen((char *)str);
+    HAL_UART_Transmit(&huart1, (uint8_t *)str, len, 1000);
+}
+
+void debug_i2c_status(void) {
+    interface_debug_print("\nI2C State: %d\r\n", hi2c1.State);
+    interface_debug_print("I2C Error: 0x%08lx\r\n", hi2c1.ErrorCode);
+
+    // test basic i2c communication
+    HAL_StatusTypeDef status = HAL_I2C_IsDeviceReady(&hi2c1, (0x59 << 1), 3, 1000);
+    interface_debug_print("Device Ready Status: %d\r\n", status);
+
+    if (status == HAL_OK) {
+        interface_debug_print("SGP40 device found at address 0x59\r\n");
+    } else {
+        interface_debug_print("SGP40 device NOT found at address 0x59\r\n");
+        interface_debug_print("HAL Error: 0x%08lx\r\n", hi2c1.ErrorCode);
+    }
+}
 /* USER CODE END 4 */
 
 /**
