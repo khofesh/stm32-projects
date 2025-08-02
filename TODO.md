@@ -11,7 +11,7 @@
   - https://github.com/ArduCAM/STM32
 - [x] sensirion SEN55
   - https://github.com/Sensirion/embedded-i2c-sen5x
-- [ ] sensirion SGP40
+- [x] sensirion SGP40
   - https://github.com/Sensirion/embedded-i2c-sgp40
 - [ ] BME280 DMA
 - [ ] PM2.5 Air Quality Sensor interrupt
