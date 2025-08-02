@@ -13,7 +13,6 @@
   - https://github.com/Sensirion/embedded-i2c-sen5x
 - [ ] sensirion SGP40
   - https://github.com/Sensirion/embedded-i2c-sgp40
-- [ ] BME280 interrupt
 - [ ] BME280 DMA
 - [ ] PM2.5 Air Quality Sensor interrupt
 - [ ] Fermion: 1.8" 128x160 IPS TFT LCD Display with MicroSD Card Slot (Breakout) By DFRobot
@@ -22,7 +21,7 @@
   - https://github.com/afiskon/stm32-st7735
 - [ ] ssd1306
   - https://github.com/afiskon/stm32-ssd1306
-- [ ] BMP280
+- [x] BMP280
   - https://github.com/libdriver/bmp280
 - [ ] DS1820
   - https://github.com/libdriver/ds18b20
