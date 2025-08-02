@@ -21,12 +21,14 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "lcd_i2c.h"
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+#define LCD_I2C_ADDRESS 0x27
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -47,7 +49,7 @@ DMA_HandleTypeDef hdma_i2c1_rx;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-
+uint8_t counter = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -57,7 +59,10 @@ static void MX_DMA_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+void LCD_Test_Basic(void);
+void LCD_Test_Counter(void);
+void LCD_Test_CustomChars(void);
+void I2C_Scanner(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -98,13 +103,36 @@ int main(void)
   MX_I2C1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  char uart_msg[] = "STM32F446RE LCD I2C Test Starting...\r\n";
+  HAL_UART_Transmit(&huart1, (uint8_t*)uart_msg, strlen(uart_msg), HAL_MAX_DELAY);
 
+  // scan for i2c devices first
+  I2C_Scanner();
+
+  // init LCD - try common addresses if 0x27 doesn't work
+  if (lcdInit(&hi2c1, LCD_I2C_ADDRESS, 2, 16)) {
+    char success_msg[] = "LCD Initialized Successfully!\r\n";
+    HAL_UART_Transmit(&huart1, (uint8_t*)success_msg, strlen(success_msg), HAL_MAX_DELAY);
+
+    // LCD tests
+    LCD_Test_Basic();
+    HAL_Delay(3000);
+
+    LCD_Test_CustomChars();
+    HAL_Delay(3000);
+
+  } else {
+    char error_msg[] = "LCD Initialization Failed! Check connections and address.\r\n";
+    HAL_UART_Transmit(&huart1, (uint8_t*)error_msg, strlen(error_msg), HAL_MAX_DELAY);
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  LCD_Test_Counter();
+	  HAL_Delay(1000);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -260,7 +288,102 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+/**
+ * @brief Basic LCD test - display text
+ */
+void LCD_Test_Basic(void) {
+    lcdDisplayClear();
 
+    // line 1
+    lcdSetCursorPosition(0, 0);
+    char line1[] = "STM32F446RE LCD";
+    lcdPrintStr((uint8_t*)line1, strlen(line1));
+
+    // line 2
+    lcdSetCursorPosition(0, 1);
+    char line2[] = "I2C Test Ready!";
+    lcdPrintStr((uint8_t*)line2, strlen(line2));
+
+    // test backlight control
+    HAL_Delay(1000);
+    lcdBacklightOff();
+    HAL_Delay(500);
+    lcdBacklightOn();
+}
+
+/**
+ * @brief Counter test - displays incrementing counter
+ */
+void LCD_Test_Counter(void) {
+    char buffer[17];
+
+    lcdSetCursorPosition(0, 1);
+    snprintf(buffer, sizeof(buffer), "Counter: %3d    ", counter);
+    lcdPrintStr((uint8_t*)buffer, strlen(buffer));
+
+    counter++;
+    if (counter > 999) counter = 0;
+}
+
+/**
+ * @brief Test custom characters
+ */
+void LCD_Test_CustomChars(void) {
+    // define custom characters
+    uint8_t heart[8] = {0x00, 0x0A, 0x1F, 0x1F, 0x0E, 0x04, 0x00, 0x00}; // heart
+    uint8_t smiley[8] = {0x00, 0x0A, 0x00, 0x04, 0x11, 0x0E, 0x00, 0x00}; // smiley
+    uint8_t arrow[8] = {0x08, 0x0C, 0x0E, 0x0F, 0x0E, 0x0C, 0x08, 0x00}; // arrow
+
+    // load custom characters into CGRAM
+    lcdLoadCustomChar(0, heart);
+    lcdLoadCustomChar(1, smiley);
+    lcdLoadCustomChar(2, arrow);
+
+    lcdDisplayClear();
+
+    // display custom characters
+    lcdSetCursorPosition(0, 0);
+    char line1[] = "Custom Chars:";
+    lcdPrintStr((uint8_t*)line1, strlen(line1));
+
+    lcdSetCursorPosition(0, 1);
+    lcdPrintChar(0);  // heart
+    lcdPrintChar(' ');
+    lcdPrintChar(1);  // smiley
+    lcdPrintChar(' ');
+    lcdPrintChar(2);  // arrow
+    lcdPrintChar(' ');
+    char text[] = "Works!";
+    lcdPrintStr((uint8_t*)text, strlen(text));
+}
+
+/**
+ * @brief Scan I2C bus for devices
+ */
+void I2C_Scanner(void) {
+    char uart_buffer[64];
+    uint8_t devices_found = 0;
+
+    snprintf(uart_buffer, sizeof(uart_buffer), "Scanning I2C bus...\r\n");
+    HAL_UART_Transmit(&huart1, (uint8_t*)uart_buffer, strlen(uart_buffer), HAL_MAX_DELAY);
+
+    for (uint8_t address = 1; address < 128; address++) {
+        // try to communicate with device
+        if (HAL_I2C_IsDeviceReady(&hi2c1, address << 1, 1, 100) == HAL_OK) {
+            snprintf(uart_buffer, sizeof(uart_buffer), "Device found at address: 0x%02X\r\n", address);
+            HAL_UART_Transmit(&huart1, (uint8_t*)uart_buffer, strlen(uart_buffer), HAL_MAX_DELAY);
+            devices_found++;
+        }
+    }
+
+    if (devices_found == 0) {
+        snprintf(uart_buffer, sizeof(uart_buffer), "No I2C devices found! Check connections.\r\n");
+        HAL_UART_Transmit(&huart1, (uint8_t*)uart_buffer, strlen(uart_buffer), HAL_MAX_DELAY);
+    } else {
+        snprintf(uart_buffer, sizeof(uart_buffer), "Scan complete. Found %d device(s).\r\n", devices_found);
+        HAL_UART_Transmit(&huart1, (uint8_t*)uart_buffer, strlen(uart_buffer), HAL_MAX_DELAY);
+    }
+}
 /* USER CODE END 4 */
 
 /**
