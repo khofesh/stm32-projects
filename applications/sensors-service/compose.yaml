@@ -1,0 +1,13 @@
+name: sensors-service-db
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    environment:
+      POSTGRES_DB: sensors
+      POSTGRES_USER: sensor_user
+      POSTGRES_PASSWORD: your_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
