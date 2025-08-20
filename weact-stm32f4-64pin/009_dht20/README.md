@@ -1,0 +1,7 @@
+# STM32 + DHT20
+
+- DHT20 VCC -> 3.3V
+- DHT20 GND -> GND
+- DHT20 SDA -> PB7 (I2C1_SDA)
+- DHT20 SCL -> PB6 (I2C1_SCL)
+- UART TX -> PA9 (for debug output)

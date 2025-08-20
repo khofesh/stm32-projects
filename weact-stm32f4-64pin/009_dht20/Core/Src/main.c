@@ -21,7 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "driver_dht20.h"
+#include "driver_dht20_interface.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -48,6 +49,7 @@ UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 RingBuffer txBuf, rxBuf;
+dht20_handle_t dht20_handle;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -57,7 +59,10 @@ static void MX_DMA_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+uint8_t dht20_basic_init(void);
+uint8_t dht20_basic_deinit(void);
+uint8_t dht20_basic_read(uint32_t *temperature_raw, float *temperature_s,
+		uint32_t *humidity_raw, uint8_t *humidity_s);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -73,7 +78,11 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+	  uint32_t temperature_raw, humidity_raw;
+	  float temperature_s;
+	  uint8_t humidity_s;
+	  uint8_t res;
+	  uint32_t last_read_time = 0;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -99,12 +108,52 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  RingBuffer_Init(&txBuf);
+  RingBuffer_Init(&rxBuf);
+
+  dht20_interface_debug_print("\r\n=== DHT20 Temperature & Humidity Sensor ===\r\n");
+  dht20_interface_debug_print("Initializing DHT20...\r\n");
+
+  /* init DHT20 */
+  res = dht20_basic_init();
+  if (res != 0)
+  {
+    dht20_interface_debug_print("DHT20 initialization failed!\r\n");
+    Error_Handler();
+  }
+
+  dht20_interface_debug_print("DHT20 initialized successfully!\r\n");
+  dht20_interface_debug_print("Starting measurements...\r\n\r\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  /* read DHT20 every 2 seconds */
+	  if (HAL_GetTick() - last_read_time >= 2000)
+	  {
+		  last_read_time = HAL_GetTick();
+
+		  res = dht20_basic_read(&temperature_raw, &temperature_s, &humidity_raw, &humidity_s);
+
+		  if (res == 0)
+		  {
+			  dht20_interface_debug_print("--- DHT20 Reading ---\r\n");
+			  dht20_interface_debug_print("Temperature: %.2f°C (Raw: %lu)\r\n",
+					  temperature_s, (unsigned long)temperature_raw);
+			  dht20_interface_debug_print("Humidity: %d%% (Raw: %lu)\r\n",
+					  humidity_s, (unsigned long)humidity_raw);
+			  dht20_interface_debug_print("Timestamp: %lu ms\r\n\r\n",
+					  (unsigned long)HAL_GetTick());
+		  }
+		  else
+		  {
+			  dht20_interface_debug_print("DHT20 read failed! Error code: %d\r\n\r\n", res);
+		  }
+	  }
+
+	  HAL_Delay(10);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -277,6 +326,60 @@ uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
   }
 
   return 0;
+}
+
+uint8_t dht20_basic_init(void)
+{
+    uint8_t res;
+
+    /* link interface function */
+    DRIVER_DHT20_LINK_INIT(&dht20_handle, dht20_handle_t);
+    DRIVER_DHT20_LINK_IIC_INIT(&dht20_handle, dht20_interface_iic_init);
+    DRIVER_DHT20_LINK_IIC_DEINIT(&dht20_handle, dht20_interface_iic_deinit);
+    DRIVER_DHT20_LINK_IIC_READ_CMD(&dht20_handle, dht20_interface_iic_read_cmd);
+    DRIVER_DHT20_LINK_IIC_WRITE_CMD(&dht20_handle, dht20_interface_iic_write_cmd);
+    DRIVER_DHT20_LINK_DELAY_MS(&dht20_handle, dht20_interface_delay_ms);
+    DRIVER_DHT20_LINK_DEBUG_PRINT(&dht20_handle, dht20_interface_debug_print);
+
+    /* dht20 init */
+    res = dht20_init(&dht20_handle);
+    if (res != 0)
+    {
+        dht20_interface_debug_print("dht20: init failed.\n");
+        return 1;
+    }
+
+    return 0;
+}
+
+uint8_t dht20_basic_deinit(void)
+{
+    uint8_t res;
+
+    /* close dht20 */
+    res = dht20_deinit(&dht20_handle);
+    if (res != 0)
+    {
+        return 1;
+    }
+
+    return 0;
+}
+
+uint8_t dht20_basic_read(uint32_t *temperature_raw, float *temperature_s,
+		uint32_t *humidity_raw, uint8_t *humidity_s)
+{
+    uint8_t res;
+
+    /* read temperature and humidity */
+    res = dht20_read_temperature_humidity(&dht20_handle, temperature_raw, temperature_s,
+                                          humidity_raw, humidity_s);
+    if (res != 0)
+    {
+        return 1;
+    }
+
+    return 0;
 }
 /* USER CODE END 4 */
 

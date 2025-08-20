@@ -79,6 +79,14 @@ uint8_t dht20_interface_iic_deinit(void)
  */
 uint8_t dht20_interface_iic_read_cmd(uint8_t addr, uint8_t *buf, uint16_t len)
 {
+	// convert 7-bit address to 8-bit read address
+	uint8_t device_addr = addr << 1;
+
+	if (HAL_I2C_Master_Receive(&hi2c1, device_addr, buf, len, 1000) != HAL_OK)
+	{
+		return 1;
+	}
+
     return 0;
 }
 
@@ -94,6 +102,14 @@ uint8_t dht20_interface_iic_read_cmd(uint8_t addr, uint8_t *buf, uint16_t len)
  */
 uint8_t dht20_interface_iic_write_cmd(uint8_t addr, uint8_t *buf, uint16_t len)
 {
+	// convert 7-bit address to 8-bit write address
+	uint8_t device_addr = addr << 1;
+
+	if (HAL_I2C_Master_Transmit(&hi2c1, device_addr, buf, len, 1000) != HAL_OK)
+	{
+		return 1;
+	}
+
     return 0;
 }
 
