@@ -222,6 +222,12 @@ void dht20_interface_debug_print(const char *const fmt, ...)
     HAL_UART_Transmit(&huart1, (uint8_t *)str, len, 1000);
 }
 
+/**
+ * @brief  I2C Master Tx Transfer completed callback.
+ * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+ *                the configuration information for the specified I2C.
+ * @retval None
+ */
 void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
 	if (hi2c->Instance == I2C1)
@@ -230,6 +236,12 @@ void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c)
 	}
 }
 
+/**
+ * @brief  I2C Master Rx Transfer completed callback.
+ * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+ *                the configuration information for the specified I2C.
+ * @retval None
+ */
 void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
     if (hi2c->Instance == I2C1) {
@@ -237,6 +249,12 @@ void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c)
     }
 }
 
+/**
+ * @brief  I2C error callback.
+ * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+ *                the configuration information for the specified I2C.
+ * @retval None
+ */
 void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
 {
     if (hi2c->Instance == I2C1) {
