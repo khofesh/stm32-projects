@@ -35,6 +35,13 @@
  */
 
 #include "driver_dht20_interface.h"
+#include "driver_dht20.h"
+#include "main.h"
+#include <stdarg.h>
+#include <stdio.h>
+
+extern I2C_HandleTypeDef hi2c1;
+extern UART_HandleTypeDef huart1;
 
 /**
  * @brief  interface iic bus init
@@ -97,7 +104,7 @@ uint8_t dht20_interface_iic_write_cmd(uint8_t addr, uint8_t *buf, uint16_t len)
  */
 void dht20_interface_delay_ms(uint32_t ms)
 {
-
+	HAL_Delay(ms);
 }
 
 /**
@@ -107,5 +114,15 @@ void dht20_interface_delay_ms(uint32_t ms)
  */
 void dht20_interface_debug_print(const char *const fmt, ...)
 {
-    
+	char str[256];
+	uint16_t len;
+	va_list args;
+
+    memset((char *)str, 0, sizeof(char) * 256);
+    va_start(args, fmt);
+    vsnprintf((char *)str, 255, (char const *)fmt, args);
+    va_end(args);
+
+    len = strlen((char *)str);
+    HAL_UART_Transmit(&huart1, (uint8_t *)str, len, 1000);
 }

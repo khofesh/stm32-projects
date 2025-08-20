@@ -47,7 +47,7 @@ DMA_HandleTypeDef hdma_i2c1_tx;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-
+RingBuffer txBuf, rxBuf;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -260,7 +260,24 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
+{
+  if (huart->gState == HAL_UART_STATE_READY)
+  {
+    if (HAL_UART_Transmit_IT(huart, pData, len) == HAL_OK)
+    {
+      return 1;
+    }
+  }
 
+  // If UART is busy, store in ring buffer
+  if (RingBuffer_Write(&txBuf, pData, len) == RING_BUFFER_OK)
+  {
+    return 1;
+  }
+
+  return 0;
+}
 /* USER CODE END 4 */
 
 /**
