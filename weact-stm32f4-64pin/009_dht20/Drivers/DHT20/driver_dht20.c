@@ -51,8 +51,8 @@
 /**
  * @brief chip address definition
  */
-#define DHT20_ADDRESS             0x70        /**< iic device address */
-
+//#define DHT20_ADDRESS             0x70        /**< iic device address */
+#define DHT20_ADDRESS             0x38        /**< iic device address */
 /**
  * @brief      read bytes
  * @param[in]  *handle pointer to a dht20 handle structure
