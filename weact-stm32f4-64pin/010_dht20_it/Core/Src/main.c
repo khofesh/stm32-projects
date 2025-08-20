@@ -83,6 +83,7 @@ int main(void)
 	  uint8_t humidity_s;
 	  uint8_t res;
 	  uint32_t last_read_time = 0;
+	  uint32_t read_count = 0;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -111,7 +112,9 @@ int main(void)
   RingBuffer_Init(&txBuf);
   RingBuffer_Init(&rxBuf);
 
-  dht20_interface_debug_print("\r\n=== DHT20 Temperature & Humidity Sensor ===\r\n");
+  dht20_interface_debug_print("\r\n=== DHT20 Temperature & Humidity Sensor (Interrupt Mode) ===\r\n");
+  dht20_interface_debug_print("System Clock: %lu Hz\r\n", SystemCoreClock);
+  dht20_interface_debug_print("I2C Mode: Interrupt-based\r\n");
   dht20_interface_debug_print("Initializing DHT20...\r\n");
 
   /* init DHT20 */
@@ -134,22 +137,43 @@ int main(void)
 	  if (HAL_GetTick() - last_read_time >= 2000)
 	  {
 		  last_read_time = HAL_GetTick();
+		  read_count++;
 
+		  dht20_interface_debug_print("Reading #%lu...\r\n", (unsigned long)read_count);
+
+		  /* read temp and humid */
+		  uint32_t read_start_time = HAL_GetTick();
 		  res = dht20_basic_read(&temperature_raw, &temperature_s, &humidity_raw, &humidity_s);
+		  uint32_t read_duration = HAL_GetTick() - read_start_time;
 
 		  if (res == 0)
 		  {
-			  dht20_interface_debug_print("--- DHT20 Reading ---\r\n");
+			  /* results */
+			  dht20_interface_debug_print("--- DHT20 Reading #%lu ---\r\n", (unsigned long)read_count);
 			  dht20_interface_debug_print("Temperature: %.2f°C (Raw: %lu)\r\n",
 					  temperature_s, (unsigned long)temperature_raw);
 			  dht20_interface_debug_print("Humidity: %d%% (Raw: %lu)\r\n",
 					  humidity_s, (unsigned long)humidity_raw);
-			  dht20_interface_debug_print("Timestamp: %lu ms\r\n\r\n",
-					  (unsigned long)HAL_GetTick());
+			  dht20_interface_debug_print("Read Duration: %lu ms\r\n", (unsigned long)read_duration);
+			  dht20_interface_debug_print("Timestamp: %lu ms\r\n", (unsigned long)HAL_GetTick());
+
+			  /* Check for reasonable values */
+			  if (temperature_s < -40.0f || temperature_s > 80.0f)
+			  {
+				  dht20_interface_debug_print("WARNING: Temperature out of expected range!\r\n");
+			  }
+			  if (humidity_s > 100)
+			  {
+				  dht20_interface_debug_print("WARNING: Humidity out of expected range!\r\n");
+			  }
+
+			  dht20_interface_debug_print("\r\n");
 		  }
 		  else
 		  {
-			  dht20_interface_debug_print("DHT20 read failed! Error code: %d\r\n\r\n", res);
+			  dht20_interface_debug_print("DHT20 read failed! Error code: %d\r\n", res);
+			  dht20_interface_debug_print("Read Duration: %lu ms\r\n", (unsigned long)read_duration);
+			  dht20_interface_debug_print("Attempting to continue...\r\n\r\n");
 		  }
 	  }
 

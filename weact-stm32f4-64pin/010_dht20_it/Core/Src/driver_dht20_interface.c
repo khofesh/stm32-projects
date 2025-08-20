@@ -43,6 +43,17 @@
 extern I2C_HandleTypeDef hi2c1;
 extern UART_HandleTypeDef huart1;
 
+typedef enum {
+	I2C_STATE_READY = 0,
+	I2C_STATE_BUSY_TX,
+	I2C_STATE_BUSY_RX,
+	I2C_STATE_ERROR
+} i2c_state_t;
+
+static volatile i2c_state_t i2c_state = I2C_STATE_READY;
+static volatile uint8_t i2c_operation_complete = 0;
+static volatile uint8_t i2c_error_occurred = 0;
+
 /**
  * @brief  interface iic bus init
  * @return status code
@@ -79,13 +90,47 @@ uint8_t dht20_interface_iic_deinit(void)
  */
 uint8_t dht20_interface_iic_read_cmd(uint8_t addr, uint8_t *buf, uint16_t len)
 {
-	// convert 7-bit address to 8-bit read address
+	uint32_t timeout = 1000;
+	uint32_t start_time = HAL_GetTick();
+
 	uint8_t device_addr = addr << 1;
 
-	if (HAL_I2C_Master_Receive(&hi2c1, device_addr, buf, len, 1000) != HAL_OK)
+	while (i2c_state != I2C_STATE_READY)
 	{
+		if ((HAL_GetTick() - start_time) >= timeout)
+		{
+			return 1;
+		}
+		HAL_Delay(1);
+	}
+
+	i2c_operation_complete = 0;
+	i2c_error_occurred = 0;
+	i2c_state = I2C_STATE_BUSY_RX;
+
+	if (HAL_I2C_Master_Receive_IT(&hi2c1, device_addr, buf, len) != HAL_OK)
+	{
+		i2c_state = I2C_STATE_READY;
 		return 1;
 	}
+
+	start_time = HAL_GetTick();
+	while (!i2c_operation_complete && !i2c_error_occurred)
+	{
+		if ((HAL_GetTick() - start_time) >= timeout)
+		{
+			i2c_state = I2C_STATE_READY;
+			return 1;
+		}
+		HAL_Delay(1);
+	}
+
+    if (i2c_error_occurred) {
+        i2c_state = I2C_STATE_READY;
+        return 1;
+    }
+
+    i2c_state = I2C_STATE_READY;
 
     return 0;
 }
@@ -102,13 +147,47 @@ uint8_t dht20_interface_iic_read_cmd(uint8_t addr, uint8_t *buf, uint16_t len)
  */
 uint8_t dht20_interface_iic_write_cmd(uint8_t addr, uint8_t *buf, uint16_t len)
 {
-	// convert 7-bit address to 8-bit write address
+	uint32_t timeout = 1000;
+	uint32_t start_time = HAL_GetTick();
+
 	uint8_t device_addr = addr << 1;
 
-	if (HAL_I2C_Master_Transmit(&hi2c1, device_addr, buf, len, 1000) != HAL_OK)
+	while (i2c_state != I2C_STATE_READY)
 	{
+		if ((HAL_GetTick() - start_time) >= timeout)
+		{
+			return 1;
+		}
+		HAL_Delay(1);
+	}
+
+	i2c_operation_complete = 0;
+	i2c_error_occurred = 0;
+	i2c_state = I2C_STATE_BUSY_TX;
+
+	if (HAL_I2C_Master_Transmit_IT(&hi2c1, device_addr, buf, len) != HAL_OK)
+	{
+		i2c_state = I2C_STATE_READY;
 		return 1;
 	}
+
+	start_time = HAL_GetTick();
+	while (!i2c_operation_complete && !i2c_error_occurred)
+	{
+		if ((HAL_GetTick() - start_time) >= timeout)
+		{
+			i2c_state = I2C_STATE_READY;
+			return 1;
+		}
+		HAL_Delay(1);
+	}
+
+    if (i2c_error_occurred) {
+        i2c_state = I2C_STATE_READY;
+        return 1;
+    }
+
+    i2c_state = I2C_STATE_READY;
 
     return 0;
 }
@@ -142,3 +221,27 @@ void dht20_interface_debug_print(const char *const fmt, ...)
     len = strlen((char *)str);
     HAL_UART_Transmit(&huart1, (uint8_t *)str, len, 1000);
 }
+
+void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+	if (hi2c->Instance == I2C1)
+	{
+		i2c_operation_complete = 1;
+	}
+}
+
+void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1) {
+        i2c_operation_complete = 1;
+    }
+}
+
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1) {
+        i2c_error_occurred = 1;
+        i2c_state = I2C_STATE_ERROR;
+    }
+}
+
