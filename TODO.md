@@ -36,12 +36,13 @@
   - https://www.mouser.co.id/ProductDetail/Olimex-Ltd/MOD-WII-UEXT?qs=C3feHhap9PrGuR8SxCxmyQ%3D%3D
   - https://acassis.wordpress.com/2015/06/26/using-the-nintendo-wii-nunchuk-joystick-in-the-stm32f4discovery-running-nuttx/
   - google "stm32 wii nunchuck wii uext"
-- [ ] dht20
+- [x] dht20
   - https://github.com/libdriver/dht20
 - [ ] MCP3008 - 8 channel
   - https://github.com/adafruit/Adafruit_MCP3008
   - https://www.microchip.com/en-us/product/mcp3008#Documentation
   - https://www.raspberrypi-spy.co.uk/2013/10/analogue-sensors-on-the-raspberry-pi-using-an-mcp3008/
   - https://www.raspberrypi-spy.co.uk/2014/04/using-a-joystick-on-the-raspberry-pi-using-an-mcp3008/
-- [ ] SQLite logging in sdcard
+- [ ] SQLite logging or store data in sdcard
 - [ ] stm32 + esp32c6
+- [ ] keyestudio modules
