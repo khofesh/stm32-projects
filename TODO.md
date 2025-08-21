@@ -46,3 +46,5 @@
 - [ ] SQLite logging or store data in sdcard
 - [ ] stm32 + esp32c6
 - [ ] keyestudio modules
+- [ ] MSC (Mass Storage Class)
+
