@@ -47,4 +47,6 @@
 - [ ] stm32 + esp32c6
 - [ ] keyestudio modules
 - [ ] MSC (Mass Storage Class)
+- [ ] using stm32f3disc, simulate the accelerometer and gyroscope in host computer. https://www.instructables.com/MPU-6050-Teapot-Project/
+
 

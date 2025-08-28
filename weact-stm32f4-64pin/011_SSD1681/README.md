@@ -19,3 +19,15 @@ WeAct Studio 1.54 Inch Black-White
 -4-PIN SPI Interface
 -Driver IC SSD1681
 ```
+
+pin connection
+
+- BUSY
+- RES
+- D/C
+- CS
+- SCL
+- SDA
+- GND
+- VCC
+
