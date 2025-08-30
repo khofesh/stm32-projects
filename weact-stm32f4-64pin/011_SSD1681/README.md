@@ -20,14 +20,13 @@ WeAct Studio 1.54 Inch Black-White
 -Driver IC SSD1681
 ```
 
-pin connection
+SSD1681 pin connection to STM32F446RE
 
-- BUSY
-- RES
-- D/C
-- CS
-- SCL
-- SDA
-- GND
-- VCC
-
+- BUSY -> any gpio input pin (PA0)
+- RES -> any gpio output pin (PA1)
+- D/C -> any gpio output pin (PA2)
+- CS -> PA4 (output)
+- SCL -> PA5 (SCK)
+- SDA -> PA7 (MOSI)
+- GND -> GND
+- VCC -> 3.3V

@@ -189,6 +189,15 @@ void ssd1681_interface_delay_ms(uint32_t ms);
 void ssd1681_interface_debug_print(const char *const fmt, ...);
 
 /**
+ * @brief  Initialize CS gpio for manual control
+ * @return status code
+ *         - 0 success
+ *         - 1 gpio init failed
+ * @note   This function is added for manual CS control
+ */
+uint8_t ssd1681_interface_cs_gpio_init(void);
+
+/**
  * @}
  */
 
