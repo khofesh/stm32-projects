@@ -35,7 +35,7 @@
  */
 
 #include "driver_ssd1681_interface.h"
-#include "main.h"
+
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -54,6 +54,63 @@ extern UART_HandleTypeDef huart1;
 
 #define SSD1681_CS_GPIO_PORT       GPIOA
 #define SSD1681_CS_GPIO_PIN        GPIO_PIN_4
+
+// SPI operation states
+typedef enum {
+    SPI_STATE_READY = 0,
+    SPI_STATE_BUSY_TX,
+    SPI_STATE_BUSY_RX,
+    SPI_STATE_ERROR
+} spi_state_t;
+
+// SPI operation completion flags
+static volatile spi_state_t spi_state = SPI_STATE_READY;
+static volatile uint8_t spi_tx_complete = 0;
+static volatile uint8_t spi_rx_complete = 0;
+static volatile uint8_t spi_error_flag = 0;
+
+// timeout for SPI operations
+#define SPI_TIMEOUT_MS 1000
+
+/**
+ * @brief  Wait for SPI operation to complete
+ * @param  timeout_ms Timeout in milliseconds
+ * @return status code
+ *         - 0 success
+ *         - 1 timeout or error
+ */
+static uint8_t ssd1681_wait_for_spi_complete(uint32_t timeout_ms)
+{
+	uint32_t start_time = HAL_GetTick();
+
+	while ((HAL_GetTick() - start_time) < timeout_ms)
+	{
+		if (spi_error_flag)
+		{
+			spi_error_flag = 0;
+			spi_state = SPI_STATE_READY;
+			return 1;
+		}
+
+		if (spi_state == SPI_STATE_BUSY_TX && spi_tx_complete)
+		{
+			spi_tx_complete = 0;
+			spi_state = SPI_STATE_READY;
+			return 0;
+		}
+		else if (spi_state == SPI_STATE_BUSY_RX && spi_rx_complete)
+		{
+			spi_rx_complete = 0;
+			spi_state = SPI_STATE_READY;
+			return 0;
+		}
+
+		HAL_Delay(1);
+	}
+
+	spi_state = SPI_STATE_READY;
+	return 1;
+}
 
 /**
  * @brief  interface spi bus init
@@ -92,16 +149,44 @@ uint8_t ssd1681_interface_spi_write_cmd(uint8_t *buf, uint16_t len)
 {
     HAL_StatusTypeDef status;
 
+    // check if SPI busy
+    if (spi_state != SPI_STATE_READY)
+    {
+    	return 1;
+    }
+
     // CS low
     HAL_GPIO_WritePin(SSD1681_CS_GPIO_PORT, SSD1681_CS_GPIO_PIN, GPIO_PIN_RESET);
 
-    // transmit data
-    status = HAL_SPI_Transmit(&hspi1, buf, len, 1000);
+    // set state to busy transmitting
+    spi_state = SPI_STATE_BUSY_TX;
+    spi_tx_complete = 0;
+    spi_error_flag = 0;
+
+    // start dma transmission
+    status = HAL_SPI_Transmit_DMA(&hspi1, buf, len);
+
+    if (status != HAL_OK)
+    {
+    	// CS high
+    	HAL_GPIO_WritePin(SSD1681_CS_GPIO_PORT, SSD1681_CS_GPIO_PIN, GPIO_PIN_SET);
+    	spi_state = SPI_STATE_READY;
+    	return 1;
+    }
+
+    // wait for transmission to complete
+    if (ssd1681_wait_for_spi_complete(SPI_TIMEOUT_MS) != 0)
+    {
+    	// abort dma transmission on timeout/error
+    	HAL_SPI_Abort(&hspi1);
+    	HAL_GPIO_WritePin(SSD1681_CS_GPIO_PORT, SSD1681_CS_GPIO_PIN, GPIO_PIN_SET);
+    	return 1;
+    }
 
     // CS high
     HAL_GPIO_WritePin(SSD1681_CS_GPIO_PORT, SSD1681_CS_GPIO_PIN, GPIO_PIN_SET);
 
-    return (status == HAL_OK) ? 0 : 1;
+    return 0;
 }
 
 /**
@@ -117,13 +202,38 @@ uint8_t ssd1681_interface_spi_read_cmd(uint8_t *buf, uint16_t len)
 {
     HAL_StatusTypeDef status;
 
+    if (spi_state != SPI_STATE_READY)
+    {
+    	return 1;
+    }
+
     HAL_GPIO_WritePin(SSD1681_CS_GPIO_PORT, SSD1681_CS_GPIO_PIN, GPIO_PIN_RESET);
 
-    status = HAL_SPI_Receive(&hspi1, buf, len, 1000);
+    spi_state = SPI_STATE_BUSY_RX;
+    spi_rx_complete = 0;
+    spi_error_flag = 0;
+
+    status = HAL_SPI_Receive_DMA(&hspi1, buf, len);
+
+    if (status != HAL_OK)
+    {
+    	//  CS high
+    	HAL_GPIO_WritePin(SSD1681_CS_GPIO_PORT, SSD1681_CS_GPIO_PIN, GPIO_PIN_SET);
+    	spi_state = SPI_STATE_READY;
+    	return 1;
+    }
+
+    if (ssd1681_wait_for_spi_complete(SPI_TIMEOUT_MS) != 0)
+    {
+        // abort dma reception on timeout/error
+        HAL_SPI_Abort(&hspi1);
+        HAL_GPIO_WritePin(SSD1681_CS_GPIO_PORT, SSD1681_CS_GPIO_PIN, GPIO_PIN_SET);
+        return 1;
+    }
 
     HAL_GPIO_WritePin(SSD1681_CS_GPIO_PORT, SSD1681_CS_GPIO_PIN, GPIO_PIN_SET);
 
-    return (status == HAL_OK) ? 0 : 1;
+    return 0;
 }
 
 /**
@@ -297,5 +407,44 @@ uint8_t ssd1681_interface_cs_gpio_init(void)
     HAL_GPIO_WritePin(SSD1681_CS_GPIO_PORT, SSD1681_CS_GPIO_PIN, GPIO_PIN_SET);
 
     return 0;
+}
+
+/**
+ * @brief  SPI Transmit Complete Callback
+ * @param  hspi pointer to a SPI_HandleTypeDef structure
+ * @note   This function should be called from HAL_SPI_TxCpltCallback
+ */
+void ssd1681_spi_tx_complete_callback(SPI_HandleTypeDef *hspi)
+{
+    if (hspi->Instance == SPI1)
+    {
+        spi_tx_complete = 1;
+    }
+}
+
+/**
+ * @brief  SPI Receive Complete Callback
+ * @param  hspi pointer to a SPI_HandleTypeDef structure
+ * @note   This function should be called from HAL_SPI_RxCpltCallback
+ */
+void ssd1681_spi_rx_complete_callback(SPI_HandleTypeDef *hspi)
+{
+    if (hspi->Instance == SPI1)
+    {
+        spi_rx_complete = 1;
+    }
+}
+
+/**
+ * @brief  SPI Error Callback
+ * @param  hspi pointer to a SPI_HandleTypeDef structure
+ * @note   This function should be called from HAL_SPI_ErrorCallback
+ */
+void ssd1681_spi_error_callback(SPI_HandleTypeDef *hspi)
+{
+    if (hspi->Instance == SPI1)
+    {
+        spi_error_flag = 1;
+    }
 }
 

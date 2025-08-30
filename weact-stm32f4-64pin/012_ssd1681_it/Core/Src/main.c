@@ -82,6 +82,8 @@ uint8_t dht20_basic_read(uint32_t *temperature_raw, float *temperature_s,
 uint8_t ssd1681_basic_init(void);
 uint8_t ssd1681_basic_deinit(void);
 uint8_t ssd1681_display_temperature_humidity(float temp, uint8_t hum);
+
+uint8_t test_ssd1681_interrupt_performance(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -135,7 +137,7 @@ int main(void)
 
   dht20_interface_debug_print("\r\n=== DHT20 Temperature & Humidity Sensor with SSD1681 E-Paper Display ===\r\n");
   dht20_interface_debug_print("System Clock: %lu Hz\r\n", SystemCoreClock);
-  dht20_interface_debug_print("I2C Mode: Interrupt-based, SPI Mode: Polling\r\n");
+  dht20_interface_debug_print("I2C Mode: Interrupt-based, SPI Mode: DMA\r\n");
 
   dht20_interface_debug_print("Initializing DHT20...\r\n");
 
@@ -159,6 +161,9 @@ int main(void)
   }
   dht20_interface_debug_print("SSD1681 initialized successfully!\r\n");
   dht20_interface_debug_print("Starting measurements...\r\n\r\n");
+
+  // check dma
+//  test_ssd1681_interrupt_performance();
 
   // clear display initially
   ssd1681_clear(&ssd1681_handle, SSD1681_COLOR_BLACK);
@@ -637,7 +642,90 @@ uint8_t ssd1681_display_temperature_humidity(float temp, uint8_t hum)
     }
 
     return 0;
+}
 
+/**
+ * @brief  SPI Transmit Complete Callback
+ * @param  hspi pointer to a SPI_HandleTypeDef structure
+ */
+void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
+{
+    if (hspi->Instance == SPI1)
+    {
+        ssd1681_spi_tx_complete_callback(hspi);
+    }
+}
+
+/**
+ * @brief  SPI Receive Complete Callback
+ * @param  hspi pointer to a SPI_HandleTypeDef structure
+ */
+void HAL_SPI_RxCpltCallback(SPI_HandleTypeDef *hspi)
+{
+    if (hspi->Instance == SPI1)
+    {
+        ssd1681_spi_rx_complete_callback(hspi);
+    }
+}
+
+/**
+ * @brief  SPI Error Callback
+ * @param  hspi pointer to a SPI_HandleTypeDef structure
+ */
+void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi)
+{
+    if (hspi->Instance == SPI1)
+    {
+        ssd1681_spi_error_callback(hspi);
+    }
+}
+
+uint8_t test_ssd1681_interrupt_performance(void)
+{
+	uint8_t test_data[100];
+	uint32_t start_time, end_time;
+
+	// fill test data
+	for (int i = 0; i < 100; i++)
+	{
+		test_data[i] = (uint8_t)i;
+	}
+
+	dht20_interface_debug_print("Testing SSD1681 DMA Performance...\r\n");
+
+	// check write operation
+	start_time = HAL_GetTick();
+	uint8_t result = ssd1681_interface_spi_write_cmd(test_data, 100);
+	end_time = HAL_GetTick();
+
+    if (result == 0)
+    {
+        dht20_interface_debug_print("SPI DMA Write Test: PASSED (%lu ms)\r\n", end_time - start_time);
+    }
+    else
+    {
+        dht20_interface_debug_print("SPI DMA Write Test: FAILED\r\n");
+        return 1;
+    }
+
+    // check read operation
+    uint8_t read_buffer[10];
+    start_time = HAL_GetTick();
+    result = ssd1681_interface_spi_read_cmd(read_buffer, 10);
+    end_time = HAL_GetTick();
+
+    if (result == 0)
+    {
+        dht20_interface_debug_print("SPI DMA Read Test: PASSED (%lu ms)\r\n", end_time - start_time);
+    }
+    else
+    {
+        dht20_interface_debug_print("SPI DMA Read Test: FAILED\r\n");
+        return 1;
+    }
+
+    dht20_interface_debug_print("SSD1681 DMA Mode: All tests PASSED\r\n");
+    return 0;
 }
 /* USER CODE END 4 */
 

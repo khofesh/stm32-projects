@@ -38,6 +38,7 @@
 #define DRIVER_SSD1681_INTERFACE_H
 
 #include "driver_ssd1681.h"
+#include "main.h"
 
 #ifdef __cplusplus
 extern "C"{
@@ -196,6 +197,27 @@ void ssd1681_interface_debug_print(const char *const fmt, ...);
  * @note   This function is added for manual CS control
  */
 uint8_t ssd1681_interface_cs_gpio_init(void);
+
+/**
+ * @brief  SSD1681 SPI Transmit Complete Callback
+ * @param  hspi pointer to a SPI_HandleTypeDef structure
+ * @note   Called from HAL_SPI_TxCpltCallback
+ */
+void ssd1681_spi_tx_complete_callback(SPI_HandleTypeDef *hspi);
+
+/**
+ * @brief  SSD1681 SPI Receive Complete Callback
+ * @param  hspi pointer to a SPI_HandleTypeDef structure
+ * @note   Called from HAL_SPI_RxCpltCallback
+ */
+void ssd1681_spi_rx_complete_callback(SPI_HandleTypeDef *hspi);
+
+/**
+ * @brief  SSD1681 SPI Error Callback
+ * @param  hspi pointer to a SPI_HandleTypeDef structure
+ * @note   Called from HAL_SPI_ErrorCallback
+ */
+void ssd1681_spi_error_callback(SPI_HandleTypeDef *hspi);
 
 /**
  * @}
