@@ -8,8 +8,6 @@
 #include "wii_nunchuk.h"
 #include <string.h>
 
-#define WII_NUNCHUK_INIT_TIMEOUT 1000 // ms
-#define WII_NUNCHUK_READ_TIMEOUT 100  // ms
 #define WII_NUNCHUK_MAX_ERRORS 5
 
 /* initialization sequences for different nunchuk types */
@@ -20,10 +18,10 @@ static const uint8_t init_seq_black[][2] = {
 
 static const uint8_t init_seq_white[][2] = {
     {0x40, 0x00}, // initialize
-    {0x00, 0x00}  // follow-up
+    {0x00, 0x00}  // follow-up (actually just 1 byte: 0x00)
 };
 
-static wii_nunchuk_result_t wii_nunchuk_send_init_sequence(wii_nunchuk_handle_t *handle);
+static wii_nunchuk_result_t wii_nunchuk_start_init_step(wii_nunchuk_handle_t *handle);
 static wii_nunchuk_result_t wii_nunchuk_request_data(wii_nunchuk_handle_t *handle);
 static void wii_nunchuk_decode_raw_data(wii_nunchuk_handle_t *handle);
 static bool wii_nunchuk_validate_data(const uint8_t *data);
@@ -45,23 +43,12 @@ wii_nunchuk_result_t wii_nunchuk_init(wii_nunchuk_handle_t *handle,
     handle->state = WII_NUNCHUK_STATE_INITIALIZING;
     handle->init_step = 0;
     handle->error_count = 0;
-    handle->dma_transfer_complete = true;
+    handle->transfer_complete = true;
     handle->data_ready = false;
+    handle->init_timeout = HAL_GetTick() + 5000; // 5 second timeout for init
 
-    // Send initialization sequence
-    wii_nunchuk_result_t result = wii_nunchuk_send_init_sequence(handle);
-
-    if (result == WII_NUNCHUK_OK)
-    {
-        handle->state = WII_NUNCHUK_STATE_READY;
-        handle->last_read_time = HAL_GetTick();
-    }
-    else
-    {
-        handle->state = WII_NUNCHUK_STATE_ERROR;
-    }
-
-    return result;
+    // Start the first initialization step
+    return wii_nunchuk_start_init_step(handle);
 }
 
 wii_nunchuk_result_t wii_nunchuk_read_async(wii_nunchuk_handle_t *handle)
@@ -76,7 +63,7 @@ wii_nunchuk_result_t wii_nunchuk_read_async(wii_nunchuk_handle_t *handle)
         return WII_NUNCHUK_ERROR_NOT_INITIALIZED;
     }
 
-    if (!handle->dma_transfer_complete)
+    if (!handle->transfer_complete)
     {
         return WII_NUNCHUK_ERROR_BUSY;
     }
@@ -110,6 +97,7 @@ wii_nunchuk_result_t wii_nunchuk_process_data(wii_nunchuk_handle_t *handle)
     else
     {
         handle->data.data_valid = false;
+        handle->data_ready = false; // Clear the flag even on error
         handle->error_count++;
 
         // Reset if too many errors
@@ -176,25 +164,35 @@ wii_nunchuk_result_t wii_nunchuk_update(wii_nunchuk_handle_t *handle)
 
     switch (handle->state)
     {
-    case WII_NUNCHUK_STATE_READY:
-        // Automatically start reading if DMA is available
-        if (handle->dma_transfer_complete)
+    case WII_NUNCHUK_STATE_INITIALIZING:
+        // Check for initialization timeout
+        if (HAL_GetTick() > handle->init_timeout)
         {
-            result = wii_nunchuk_read_async(handle);
+            handle->state = WII_NUNCHUK_STATE_ERROR;
+            return WII_NUNCHUK_ERROR_I2C_TIMEOUT;
         }
         break;
 
+    case WII_NUNCHUK_STATE_READY:
+        // Nothing to do, ready for commands
+        break;
+
     case WII_NUNCHUK_STATE_READING:
-        // Process any available data
-        if (handle->data_ready)
+        // Check for read timeout
+        if (HAL_GetTick() - handle->last_read_time > 1000)
         {
-            result = wii_nunchuk_process_data(handle);
+            handle->state = WII_NUNCHUK_STATE_READY;
+            handle->transfer_complete = true;
+            handle->error_count++;
         }
         break;
 
     case WII_NUNCHUK_STATE_ERROR:
-        // Try to recover from error state
-        result = wii_nunchuk_reset(handle);
+        // Try to recover from error state after some time
+        if (HAL_GetTick() - handle->last_read_time > 2000)
+        {
+            result = wii_nunchuk_reset(handle);
+        }
         break;
 
     default:
@@ -208,7 +206,7 @@ void wii_nunchuk_i2c_rx_cplt_callback(wii_nunchuk_handle_t *handle)
 {
     if (handle != NULL)
     {
-        handle->dma_transfer_complete = true;
+        handle->transfer_complete = true;
         handle->data_ready = true;
         handle->state = WII_NUNCHUK_STATE_READY;
     }
@@ -218,18 +216,47 @@ void wii_nunchuk_i2c_tx_cplt_callback(wii_nunchuk_handle_t *handle)
 {
     if (handle != NULL)
     {
-        handle->dma_transfer_complete = true;
+        handle->transfer_complete = true;
 
-        // If we were initializing, move to next step or finish
+        // If we were initializing, move to next step
         if (handle->state == WII_NUNCHUK_STATE_INITIALIZING)
         {
             handle->init_step++;
 
-            // Check if initialization is complete
-            if ((handle->type == WII_NUNCHUK_BLACK && handle->init_step >= 2) ||
-                (handle->type == WII_NUNCHUK_WHITE && handle->init_step >= 2))
+            // Start next initialization step or finish
+            if ((handle->type == WII_NUNCHUK_BLACK && handle->init_step < 2) ||
+                (handle->type == WII_NUNCHUK_WHITE && handle->init_step < 2))
             {
+                // Continue with next init step
+                wii_nunchuk_start_init_step(handle);
+            }
+            else
+            {
+                // Initialization complete
                 handle->state = WII_NUNCHUK_STATE_READY;
+                handle->last_read_time = HAL_GetTick();
+            }
+        }
+        else if (handle->state == WII_NUNCHUK_STATE_READING)
+        {
+            // After sending read request, start receiving data
+            HAL_StatusTypeDef hal_result;
+
+            // Start interrupt-based read immediately
+            hal_result = HAL_I2C_Master_Receive_IT(handle->hi2c,
+                                                   WII_NUNCHUK_I2C_ADDR_8BIT,
+                                                   handle->raw_data,
+                                                   WII_NUNCHUK_DATA_SIZE);
+
+            if (hal_result != HAL_OK)
+            {
+                handle->transfer_complete = true;
+                handle->state = WII_NUNCHUK_STATE_READY;
+                handle->error_count++;
+            }
+            else
+            {
+                handle->transfer_complete = false;
             }
         }
     }
@@ -239,7 +266,7 @@ void wii_nunchuk_i2c_error_callback(wii_nunchuk_handle_t *handle)
 {
     if (handle != NULL)
     {
-        handle->dma_transfer_complete = true;
+        handle->transfer_complete = true;
         handle->error_count++;
 
         if (handle->error_count >= WII_NUNCHUK_MAX_ERRORS)
@@ -248,118 +275,71 @@ void wii_nunchuk_i2c_error_callback(wii_nunchuk_handle_t *handle)
         }
         else
         {
-            handle->state = WII_NUNCHUK_STATE_READY;
+            if (handle->state == WII_NUNCHUK_STATE_INITIALIZING)
+            {
+                // Retry initialization step after error
+                wii_nunchuk_start_init_step(handle);
+            }
+            else
+            {
+                handle->state = WII_NUNCHUK_STATE_READY;
+            }
         }
     }
 }
 
-static wii_nunchuk_result_t wii_nunchuk_send_init_sequence(wii_nunchuk_handle_t *handle)
+static wii_nunchuk_result_t wii_nunchuk_start_init_step(wii_nunchuk_handle_t *handle)
 {
     HAL_StatusTypeDef hal_result;
-    uint32_t timeout = HAL_GetTick() + WII_NUNCHUK_INIT_TIMEOUT;
 
     if (handle->type == WII_NUNCHUK_BLACK)
     {
-        // Send first initialization command
-        hal_result = HAL_I2C_Master_Transmit_DMA(handle->hi2c,
-                                                 WII_NUNCHUK_I2C_ADDR,
-                                                 (uint8_t *)init_seq_black[0],
-                                                 2);
-        if (hal_result != HAL_OK)
+        if (handle->init_step < 2)
         {
-            return WII_NUNCHUK_ERROR_I2C_ERROR;
+            hal_result = HAL_I2C_Master_Transmit_IT(handle->hi2c,
+                                                    WII_NUNCHUK_I2C_ADDR_8BIT,
+                                                    (uint8_t *)init_seq_black[handle->init_step],
+                                                    2);
         }
-
-        // Wait for DMA transfer to complete
-        handle->dma_transfer_complete = false;
-        while (!handle->dma_transfer_complete && HAL_GetTick() < timeout)
+        else
         {
-            HAL_Delay(1);
-        }
-
-        if (!handle->dma_transfer_complete)
-        {
-            return WII_NUNCHUK_ERROR_I2C_TIMEOUT;
-        }
-
-        HAL_Delay(10); // Small delay between commands
-
-        // Send second initialization command
-        hal_result = HAL_I2C_Master_Transmit_DMA(handle->hi2c,
-                                                 WII_NUNCHUK_I2C_ADDR,
-                                                 (uint8_t *)init_seq_black[1],
-                                                 2);
-        if (hal_result != HAL_OK)
-        {
-            return WII_NUNCHUK_ERROR_I2C_ERROR;
-        }
-
-        // Wait for second DMA transfer to complete
-        handle->dma_transfer_complete = false;
-        timeout = HAL_GetTick() + WII_NUNCHUK_INIT_TIMEOUT;
-        while (!handle->dma_transfer_complete && HAL_GetTick() < timeout)
-        {
-            HAL_Delay(1);
-        }
-
-        if (!handle->dma_transfer_complete)
-        {
-            return WII_NUNCHUK_ERROR_I2C_TIMEOUT;
+            return WII_NUNCHUK_ERROR_INVALID_PARAM; // Should not happen
         }
     }
-    else
-    { // WHITE Nunchuk
-        // Send first initialization command
-        hal_result = HAL_I2C_Master_Transmit_DMA(handle->hi2c,
-                                                 WII_NUNCHUK_I2C_ADDR,
-                                                 (uint8_t *)init_seq_white[0],
-                                                 2);
-        if (hal_result != HAL_OK)
+    else // WHITE Nunchuk
+    {
+        if (handle->init_step == 0)
         {
-            return WII_NUNCHUK_ERROR_I2C_ERROR;
+            hal_result = HAL_I2C_Master_Transmit_IT(handle->hi2c,
+                                                    WII_NUNCHUK_I2C_ADDR_8BIT,
+                                                    (uint8_t *)init_seq_white[0],
+                                                    2);
         }
-
-        // Wait for DMA transfer to complete
-        handle->dma_transfer_complete = false;
-        while (!handle->dma_transfer_complete && HAL_GetTick() < timeout)
+        else if (handle->init_step == 1)
         {
-            HAL_Delay(1);
+            uint8_t follow_up = 0x00;
+            hal_result = HAL_I2C_Master_Transmit_IT(handle->hi2c,
+                                                    WII_NUNCHUK_I2C_ADDR_8BIT,
+                                                    &follow_up,
+                                                    1);
         }
-
-        if (!handle->dma_transfer_complete)
+        else
         {
-            return WII_NUNCHUK_ERROR_I2C_TIMEOUT;
-        }
-
-        HAL_Delay(10); // Small delay
-
-        // Send follow-up command
-        uint8_t follow_up = 0x00;
-        hal_result = HAL_I2C_Master_Transmit_DMA(handle->hi2c,
-                                                 WII_NUNCHUK_I2C_ADDR,
-                                                 &follow_up,
-                                                 1);
-        if (hal_result != HAL_OK)
-        {
-            return WII_NUNCHUK_ERROR_I2C_ERROR;
-        }
-
-        // Wait for second DMA transfer to complete
-        handle->dma_transfer_complete = false;
-        timeout = HAL_GetTick() + WII_NUNCHUK_INIT_TIMEOUT;
-        while (!handle->dma_transfer_complete && HAL_GetTick() < timeout)
-        {
-            HAL_Delay(1);
-        }
-
-        if (!handle->dma_transfer_complete)
-        {
-            return WII_NUNCHUK_ERROR_I2C_TIMEOUT;
+            return WII_NUNCHUK_ERROR_INVALID_PARAM; // Should not happen
         }
     }
 
-    HAL_Delay(100); // Give Nunchuk time to initialize
+    if (hal_result != HAL_OK)
+    {
+        handle->error_count++;
+        if (handle->error_count >= WII_NUNCHUK_MAX_ERRORS)
+        {
+            handle->state = WII_NUNCHUK_STATE_ERROR;
+        }
+        return WII_NUNCHUK_ERROR_I2C_ERROR;
+    }
 
+    handle->transfer_complete = false;
     return WII_NUNCHUK_OK;
 }
 
@@ -369,10 +349,10 @@ static wii_nunchuk_result_t wii_nunchuk_request_data(wii_nunchuk_handle_t *handl
 
     // Send data request command (0x00)
     uint8_t request_cmd = 0x00;
-    hal_result = HAL_I2C_Master_Transmit_DMA(handle->hi2c,
-                                             WII_NUNCHUK_I2C_ADDR,
-                                             &request_cmd,
-                                             1);
+    hal_result = HAL_I2C_Master_Transmit_IT(handle->hi2c,
+                                            WII_NUNCHUK_I2C_ADDR_8BIT,
+                                            &request_cmd,
+                                            1);
 
     if (hal_result != HAL_OK)
     {
@@ -380,25 +360,9 @@ static wii_nunchuk_result_t wii_nunchuk_request_data(wii_nunchuk_handle_t *handl
         return WII_NUNCHUK_ERROR_I2C_ERROR;
     }
 
-    handle->dma_transfer_complete = false;
+    handle->transfer_complete = false;
     handle->state = WII_NUNCHUK_STATE_READING;
-
-    // Small delay before reading
-    HAL_Delay(1);
-
-    // Start DMA read
-    hal_result = HAL_I2C_Master_Receive_DMA(handle->hi2c,
-                                            WII_NUNCHUK_I2C_ADDR,
-                                            handle->raw_data,
-                                            WII_NUNCHUK_DATA_SIZE);
-
-    if (hal_result != HAL_OK)
-    {
-        handle->dma_transfer_complete = true;
-        handle->state = WII_NUNCHUK_STATE_READY;
-        handle->error_count++;
-        return WII_NUNCHUK_ERROR_I2C_ERROR;
-    }
+    handle->last_read_time = HAL_GetTick();
 
     return WII_NUNCHUK_OK;
 }
@@ -428,19 +392,6 @@ static void wii_nunchuk_decode_raw_data(wii_nunchuk_handle_t *handle)
 }
 
 static bool wii_nunchuk_validate_data(const uint8_t *data)
-{
-    // Basic validation - check if all bytes are not 0xFF (common error pattern)
-    for (int i = 0; i < WII_NUNCHUK_DATA_SIZE; i++)
-    {
-        if (data[i] != 0xFF)
-        {
-            return true; // At least one byte is not 0xFF, likely valid
-        }
-    }
-    return false; // All bytes are 0xFF, likely an error
-}
-
-static bool wii_nunchuk_validate_data_fixed(const uint8_t *data)
 {
     // Check for all bytes being the same (error condition)
     bool all_same = true;
@@ -475,146 +426,4 @@ static bool wii_nunchuk_validate_data_fixed(const uint8_t *data)
 
     // Should have at least 2 different byte values in valid nunchuk data
     return unique_values >= 2;
-}
-
-wii_nunchuk_result_t wii_nunchuk_init_working(wii_nunchuk_handle_t *handle,
-                                              I2C_HandleTypeDef *hi2c,
-                                              wii_nunchuk_type_t type)
-{
-    if (handle == NULL || hi2c == NULL)
-    {
-        return WII_NUNCHUK_ERROR_INVALID_PARAM;
-    }
-
-    // Initialize handle structure
-    memset(handle, 0, sizeof(wii_nunchuk_handle_t));
-    handle->hi2c = hi2c;
-    handle->type = type;
-    handle->state = WII_NUNCHUK_STATE_INITIALIZING;
-    handle->error_count = 0;
-    handle->dma_transfer_complete = true;
-    handle->data_ready = false;
-
-    HAL_StatusTypeDef hal_result;
-
-    // Test device presence first
-    hal_result = HAL_I2C_IsDeviceReady(hi2c, WII_NUNCHUK_I2C_ADDR_8BIT, 3, 1000);
-    if (hal_result != HAL_OK)
-    {
-        handle->state = WII_NUNCHUK_STATE_ERROR;
-        return WII_NUNCHUK_ERROR_I2C_ERROR;
-    }
-
-    if (type == WII_NUNCHUK_WHITE)
-    {
-        // White nunchuk initialization sequence
-        uint8_t init_cmd1[] = {0x40, 0x00};
-        hal_result = HAL_I2C_Master_Transmit(hi2c, WII_NUNCHUK_I2C_ADDR_8BIT,
-                                             init_cmd1, 2, 1000);
-        if (hal_result != HAL_OK)
-        {
-            handle->state = WII_NUNCHUK_STATE_ERROR;
-            return WII_NUNCHUK_ERROR_I2C_ERROR;
-        }
-
-        HAL_Delay(10); // Important delay
-
-        // Second command - just 0x00
-        uint8_t init_cmd2 = 0x00;
-        hal_result = HAL_I2C_Master_Transmit(hi2c, WII_NUNCHUK_I2C_ADDR_8BIT,
-                                             &init_cmd2, 1, 1000);
-        if (hal_result != HAL_OK)
-        {
-            handle->state = WII_NUNCHUK_STATE_ERROR;
-            return WII_NUNCHUK_ERROR_I2C_ERROR;
-        }
-    }
-    else
-    {
-        // Black nunchuk initialization sequence
-        uint8_t init_cmd1[] = {0xF0, 0x55};
-        hal_result = HAL_I2C_Master_Transmit(hi2c, WII_NUNCHUK_I2C_ADDR_8BIT,
-                                             init_cmd1, 2, 1000);
-        if (hal_result != HAL_OK)
-        {
-            handle->state = WII_NUNCHUK_STATE_ERROR;
-            return WII_NUNCHUK_ERROR_I2C_ERROR;
-        }
-
-        HAL_Delay(10);
-
-        uint8_t init_cmd2[] = {0xFB, 0x00};
-        hal_result = HAL_I2C_Master_Transmit(hi2c, WII_NUNCHUK_I2C_ADDR_8BIT,
-                                             init_cmd2, 2, 1000);
-        if (hal_result != HAL_OK)
-        {
-            handle->state = WII_NUNCHUK_STATE_ERROR;
-            return WII_NUNCHUK_ERROR_I2C_ERROR;
-        }
-    }
-
-    HAL_Delay(100); // Give nunchuk time to initialize properly
-
-    handle->state = WII_NUNCHUK_STATE_READY;
-    handle->last_read_time = HAL_GetTick();
-
-    return WII_NUNCHUK_OK;
-}
-
-/* Fixed synchronous read function for testing */
-wii_nunchuk_result_t wii_nunchuk_read_sync_fixed(wii_nunchuk_handle_t *handle)
-{
-    if (handle == NULL || handle->hi2c == NULL)
-    {
-        return WII_NUNCHUK_ERROR_INVALID_PARAM;
-    }
-
-    if (handle->state != WII_NUNCHUK_STATE_READY)
-    {
-        return WII_NUNCHUK_ERROR_NOT_INITIALIZED;
-    }
-
-    HAL_StatusTypeDef hal_result;
-
-    // Step 1: Send read request command (0x00)
-    uint8_t request_cmd = 0x00;
-    hal_result = HAL_I2C_Master_Transmit(handle->hi2c,
-                                         WII_NUNCHUK_I2C_ADDR_8BIT,
-                                         &request_cmd, 1, 1000);
-    if (hal_result != HAL_OK)
-    {
-        handle->error_count++;
-        return WII_NUNCHUK_ERROR_I2C_ERROR;
-    }
-
-    // Step 2: Wait for nunchuk to prepare data
-    HAL_Delay(1);
-
-    // Step 3: Read 6 bytes of data
-    hal_result = HAL_I2C_Master_Receive(handle->hi2c,
-                                        WII_NUNCHUK_I2C_ADDR_8BIT,
-                                        handle->raw_data,
-                                        WII_NUNCHUK_DATA_SIZE, 1000);
-
-    if (hal_result != HAL_OK)
-    {
-        handle->error_count++;
-        return WII_NUNCHUK_ERROR_I2C_ERROR;
-    }
-
-    // Step 4: Validate and decode data
-    if (wii_nunchuk_validate_data_fixed(handle->raw_data))
-    {
-        wii_nunchuk_decode_raw_data(handle);
-        handle->data.data_valid = true;
-        handle->last_read_time = HAL_GetTick();
-        handle->error_count = 0;
-        return WII_NUNCHUK_OK;
-    }
-    else
-    {
-        handle->data.data_valid = false;
-        handle->error_count++;
-        return WII_NUNCHUK_ERROR_I2C_ERROR;
-    }
 }

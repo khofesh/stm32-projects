@@ -34,7 +34,8 @@ extern "C"
 
 /* Wii nunchuk types */
 typedef enum {
-	WII_NUNCHUK_BLACK = 0, WII_NUNCHUK_WHITE = 1
+	WII_NUNCHUK_BLACK = 0,
+	WII_NUNCHUK_WHITE = 1
 } wii_nunchuk_type_t;
 
 /* data structure */
@@ -68,7 +69,8 @@ typedef struct {
 	uint8_t init_step;                       // Initialization step counter
 	uint32_t last_read_time;                 // Last successful read timestamp
 	uint32_t error_count;                    // Error counter
-	bool dma_transfer_complete;              // DMA transfer completion flag
+	uint32_t init_timeout;                   // Initialization timeout timestamp
+	bool transfer_complete;                  // Interrupt transfer completion flag
 	bool data_ready;                         // New data available flag
 } wii_nunchuk_handle_t;
 
@@ -95,9 +97,6 @@ void wii_nunchuk_i2c_rx_cplt_callback(wii_nunchuk_handle_t *handle);
 void wii_nunchuk_i2c_tx_cplt_callback(wii_nunchuk_handle_t *handle);
 void wii_nunchuk_i2c_error_callback(wii_nunchuk_handle_t *handle);
 wii_nunchuk_result_t wii_nunchuk_update(wii_nunchuk_handle_t *handle);
-wii_nunchuk_result_t wii_nunchuk_init_working(wii_nunchuk_handle_t *handle,
-		I2C_HandleTypeDef *hi2c, wii_nunchuk_type_t type);
-wii_nunchuk_result_t wii_nunchuk_read_sync_fixed(wii_nunchuk_handle_t *handle);
 
 /* convert raw joystick to signed value (-128 to +127) */
 #define WII_NUNCHUK_JOYSTICK_TO_SIGNED(val) ((int8_t)((val) - WII_NUNCHUK_JOYSTICK_CENTER))
