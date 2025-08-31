@@ -21,7 +21,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "wii_nunchuk.h"
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,7 +33,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define READ_INTERVAL_MS    200  // read nunchuk every 50ms
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -51,7 +53,13 @@ DMA_HandleTypeDef hdma_spi1_tx;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-
+char readBuf[1];
+uint8_t txData;
+__IO ITStatus UartReady = SET;
+RingBuffer txBuf, rxBuf;
+wii_nunchuk_handle_t nunchuk_handle;
+uint32_t last_read_time = 0;
+char uart_buffer[200];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -62,11 +70,72 @@ static void MX_I2C1_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+void print_nunchuk_data(wii_nunchuk_data_t *data);
+void debug_print_raw_data(uint8_t *data, uint8_t size);
+void debug_print_i2c_status(I2C_HandleTypeDef *hi2c);
+void test_i2c_connection(void);
+void debug_nunchuk_validation(uint8_t *raw_data);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+wii_nunchuk_result_t wii_nunchuk_auto_init(wii_nunchuk_handle_t *handle, I2C_HandleTypeDef *hi2c)
+{
+    wii_nunchuk_result_t result;
+
+    UART_Transmit(&huart1, (uint8_t*)"Trying WHITE nunchuk init...\r\n", 31);
+
+    // Try white first
+    result = wii_nunchuk_init_working(handle, hi2c, WII_NUNCHUK_WHITE);
+    if (result == WII_NUNCHUK_OK) {
+        // Test with a read
+        HAL_Delay(100);
+        result = wii_nunchuk_read_sync_fixed(handle);
+        if (result == WII_NUNCHUK_OK) {
+            UART_Transmit(&huart1, (uint8_t*)"WHITE nunchuk init SUCCESS! ✓\r\n", 32);
+            return WII_NUNCHUK_OK;
+        }
+    }
+
+    UART_Transmit(&huart1, (uint8_t*)"WHITE failed, trying BLACK nunchuk init...\r\n", 45);
+
+    // Try black
+    result = wii_nunchuk_init_working(handle, hi2c, WII_NUNCHUK_BLACK);
+    if (result == WII_NUNCHUK_OK) {
+        // Test with a read
+        HAL_Delay(100);
+        result = wii_nunchuk_read_sync_fixed(handle);
+        if (result == WII_NUNCHUK_OK) {
+            UART_Transmit(&huart1, (uint8_t*)"BLACK nunchuk init SUCCESS! ✓\r\n", 32);
+            return WII_NUNCHUK_OK;
+        }
+    }
+
+    UART_Transmit(&huart1, (uint8_t*)"Both initialization methods FAILED ✗\r\n", 39);
+    return WII_NUNCHUK_ERROR_I2C_ERROR;
+}
+
+void print_nunchuk_data_debug(wii_nunchuk_data_t *data)
+{
+    static uint32_t counter = 0;
+    counter++;
+
+    if (data->data_valid) {
+        char buffer[120];  // Smaller buffer
+        int len = snprintf(buffer, sizeof(buffer),
+            "[%lu] Joy:%3d,%3d Acc:%4d,%4d,%4d Btn:C%d,Z%d\r\n",
+            counter,
+            data->joystick_x, data->joystick_y,
+            data->accel_x, data->accel_y, data->accel_z,
+            data->button_c, data->button_z);
+
+        UART_Transmit(&huart1, (uint8_t*)buffer, len);
+    } else {
+        char buffer[50];
+        int len = snprintf(buffer, sizeof(buffer), "[%lu] INVALID\r\n", counter);
+        UART_Transmit(&huart1, (uint8_t*)buffer, len);
+    }
+}
 
 /* USER CODE END 0 */
 
@@ -104,16 +173,44 @@ int main(void)
   MX_SPI1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  // Initialize Wii Nunchuk driver
+  UART_Transmit(&huart1, (uint8_t*)"Device detected at 0xA4! Initializing...\r\n", 44);
 
+  wii_nunchuk_result_t result = wii_nunchuk_auto_init(&nunchuk_handle, &hi2c1);
+
+  if (result == WII_NUNCHUK_OK) {
+      UART_Transmit(&huart1, (uint8_t*)"Nunchuk ready for operation!\r\n", 31);
+  } else {
+      UART_Transmit(&huart1, (uint8_t*)"Nunchuk initialization failed!\r\n", 33);
+  }
+
+  last_read_time = HAL_GetTick();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
+  while(1){
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	    if (HAL_GetTick() - last_read_time >= READ_INTERVAL_MS) {
+	        if (wii_nunchuk_read_sync_fixed(&nunchuk_handle) == WII_NUNCHUK_OK) {
+	            wii_nunchuk_data_t nunchuk_data;
+	            if (wii_nunchuk_get_data(&nunchuk_handle, &nunchuk_data) == WII_NUNCHUK_OK) {
+	                print_nunchuk_data_debug(&nunchuk_data);
+	            }
+	        } else {
+	            static uint32_t error_count = 0;
+	            error_count++;
+	            if (error_count % 50 == 0) { // Print error every 2.5 seconds
+	                UART_Transmit(&huart1, (uint8_t*)"Read error\r\n", 12);
+	            }
+	        }
+
+	        last_read_time = HAL_GetTick();
+	    }
+
+	    HAL_Delay(1); // Small delay to prevent overwhelming the loop
   }
   /* USER CODE END 3 */
 }
@@ -311,6 +408,162 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
+{
+  if(HAL_UART_Transmit_IT(huart, pData, len) != HAL_OK)
+  {
+    if(RingBuffer_Write(&txBuf, pData, len) != RING_BUFFER_OK)
+      return 0;
+  }
+  return 1;
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle)
+{
+ /* Set transmission flag: transfer complete*/
+ UartReady = SET;
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if(RingBuffer_GetDataLength(&txBuf) > 0)
+  {
+    RingBuffer_Read(&txBuf, &txData, 1);
+    HAL_UART_Transmit_IT(huart, &txData, 1);
+  }
+}
+
+void print_nunchuk_data(wii_nunchuk_data_t *data)
+{
+    if (data->data_valid)
+    {
+        int len = snprintf(uart_buffer, sizeof(uart_buffer),
+            "Joystick: X=%3d Y=%3d | Accel: X=%4d Y=%4d Z=%4d | Buttons: C=%d Z=%d\r\n",
+            data->joystick_x, data->joystick_y,
+            data->accel_x, data->accel_y, data->accel_z,
+            data->button_c, data->button_z);
+
+        UART_Transmit(&huart1, (uint8_t*)uart_buffer, len);
+    }
+    else
+    {
+    	UART_Transmit(&huart1, (uint8_t*)"Invalid data received\r\n", 23);
+    }
+}
+
+void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c == &hi2c1) {
+        wii_nunchuk_i2c_tx_cplt_callback(&nunchuk_handle);
+    }
+}
+
+void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c == &hi2c1) {
+        wii_nunchuk_i2c_rx_cplt_callback(&nunchuk_handle);
+    }
+}
+
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c == &hi2c1) {
+        wii_nunchuk_i2c_error_callback(&nunchuk_handle);
+
+        // Debug: Print I2C error
+        char error_msg[50];
+        int len = snprintf(error_msg, sizeof(error_msg), "I2C Error: 0x%08lX\r\n", hi2c->ErrorCode);
+        UART_Transmit(&huart1, (uint8_t*)error_msg, len);
+    }
+}
+
+void debug_print_raw_data(uint8_t *data, uint8_t size)
+{
+    char debug_buffer[150];
+    int len = snprintf(debug_buffer, sizeof(debug_buffer), "Raw data: ");
+
+    for(int i = 0; i < size; i++) {
+        len += snprintf(debug_buffer + len, sizeof(debug_buffer) - len, "0x%02X ", data[i]);
+    }
+    len += snprintf(debug_buffer + len, sizeof(debug_buffer) - len, "\r\n");
+
+    UART_Transmit(&huart1, (uint8_t*)debug_buffer, len);
+}
+
+void debug_print_i2c_status(I2C_HandleTypeDef *hi2c)
+{
+    char debug_buffer[100];
+    int len = snprintf(debug_buffer, sizeof(debug_buffer),
+        "I2C State: %d, Error: 0x%08lX\r\n",
+        (int)hi2c->State, hi2c->ErrorCode);
+    UART_Transmit(&huart1, (uint8_t*)debug_buffer, len);
+}
+
+void test_i2c_connection(void)
+{
+    UART_Transmit(&huart1, (uint8_t*)"Testing I2C connection to Nunchuk...\r\n", 39);
+
+    // Test if device responds at address 0x52
+    HAL_StatusTypeDef result = HAL_I2C_IsDeviceReady(&hi2c1, WII_NUNCHUK_I2C_ADDR, 3, 1000);
+
+    char buffer[50];
+    int len;
+    if(result == HAL_OK) {
+        len = snprintf(buffer, sizeof(buffer), "Nunchuk found at address 0x52!\r\n");
+    } else {
+        len = snprintf(buffer, sizeof(buffer), "Nunchuk NOT found (error: %d)\r\n", result);
+    }
+    UART_Transmit(&huart1, (uint8_t*)buffer, len);
+}
+
+void debug_nunchuk_validation(uint8_t *raw_data)
+{
+    UART_Transmit(&huart1, (uint8_t*)"=== Debug Nunchuk Data ===\r\n", 29);
+
+    // Print raw data
+    debug_print_raw_data(raw_data, 6);
+
+    // Check if all bytes are 0xFF (common error)
+    bool all_ff = true;
+    bool all_zero = true;
+
+    for(int i = 0; i < 6; i++) {
+        if(raw_data[i] != 0xFF) all_ff = false;
+        if(raw_data[i] != 0x00) all_zero = false;
+    }
+
+    if(all_ff) {
+        UART_Transmit(&huart1, (uint8_t*)"ERROR: All bytes are 0xFF!\r\n", 29);
+    }
+    if(all_zero) {
+        UART_Transmit(&huart1, (uint8_t*)"ERROR: All bytes are 0x00!\r\n", 29);
+    }
+
+    // Decode and print decoded data
+    uint8_t decoded_data[6];
+    for (int i = 0; i < 6; i++) {
+        decoded_data[i] = (raw_data[i] ^ 0x17) + 0x17;
+    }
+
+    UART_Transmit(&huart1, (uint8_t*)"Decoded data: ", 14);
+    debug_print_raw_data(decoded_data, 6);
+
+    // Print interpreted values
+    char buffer[200];
+    int len = snprintf(buffer, sizeof(buffer),
+        "Joystick X: %d, Y: %d\r\nAccel X: %d, Y: %d, Z: %d\r\nButtons: C=%d, Z=%d\r\n",
+        decoded_data[0], decoded_data[1],
+        (decoded_data[2] << 2) | ((decoded_data[5] >> 2) & 0x03),
+        (decoded_data[3] << 2) | ((decoded_data[5] >> 4) & 0x03),
+        (decoded_data[4] << 2) | ((decoded_data[5] >> 6) & 0x03),
+        !((decoded_data[5] >> 1) & 0x01),
+        !(decoded_data[5] & 0x01));
+
+    UART_Transmit(&huart1, (uint8_t*)buffer, len);
+    UART_Transmit(&huart1, (uint8_t*)"=========================\r\n", 27);
+}
+
+
 
 /* USER CODE END 4 */
 
