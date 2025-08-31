@@ -43,10 +43,6 @@
 
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
-DMA_HandleTypeDef hdma_i2c1_rx;
-DMA_HandleTypeDef hdma_i2c1_tx;
-
-SPI_HandleTypeDef hspi1;
 
 UART_HandleTypeDef huart1;
 
@@ -63,9 +59,7 @@ char uart_buffer[200];
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_DMA_Init(void);
 static void MX_I2C1_Init(void);
-static void MX_SPI1_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void print_nunchuk_data(wii_nunchuk_data_t *data);
@@ -95,8 +89,6 @@ void print_nunchuk_data_debug(wii_nunchuk_data_t *data)
         UART_Transmit(&huart1, (uint8_t*)print_buffer, len);
     }
 }
-
-
 /* USER CODE END 0 */
 
 /**
@@ -128,9 +120,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_DMA_Init();
   MX_I2C1_Init();
-  MX_SPI1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   // Initialize ring buffers
@@ -153,51 +143,52 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while(1){
+  while (1)
+  {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    // Update the nunchuk state machine
-    wii_nunchuk_update(&nunchuk_handle);
+	    // Update the nunchuk state machine
+	    wii_nunchuk_update(&nunchuk_handle);
 
-    // Check if it's time to read data and we're ready
-    if (HAL_GetTick() - last_read_time >= READ_INTERVAL_MS) {
-        wii_nunchuk_state_t state = wii_nunchuk_get_state(&nunchuk_handle);
+	    // Check if it's time to read data and we're ready
+	    if (HAL_GetTick() - last_read_time >= READ_INTERVAL_MS) {
+	        wii_nunchuk_state_t state = wii_nunchuk_get_state(&nunchuk_handle);
 
-        if (state == WII_NUNCHUK_STATE_READY) {
-            // Start an asynchronous read
-            wii_nunchuk_result_t read_result = wii_nunchuk_read_async(&nunchuk_handle);
+	        if (state == WII_NUNCHUK_STATE_READY) {
+	            // Start an asynchronous read
+	            wii_nunchuk_result_t read_result = wii_nunchuk_read_async(&nunchuk_handle);
 
-            if (read_result != WII_NUNCHUK_OK) {
-                static uint32_t error_count = 0;
-                error_count++;
-                if (error_count % 50 == 0) { // Print error every 10 seconds
-                    UART_Transmit(&huart1, (uint8_t*)"Read start error\r\n", 18);
-                }
-            }
-        }
-        else if (state == WII_NUNCHUK_STATE_ERROR) {
-            static uint32_t error_report_count = 0;
-            error_report_count++;
-            if (error_report_count % 50 == 0) {
-                UART_Transmit(&huart1, (uint8_t*)"Nunchuk in error state\r\n", 25);
-            }
-        }
+	            if (read_result != WII_NUNCHUK_OK) {
+	                static uint32_t error_count = 0;
+	                error_count++;
+	                if (error_count % 50 == 0) { // Print error every 10 seconds
+	                    UART_Transmit(&huart1, (uint8_t*)"Read start error\r\n", 18);
+	                }
+	            }
+	        }
+	        else if (state == WII_NUNCHUK_STATE_ERROR) {
+	            static uint32_t error_report_count = 0;
+	            error_report_count++;
+	            if (error_report_count % 50 == 0) {
+	                UART_Transmit(&huart1, (uint8_t*)"Nunchuk in error state\r\n", 25);
+	            }
+	        }
 
-        last_read_time = HAL_GetTick();
-    }
+	        last_read_time = HAL_GetTick();
+	    }
 
-    // Check if we have new data available
-    if (nunchuk_handle.data_ready) {
-        if (wii_nunchuk_process_data(&nunchuk_handle) == WII_NUNCHUK_OK) {
-            wii_nunchuk_data_t nunchuk_data;
-            if (wii_nunchuk_get_data(&nunchuk_handle, &nunchuk_data) == WII_NUNCHUK_OK) {
-                print_nunchuk_data_debug(&nunchuk_data);
-            }
-        }
-    }
+	    // Check if we have new data available
+	    if (nunchuk_handle.data_ready) {
+	        if (wii_nunchuk_process_data(&nunchuk_handle) == WII_NUNCHUK_OK) {
+	            wii_nunchuk_data_t nunchuk_data;
+	            if (wii_nunchuk_get_data(&nunchuk_handle, &nunchuk_data) == WII_NUNCHUK_OK) {
+	                print_nunchuk_data_debug(&nunchuk_data);
+	            }
+	        }
+	    }
 
-    HAL_Delay(1); // Small delay to prevent overwhelming the loop
+	    HAL_Delay(1); // Small delay to prevent overwhelming the loop
   }
   /* USER CODE END 3 */
 }
@@ -278,44 +269,6 @@ static void MX_I2C1_Init(void)
 }
 
 /**
-  * @brief SPI1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_SPI1_Init(void)
-{
-
-  /* USER CODE BEGIN SPI1_Init 0 */
-
-  /* USER CODE END SPI1_Init 0 */
-
-  /* USER CODE BEGIN SPI1_Init 1 */
-
-  /* USER CODE END SPI1_Init 1 */
-  /* SPI1 parameter configuration*/
-  hspi1.Instance = SPI1;
-  hspi1.Init.Mode = SPI_MODE_MASTER;
-  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
-  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
-  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
-  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-  hspi1.Init.CRCPolynomial = 10;
-  if (HAL_SPI_Init(&hspi1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN SPI1_Init 2 */
-
-  /* USER CODE END SPI1_Init 2 */
-
-}
-
-/**
   * @brief USART1 Initialization Function
   * @param None
   * @retval None
@@ -345,25 +298,6 @@ static void MX_USART1_UART_Init(void)
   /* USER CODE BEGIN USART1_Init 2 */
 
   /* USER CODE END USART1_Init 2 */
-
-}
-
-/**
-  * Enable DMA controller clock
-  */
-static void MX_DMA_Init(void)
-{
-
-  /* DMA controller clock enable */
-  __HAL_RCC_DMA1_CLK_ENABLE();
-
-  /* DMA interrupt init */
-  /* DMA1_Stream0_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Stream0_IRQn);
-  /* DMA1_Stream6_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Stream6_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Stream6_IRQn);
 
 }
 
@@ -478,7 +412,6 @@ void debug_print_i2c_status(I2C_HandleTypeDef *hi2c)
         (int)hi2c->State, hi2c->ErrorCode);
     UART_Transmit(&huart1, (uint8_t*)debug_buffer, len);
 }
-
 /* USER CODE END 4 */
 
 /**
