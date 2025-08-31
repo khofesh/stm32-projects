@@ -46,7 +46,7 @@ I2C_HandleTypeDef hi2c1;
 DMA_HandleTypeDef hdma_i2c1_rx;
 DMA_HandleTypeDef hdma_i2c1_tx;
 
-SPI_HandleTypeDef hspi1;
+TIM_HandleTypeDef htim2;
 
 UART_HandleTypeDef huart1;
 
@@ -65,8 +65,8 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_I2C1_Init(void);
-static void MX_SPI1_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 void print_nunchuk_data(wii_nunchuk_data_t *data);
 void debug_print_raw_data(uint8_t *data, uint8_t size);
@@ -130,8 +130,8 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_I2C1_Init();
-  MX_SPI1_Init();
   MX_USART1_UART_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   // Initialize ring buffers
   RingBuffer_Init(&txBuf);
@@ -148,7 +148,7 @@ int main(void)
       UART_Transmit(&huart1, (uint8_t*)"Nunchuk initialization failed!\r\n", 33);
   }
 
-  last_read_time = HAL_GetTick();
+  HAL_TIM_Base_Start_IT(&htim2);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -157,47 +157,15 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    // Update the nunchuk state machine
-    wii_nunchuk_update(&nunchuk_handle);
+	    wii_nunchuk_update(&nunchuk_handle);           // 1. State machine updates
 
-    // Check if it's time to read data and we're ready
-    if (HAL_GetTick() - last_read_time >= READ_INTERVAL_MS) {
-        wii_nunchuk_state_t state = wii_nunchuk_get_state(&nunchuk_handle);
+	    if (HAL_GetTick() - last_read_time >= 200) {   // 2. Timing control
+	        wii_nunchuk_read_async(&nunchuk_handle);   // 3. Initiate reads
+	    }
 
-        if (state == WII_NUNCHUK_STATE_READY) {
-            // Start an asynchronous read
-            wii_nunchuk_result_t read_result = wii_nunchuk_read_async(&nunchuk_handle);
-
-            if (read_result != WII_NUNCHUK_OK) {
-                static uint32_t error_count = 0;
-                error_count++;
-                if (error_count % 50 == 0) { // Print error every 10 seconds
-                    UART_Transmit(&huart1, (uint8_t*)"Read start error\r\n", 18);
-                }
-            }
-        }
-        else if (state == WII_NUNCHUK_STATE_ERROR) {
-            static uint32_t error_report_count = 0;
-            error_report_count++;
-            if (error_report_count % 50 == 0) {
-                UART_Transmit(&huart1, (uint8_t*)"Nunchuk in error state\r\n", 25);
-            }
-        }
-
-        last_read_time = HAL_GetTick();
-    }
-
-    // Check if we have new data available
-    if (nunchuk_handle.data_ready) {
-        if (wii_nunchuk_process_data(&nunchuk_handle) == WII_NUNCHUK_OK) {
-            wii_nunchuk_data_t nunchuk_data;
-            if (wii_nunchuk_get_data(&nunchuk_handle, &nunchuk_data) == WII_NUNCHUK_OK) {
-                print_nunchuk_data_debug(&nunchuk_data);
-            }
-        }
-    }
-
-    HAL_Delay(1); // Small delay to prevent overwhelming the loop
+	    if (nunchuk_handle.data_ready) {               // 4. Process data
+	        wii_nunchuk_process_data(&nunchuk_handle); // 5. Application logic
+	    }
   }
   /* USER CODE END 3 */
 }
@@ -278,40 +246,47 @@ static void MX_I2C1_Init(void)
 }
 
 /**
-  * @brief SPI1 Initialization Function
+  * @brief TIM2 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_SPI1_Init(void)
+static void MX_TIM2_Init(void)
 {
 
-  /* USER CODE BEGIN SPI1_Init 0 */
+  /* USER CODE BEGIN TIM2_Init 0 */
 
-  /* USER CODE END SPI1_Init 0 */
+  /* USER CODE END TIM2_Init 0 */
 
-  /* USER CODE BEGIN SPI1_Init 1 */
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
 
-  /* USER CODE END SPI1_Init 1 */
-  /* SPI1 parameter configuration*/
-  hspi1.Instance = SPI1;
-  hspi1.Init.Mode = SPI_MODE_MASTER;
-  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
-  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
-  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
-  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-  hspi1.Init.CRCPolynomial = 10;
-  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 16000-1;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 4294967295;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN SPI1_Init 2 */
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
 
-  /* USER CODE END SPI1_Init 2 */
+  /* USER CODE END TIM2_Init 2 */
 
 }
 
@@ -442,6 +417,14 @@ void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
     if (hi2c == &hi2c1) {
         wii_nunchuk_i2c_rx_cplt_callback(&nunchuk_handle);
+
+        // Process data immediately in interrupt context
+        if (wii_nunchuk_process_data(&nunchuk_handle) == WII_NUNCHUK_OK) {
+            wii_nunchuk_data_t nunchuk_data;
+            if (wii_nunchuk_get_data(&nunchuk_handle, &nunchuk_data) == WII_NUNCHUK_OK) {
+                print_nunchuk_data_debug(&nunchuk_data);
+            }
+        }
     }
 }
 
@@ -479,6 +462,17 @@ void debug_print_i2c_status(I2C_HandleTypeDef *hi2c)
     UART_Transmit(&huart1, (uint8_t*)debug_buffer, len);
 }
 
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if (htim == &htim2) {
+        // Automatically trigger nunchuk read every 200ms
+        wii_nunchuk_update(&nunchuk_handle);
+
+        if (wii_nunchuk_get_state(&nunchuk_handle) == WII_NUNCHUK_STATE_READY) {
+            wii_nunchuk_read_async(&nunchuk_handle);
+        }
+    }
+}
 /* USER CODE END 4 */
 
 /**
