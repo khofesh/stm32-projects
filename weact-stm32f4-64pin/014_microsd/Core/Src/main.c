@@ -271,6 +271,8 @@ int main(void)
 
   // Now try mounting with enhanced debugging
   if (sd_mount() == FR_OK) {
+	  sd_get_space_kb();
+	  HAL_Delay(10);
 	  sd_list_files_limited();
 	  sd_unmount();
   } else {
@@ -300,8 +302,6 @@ int main(void)
     int record_count = 0;
     sd_mount();
     sd_read_csv("file4.csv", myrecords, max_records, &record_count);
-    printf("\r\n");
-    HAL_Delay(5000);
     sd_unmount();
 
 

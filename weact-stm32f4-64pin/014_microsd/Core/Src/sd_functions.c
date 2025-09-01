@@ -21,17 +21,13 @@
 #include "bsp_driver_sd.h"
 #include "main.h"
 
-#define MAX_FILES_TO_SHOW 10
+#define MAX_FILES_TO_SHOW 5
 #define MAX_DIRS_TO_SHOW 5
 #define MAX_RECURSION_DEPTH 2
 
 extern char SDPath[4];
 FATFS fs;
 BSP_SD_CardInfo myCardInfo;
-
-void uart_delay(void) {
-    HAL_Delay(1);
-}
 
 int sd_get_space_kb(void) {
 	FATFS *pfs;
@@ -44,7 +40,7 @@ int sd_get_space_kb(void) {
 	total_kb = tot_sect / 2;
 	free_kb = fre_sect / 2;
 	printf("💾 Total: %lu KB, Free: %lu KB\r\n", total_kb, free_kb);
-	uart_delay();
+
 	return FR_OK;
 }
 
@@ -110,7 +106,7 @@ int sd_mount(void) {
 	switch(res) {
 		case FR_OK:
 			printf("✅ SD card mounted successfully at %s\r\n", SDPath);
-			sd_get_space_kb();
+//			sd_get_space_kb();
 			return FR_OK;
 
 		case FR_NO_FILESYSTEM:
