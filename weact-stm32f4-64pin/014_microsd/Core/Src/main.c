@@ -25,6 +25,7 @@
 #include "sd_functions.h"
 #include "stdio.h"
 #include "sd_benchmark.h"
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -53,6 +54,7 @@ char readBuf[1];
 uint8_t txData;
 __IO ITStatus UartReady = SET;
 RingBuffer txBuf, rxBuf;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -87,6 +89,62 @@ void uart_printf(const char *format, ...)
         UART_Transmit(&huart1, (uint8_t*)buffer, len);
     }
 }
+
+void sd_hardware_test(void) {
+	printf("=== SD Hardware Test ===\r\n");
+
+	// Test 1: Check if SDIO peripheral is enabled
+	if (__HAL_RCC_SDIO_IS_CLK_ENABLED()) {
+		printf("✅ SDIO clock enabled\r\n");
+	} else {
+		printf("❌ SDIO clock NOT enabled\r\n");
+	}
+
+	// Test 2: Check GPIO configuration
+	printf("Checking GPIO pins:\r\n");
+	printf("PC8 (D0) mode: 0x%lx\r\n", (GPIOC->MODER >> 16) & 0x3);
+	printf("PC12 (CLK) mode: 0x%lx\r\n", (GPIOC->MODER >> 24) & 0x3);
+	printf("PD2 (CMD) mode: 0x%lx\r\n", (GPIOD->MODER >> 4) & 0x3);
+
+	// Test 3: Initialize SD card low level
+	printf("Initializing SD card...\r\n");
+	uint8_t result = BSP_SD_Init();
+
+	switch(result) {
+		case MSD_OK:
+			printf("✅ SD card initialized successfully\r\n");
+			break;
+		case MSD_ERROR:
+			printf("❌ SD card initialization failed\r\n");
+			break;
+		default:
+			printf("❌ Unknown SD initialization error: %d\r\n", result);
+			break;
+	}
+
+	// Test 4: Try to read a sector
+	if (result == MSD_OK) {
+		uint32_t testBuffer[512];
+		printf("Attempting to read sector 0...\r\n");
+
+		if (BSP_SD_ReadBlocks(testBuffer, 0, 1, 1000) == MSD_OK) {
+			printf("✅ Successfully read sector 0\r\n");
+			printf("First 16 bytes: ");
+			for (int i = 0; i < 16; i++) {
+				printf("%02lX ", testBuffer[i]);
+			}
+			printf("\r\n");
+		} else {
+			printf("❌ Failed to read sector 0\r\n");
+		}
+	}
+
+	printf("=== End Hardware Test ===\r\n\r\n");
+}
+
+
+uint8_t bufr[100];
+UINT br;
 /* USER CODE END 0 */
 
 /**
@@ -126,9 +184,26 @@ int main(void)
   RingBuffer_Init(&txBuf);
   RingBuffer_Init(&rxBuf);
 
-  sd_mount();
-  sd_list_files();
-  sd_unmount();
+  HAL_Delay(5000);
+
+  printf("Initializing SD peripheral...\r\n");
+  if (HAL_SD_Init(&hsd) != HAL_OK) {
+      printf("❌ HAL_SD_Init failed!\r\n");
+      Error_Handler();
+  } else {
+      printf("✅ HAL_SD_Init successful\r\n");
+  }
+
+  // Now test hardware after proper initialization
+  sd_hardware_test();
+
+  // Now try mounting with enhanced debugging
+  if (sd_mount() == FR_OK) {
+      sd_list_files();
+      sd_unmount();
+  } else {
+      printf("Mount failed - skipping file operations\r\n");
+  }
 
   //  sd_mount();
   //  sd_read_file("F1/F1F2/FILE5.TXT", bufr, 100, &br);
@@ -185,12 +260,11 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  RCC_OscInitStruct.PLL.PLLM = 8;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLM = 4;
   RCC_OscInitStruct.PLL.PLLN = 180;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 10;
@@ -241,11 +315,11 @@ static void MX_SDIO_SD_Init(void)
   hsd.Init.ClockEdge = SDIO_CLOCK_EDGE_RISING;
   hsd.Init.ClockBypass = SDIO_CLOCK_BYPASS_DISABLE;
   hsd.Init.ClockPowerSave = SDIO_CLOCK_POWER_SAVE_DISABLE;
-  hsd.Init.BusWide = SDIO_BUS_WIDE_4B;
+  hsd.Init.BusWide = SDIO_BUS_WIDE_1B;
   hsd.Init.HardwareFlowControl = SDIO_HARDWARE_FLOW_CONTROL_ENABLE;
   hsd.Init.ClockDiv = 0;
   /* USER CODE BEGIN SDIO_Init 2 */
-  hsd.Init.BusWide = SDIO_BUS_WIDE_1B;
+//  hsd.Init.BusWide = SDIO_BUS_WIDE_1B;
   /* USER CODE END SDIO_Init 2 */
 
 }
@@ -312,6 +386,7 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
