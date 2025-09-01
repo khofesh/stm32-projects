@@ -22,7 +22,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "sd_functions.h"
+#include "stdio.h"
+#include "sd_benchmark.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,7 +49,10 @@ DMA_HandleTypeDef hdma_sdio;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-
+char readBuf[1];
+uint8_t txData;
+__IO ITStatus UartReady = SET;
+RingBuffer txBuf, rxBuf;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -99,7 +104,35 @@ int main(void)
   MX_USART1_UART_Init();
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
+    sd_mount();
+    sd_list_files();
+    sd_unmount();
 
+  //  sd_mount();
+  //  sd_read_file("F1/F1F2/FILE5.TXT", bufr, 100, &br);
+  //  printf("DATA: %s\n\n", bufr);
+  //  sd_unmount();
+
+  //  sd_mount();
+  //  sd_write_file("FILE8.TXT", "This is File 8 and it is in the root of the SD Card\n");
+  //  sd_read_file("FILE8.txt", bufr, 100, &br);
+  //  printf("DATA: %s\n\n", bufr);
+  //  sd_unmount();
+
+  //  sd_mount();
+  //  sd_append_file("FILE8.TXT", "THis is appended text to file8\n");
+  //  sd_read_file("FILE8.txt", bufr, 100, &br);
+  //  printf("DATA: %s\n\n", bufr);
+  //  sd_unmount();
+
+  //#define max_records 20
+  //  CsvRecord myrecords[max_records];
+  //  int record_count = 0;
+  //  sd_mount();
+  //  sd_read_csv("F1/F1F2/FILE4.CSV", myrecords, max_records, &record_count);
+  //  sd_unmount();
+
+//    sd_benchmark();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -186,11 +219,11 @@ static void MX_SDIO_SD_Init(void)
   hsd.Init.ClockEdge = SDIO_CLOCK_EDGE_RISING;
   hsd.Init.ClockBypass = SDIO_CLOCK_BYPASS_DISABLE;
   hsd.Init.ClockPowerSave = SDIO_CLOCK_POWER_SAVE_DISABLE;
-  hsd.Init.BusWide = SDIO_BUS_WIDE_1B;
-  hsd.Init.HardwareFlowControl = SDIO_HARDWARE_FLOW_CONTROL_DISABLE;
+  hsd.Init.BusWide = SDIO_BUS_WIDE_4B;
+  hsd.Init.HardwareFlowControl = SDIO_HARDWARE_FLOW_CONTROL_ENABLE;
   hsd.Init.ClockDiv = 0;
   /* USER CODE BEGIN SDIO_Init 2 */
-
+  hsd.Init.BusWide = SDIO_BUS_WIDE_1B;
   /* USER CODE END SDIO_Init 2 */
 
 }
@@ -273,7 +306,30 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
+{
+  if(HAL_UART_Transmit_IT(huart, pData, len) != HAL_OK)
+  {
+    if(RingBuffer_Write(&txBuf, pData, len) != RING_BUFFER_OK)
+      return 0;
+  }
+  return 1;
+}
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle)
+{
+ /* Set transmission flag: transfer complete*/
+ UartReady = SET;
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if(RingBuffer_GetDataLength(&txBuf) > 0)
+  {
+    RingBuffer_Read(&txBuf, &txData, 1);
+    HAL_UART_Transmit_IT(huart, &txData, 1);
+  }
+}
 /* USER CODE END 4 */
 
 /**
