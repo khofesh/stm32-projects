@@ -106,37 +106,107 @@ void sd_hardware_test(void) {
 	printf("PC12 (CLK) mode: 0x%lx\r\n", (GPIOC->MODER >> 24) & 0x3);
 	printf("PD2 (CMD) mode: 0x%lx\r\n", (GPIOD->MODER >> 4) & 0x3);
 
-	// Test 3: Initialize SD card low level
-	printf("Initializing SD card...\r\n");
-	uint8_t result = BSP_SD_Init();
+	// Check alternate function settings
+	printf("PC8 AFR: 0x%lx\r\n", (GPIOC->AFR[1] >> 0) & 0xF);
+	printf("PC12 AFR: 0x%lx\r\n", (GPIOC->AFR[1] >> 16) & 0xF);
+	printf("PD2 AFR: 0x%lx\r\n", (GPIOD->AFR[0] >> 8) & 0xF);
 
-	switch(result) {
-		case MSD_OK:
-			printf("✅ SD card initialized successfully\r\n");
+	// Test 3: Check SDIO peripheral directly instead of BSP
+	printf("Testing SDIO peripheral directly...\r\n");
+
+	// Check if SDIO is responding
+	if (hsd.Instance == SDIO) {
+		printf("✅ SDIO instance configured\r\n");
+		printf("SDIO POWER: 0x%lx\r\n", SDIO->POWER);
+		printf("SDIO CLKCR: 0x%lx\r\n", SDIO->CLKCR);
+	} else {
+		printf("❌ SDIO instance not configured\r\n");
+		return;
+	}
+
+	// Test 4: Try HAL SD card detection
+	printf("Checking SD card state...\r\n");
+	HAL_SD_CardStateTypeDef cardState = HAL_SD_GetCardState(&hsd);
+	printf("Card State: %ld ", cardState);
+
+	switch(cardState) {
+		case HAL_SD_CARD_READY:
+			printf("(Ready)\r\n");
 			break;
-		case MSD_ERROR:
-			printf("❌ SD card initialization failed\r\n");
+		case HAL_SD_CARD_IDENTIFICATION:
+			printf("(Identification)\r\n");
 			break;
-		default:
-			printf("❌ Unknown SD initialization error: %d\r\n", result);
+		case HAL_SD_CARD_STANDBY:
+			printf("(Standby)\r\n");
+			break;
+		case HAL_SD_CARD_TRANSFER:
+			printf("(Transfer)\r\n");
+			break;
+		case HAL_SD_CARD_SENDING:
+			printf("(Sending)\r\n");
+			break;
+		case HAL_SD_CARD_RECEIVING:
+			printf("(Receiving)\r\n");
+			break;
+		case HAL_SD_CARD_PROGRAMMING:
+			printf("(Programming)\r\n");
+			break;
+		case HAL_SD_CARD_DISCONNECTED:
+			printf("(Disconnected)\r\n");
+			break;
+		case HAL_SD_CARD_ERROR:
+			printf("(Error)\r\n");
 			break;
 	}
 
-	// Test 4: Try to read a sector
-	if (result == MSD_OK) {
-		uint32_t testBuffer[512];
-		printf("Attempting to read sector 0...\r\n");
+	// Test 5: Get card info using HAL
+	HAL_SD_CardInfoTypeDef cardInfo;
+	if (HAL_SD_GetCardInfo(&hsd, &cardInfo) == HAL_OK) {
+		printf("✅ Card info retrieved successfully\r\n");
+		printf("Card Type: %lu\r\n", cardInfo.CardType);
+		printf("Card Version: %lu\r\n", cardInfo.CardVersion);
+		printf("Block Size: %lu\r\n", cardInfo.BlockSize);
+		printf("Block Count: %lu\r\n", cardInfo.BlockNbr);
+		printf("Capacity: %lu MB\r\n", (cardInfo.BlockNbr * cardInfo.BlockSize) / (1024*1024));
+	} else {
+		printf("❌ Failed to get card info\r\n");
+		printf("Possible issues:\r\n");
+		printf("- SD card not inserted or defective\r\n");
+		printf("- Wiring issues\r\n");
+		printf("- Clock configuration problems\r\n");
+		printf("- Power supply issues\r\n");
+	}
 
-		if (BSP_SD_ReadBlocks(testBuffer, 0, 1, 1000) == MSD_OK) {
-			printf("✅ Successfully read sector 0\r\n");
-			printf("First 16 bytes: ");
-			for (int i = 0; i < 16; i++) {
-				printf("%02lX ", testBuffer[i]);
-			}
-			printf("\r\n");
-		} else {
-			printf("❌ Failed to read sector 0\r\n");
+	// Test 6: Try to read a sector using HAL
+	printf("Attempting to read sector 0 using HAL...\r\n");
+	uint8_t testBuffer[512];
+
+	if (HAL_SD_ReadBlocks(&hsd, testBuffer, 0, 1, 5000) == HAL_OK) {
+		printf("✅ Successfully read sector 0\r\n");
+		printf("First 16 bytes: ");
+		for (int i = 0; i < 16; i++) {
+			printf("%02X ", testBuffer[i]);
 		}
+		printf("\r\n");
+
+		// Check for MBR signature
+		if (testBuffer[510] == 0x55 && testBuffer[511] == 0xAA) {
+			printf("✅ Valid MBR signature found\r\n");
+		} else {
+			printf("⚠️  No MBR signature (might be superfloppy format)\r\n");
+		}
+	} else {
+		printf("❌ Failed to read sector 0\r\n");
+
+		// Get the last error
+		uint32_t errorState = HAL_SD_GetError(&hsd);
+		printf("SD Error: 0x%lX\r\n", errorState);
+
+		if (errorState & HAL_SD_ERROR_CMD_RSP_TIMEOUT) printf("- Command response timeout\r\n");
+		if (errorState & HAL_SD_ERROR_DATA_TIMEOUT) printf("- Data timeout\r\n");
+		if (errorState & HAL_SD_ERROR_CMD_CRC_FAIL) printf("- Command CRC failed\r\n");
+		if (errorState & HAL_SD_ERROR_DATA_CRC_FAIL) printf("- Data CRC failed\r\n");
+		if (errorState & HAL_SD_ERROR_UNSUPPORTED_FEATURE) printf("- Unsupported feature\r\n");
 	}
 
 	printf("=== End Hardware Test ===\r\n\r\n");
@@ -184,7 +254,7 @@ int main(void)
   RingBuffer_Init(&txBuf);
   RingBuffer_Init(&rxBuf);
 
-  HAL_Delay(5000);
+  HAL_Delay(1000);
 
   printf("Initializing SD peripheral...\r\n");
   if (HAL_SD_Init(&hsd) != HAL_OK) {
@@ -197,37 +267,43 @@ int main(void)
   // Now test hardware after proper initialization
   sd_hardware_test();
 
+  HAL_Delay(5000);
+
   // Now try mounting with enhanced debugging
   if (sd_mount() == FR_OK) {
-      sd_list_files();
-      sd_unmount();
+	  sd_list_files_limited();
+	  sd_unmount();
   } else {
-      printf("Mount failed - skipping file operations\r\n");
+	  printf("Mount failed - skipping file operations\r\n");
   }
 
-  //  sd_mount();
-  //  sd_read_file("F1/F1F2/FILE5.TXT", bufr, 100, &br);
-  //  printf("DATA: %s\n\n", bufr);
-  //  sd_unmount();
+  HAL_Delay(1000);
+  sd_mount();
+  sd_read_file("WeAct Studio.txt", (char*)bufr, 100, &br);
+  printf("DATA: %s\r\n", bufr);
+  sd_unmount();
 
-  //  sd_mount();
-  //  sd_write_file("FILE8.TXT", "This is File 8 and it is in the root of the SD Card\n");
-  //  sd_read_file("FILE8.txt", bufr, 100, &br);
-  //  printf("DATA: %s\n\n", bufr);
-  //  sd_unmount();
+//    sd_mount();
+//    sd_write_file("FILE8.TXT", "This is File 8 and it is in the root of the SD Card\n");
+//    sd_read_file("FILE8.txt", (char*)bufr, 100, &br);
+//    printf("DATA: %s\n\n", bufr);
+//    sd_unmount();
 
-  //  sd_mount();
-  //  sd_append_file("FILE8.TXT", "THis is appended text to file8\n");
-  //  sd_read_file("FILE8.txt", bufr, 100, &br);
-  //  printf("DATA: %s\n\n", bufr);
-  //  sd_unmount();
+//    sd_mount();
+//    sd_append_file("FILE8.TXT", "THis is appended text to file8\n");
+//    sd_read_file("FILE8.txt", (char*) bufr, 100, &br);
+//    printf("DATA: %s\n\n", bufr);
+//    sd_unmount();
 
-  //#define max_records 20
-  //  CsvRecord myrecords[max_records];
-  //  int record_count = 0;
-  //  sd_mount();
-  //  sd_read_csv("F1/F1F2/FILE4.CSV", myrecords, max_records, &record_count);
-  //  sd_unmount();
+  #define max_records 20
+    CsvRecord myrecords[max_records];
+    int record_count = 0;
+    sd_mount();
+    sd_read_csv("file4.csv", myrecords, max_records, &record_count);
+    printf("\r\n");
+    HAL_Delay(5000);
+    sd_unmount();
+
 
 //    sd_benchmark();
   /* USER CODE END 2 */
@@ -311,13 +387,13 @@ static void MX_SDIO_SD_Init(void)
   /* USER CODE BEGIN SDIO_Init 1 */
 
   /* USER CODE END SDIO_Init 1 */
-  hsd.Instance = SDIO;
-  hsd.Init.ClockEdge = SDIO_CLOCK_EDGE_RISING;
-  hsd.Init.ClockBypass = SDIO_CLOCK_BYPASS_DISABLE;
-  hsd.Init.ClockPowerSave = SDIO_CLOCK_POWER_SAVE_DISABLE;
-  hsd.Init.BusWide = SDIO_BUS_WIDE_1B;
-  hsd.Init.HardwareFlowControl = SDIO_HARDWARE_FLOW_CONTROL_ENABLE;
-  hsd.Init.ClockDiv = 0;
+	hsd.Instance = SDIO;
+	hsd.Init.ClockEdge = SDIO_CLOCK_EDGE_RISING;
+	hsd.Init.ClockBypass = SDIO_CLOCK_BYPASS_DISABLE;
+	hsd.Init.ClockPowerSave = SDIO_CLOCK_POWER_SAVE_DISABLE;
+	hsd.Init.BusWide = SDIO_BUS_WIDE_1B;
+	hsd.Init.HardwareFlowControl = SDIO_HARDWARE_FLOW_CONTROL_ENABLE;
+	hsd.Init.ClockDiv = 0;
   /* USER CODE BEGIN SDIO_Init 2 */
 //  hsd.Init.BusWide = SDIO_BUS_WIDE_1B;
   /* USER CODE END SDIO_Init 2 */
@@ -405,12 +481,13 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
 {
-  if(HAL_UART_Transmit_IT(huart, pData, len) != HAL_OK)
-  {
-    if(RingBuffer_Write(&txBuf, pData, len) != RING_BUFFER_OK)
-      return 0;
-  }
-  return 1;
+    if(huart->gState == HAL_UART_STATE_READY) {
+        if(HAL_UART_Transmit_IT(huart, pData, len) == HAL_OK) {
+            return 0;
+        }
+    }
+
+    return (RingBuffer_Write(&txBuf, pData, len) == RING_BUFFER_OK) ? 0 : 1;
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle)

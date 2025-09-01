@@ -31,9 +31,14 @@ int sd_read_file(const char *filename, char *buffer, UINT bufsize, UINT *bytes_r
 int sd_delete_file(const char *filename);
 int sd_rename_file(const char *oldname, const char *newname);
 
+// Directory handling - LIMITED VERSIONS (recommended)
+void sd_list_files_limited(void);                    // shows first 10 files only
+void sd_list_files_root_only(void);          // shows only root directory
+void sd_list_files_pattern(const char *pattern);  // shows files matching pattern
+void sd_count_files(void);                   // count files only
 
 // Directory handling
-FRESULT sd_create_directory(const char *path);
+FRESULT sd_create_directory(const char *path); // shows ALL files (can be overwhelming)
 void sd_list_directory_recursive(const char *path, int depth);
 void sd_list_files(void);
 
