@@ -32,6 +32,7 @@ extern "C" {
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "ringbuffer.h"
+#include <stdarg.h>
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -54,6 +55,7 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
 uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len);
+void uart_printf(const char *format, ...);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

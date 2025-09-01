@@ -67,7 +67,26 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+// printf redirection to custom UART function
+int __io_putchar(int ch)
+{
+    uint8_t c = (uint8_t)ch;
+    UART_Transmit(&huart1, &c, 1);
+    return ch;
+}
 
+void uart_printf(const char *format, ...)
+{
+    char buffer[256];
+    va_list args;
+    va_start(args, format);
+    int len = vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+
+    if (len > 0 && len < sizeof(buffer)) {
+        UART_Transmit(&huart1, (uint8_t*)buffer, len);
+    }
+}
 /* USER CODE END 0 */
 
 /**
@@ -104,9 +123,12 @@ int main(void)
   MX_USART1_UART_Init();
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
-    sd_mount();
-    sd_list_files();
-    sd_unmount();
+  RingBuffer_Init(&txBuf);
+  RingBuffer_Init(&rxBuf);
+
+  sd_mount();
+  sd_list_files();
+  sd_unmount();
 
   //  sd_mount();
   //  sd_read_file("F1/F1F2/FILE5.TXT", bufr, 100, &br);
