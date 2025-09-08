@@ -29,9 +29,9 @@
   - https://github.com/STMicroelectronics/l3gd20h-pid
   - https://github.com/STMicroelectronics/STMems_Standard_C_drivers/blob/master/l3gd20h_STdC/examples/README.md
   - https://www.st.com/en/mems-and-sensors/l3gd20.html
-- [ ] TC74A0-3.3VAT
+- [ ] ~TC74A0-3.3VAT~ not worth it
   - microchip board mount temperature sensors
-- [ ] WII nunchuk + olimex MOD-WII-UEXT
+- [x] WII nunchuk + olimex MOD-WII-UEXT **broken**
   - https://www.partsnotincluded.com/using-wii-nunchuk-with-arduino/
   - https://www.mouser.co.id/ProductDetail/Olimex-Ltd/MOD-WII-UEXT?qs=C3feHhap9PrGuR8SxCxmyQ%3D%3D
   - https://acassis.wordpress.com/2015/06/26/using-the-nintendo-wii-nunchuk-joystick-in-the-stm32f4discovery-running-nuttx/
@@ -43,7 +43,7 @@
   - https://www.microchip.com/en-us/product/mcp3008#Documentation
   - https://www.raspberrypi-spy.co.uk/2013/10/analogue-sensors-on-the-raspberry-pi-using-an-mcp3008/
   - https://www.raspberrypi-spy.co.uk/2014/04/using-a-joystick-on-the-raspberry-pi-using-an-mcp3008/
-- [ ] SQLite logging or store data in sdcard
+- [ ] log sensor data in sdcard
 - [ ] stm32 + esp32c6
 - [ ] keyestudio modules
 - [ ] MSC (Mass Storage Class)
