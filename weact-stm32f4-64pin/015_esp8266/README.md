@@ -6,3 +6,7 @@ pin connection:
 - GND -> GND
 - TX -> PA1
 - RX -> PA0
+
+the correct expected logs if failed to connect
+
+![alt text](image.png)
