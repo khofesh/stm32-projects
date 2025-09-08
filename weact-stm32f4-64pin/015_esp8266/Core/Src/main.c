@@ -40,6 +40,7 @@
 char readBuf[1];
 uint8_t txData;
 __IO ITStatus UartReady = SET;
+__IO ITStatus UartTxComplete = SET;
 RingBuffer txBuf, rxBuf;
 /* USER CODE END PM */
 
@@ -64,8 +65,15 @@ static void MX_UART4_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 int _write(int file, char *ptr, int len) {
-	HAL_UART_Transmit(&huart1, (uint8_t *)ptr, len, 100);
-	return len;
+	if (UART_Transmit(&huart1, (uint8_t *)ptr, len)) {
+		// Wait for transmission to complete to ensure log integrity
+		while (UartTxComplete == RESET || RingBuffer_GetDataLength(&txBuf) > 0) {
+			// Allow other interrupts to process
+			__NOP();
+		}
+		return len;
+	}
+	return 0; // Return 0 on failure
 }
 
 char ip_buf[16];
@@ -111,6 +119,10 @@ int main(void)
   MX_UART4_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  // Initialize ring buffers for UART interrupt-based transmission
+  RingBuffer_Init(&txBuf);
+  RingBuffer_Init(&rxBuf);
+  
   HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(USART1_IRQn);
 
@@ -319,6 +331,7 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
 {
+  UartTxComplete = RESET;  // Mark transmission as in progress
   if(HAL_UART_Transmit_IT(huart, pData, len) != HAL_OK)
   {
     if(RingBuffer_Write(&txBuf, pData, len) != RING_BUFFER_OK)
@@ -339,6 +352,10 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
   {
     RingBuffer_Read(&txBuf, &txData, 1);
     HAL_UART_Transmit_IT(huart, &txData, 1);
+  }
+  else
+  {
+    UartTxComplete = SET;  // Mark transmission as complete when buffer is empty
   }
 }
 /* USER CODE END 4 */
