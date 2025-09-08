@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "ringbuffer.h"
+#include "esp8266_stm32.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -62,6 +63,12 @@ static void MX_I2C1_Init(void);
 static void MX_UART4_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
+int _write(int file, char *ptr, int len) {
+	HAL_UART_Transmit(&huart1, (uint8_t *)ptr, len, 100);
+	return len;
+}
+
+char ip_buf[16];
 
 /* USER CODE END PFP */
 
@@ -106,6 +113,16 @@ int main(void)
   /* USER CODE BEGIN 2 */
   HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(USART1_IRQn);
+
+  if (ESP_Init() != ESP8266_OK){
+	  USER_LOG("Failed to initialize... Check Debug logs");
+	  Error_Handler();
+  }
+
+  if (ESP_ConnectWiFi("Arun_Rawat", "arun@321", ip_buf, sizeof(ip_buf)) != ESP8266_OK){
+	  USER_LOG("Failed to connect to wifi... Check Debug logs");
+	  Error_Handler();
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
