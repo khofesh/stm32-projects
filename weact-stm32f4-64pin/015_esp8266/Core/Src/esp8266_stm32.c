@@ -16,7 +16,7 @@ volatile uint16_t esp_dma_rx_tail = 0;
 static char esp_rx_buffer[2048];
 
 static ESP8266_Status ESP_GetIP(char *ip_buffer, uint16_t buffer_len);
-static ESP8266_Status ESP_SendCommand(const char *cmd, const char *ack, uint32_t timeout);
+
 
 void ESP_DMA_Init(void)
 {
@@ -312,7 +312,4 @@ static ESP8266_Status ESP_GetIP(char *ip_buffer, uint16_t buffer_len)
     return ESP8266_ERROR;
 }
 
-static ESP8266_Status ESP_SendCommand(const char *cmd, const char *ack, uint32_t timeout)
-{
-    return ESP_DMA_SendCommand(cmd, ack, timeout);
-}
+
