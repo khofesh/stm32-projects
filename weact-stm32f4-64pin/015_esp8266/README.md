@@ -1,5 +1,8 @@
 # STM32 + cytron-grove-wifi-8266
 
+- UART DMA: https://controllerstech.com/stm32-uart-4-receive-data-using-dma/
+- esp8266 wifi ip: https://controllerstech.com/stm32-esp8266-wifi-ip/
+
 pin connection:
 
 - VCC -> 5V on board
