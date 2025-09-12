@@ -65,8 +65,75 @@ void ESP_DMA_StartReceive(void);
 uint16_t ESP_DMA_GetReceivedData(uint8_t *buffer, uint16_t max_len);
 ESP8266_Status ESP_DMA_SendCommand(const char *cmd, const char *ack, uint32_t timeout);
 
+// MQTT Configuration
+#define MQTT_MAX_TOPIC_LEN 128
+#define MQTT_MAX_MESSAGE_LEN 512
+#define MQTT_MAX_CLIENT_ID_LEN 64
+
+typedef enum
+{
+    MQTT_DISCONNECTED = 0,
+    MQTT_CONNECTING,
+    MQTT_CONNECTED,
+    MQTT_ERROR,
+    MQTT_CONNECTION_REFUSED_PROTOCOL,
+    MQTT_CONNECTION_REFUSED_IDENTIFIER,
+    MQTT_CONNECTION_REFUSED_SERVER,
+    MQTT_CONNECTION_REFUSED_CREDENTIALS,
+    MQTT_CONNECTION_REFUSED_UNAUTHORIZED
+} MQTT_ConnectionState;
+
+typedef enum
+{
+    MQTT_QOS_0 = 0,  // At most once
+    MQTT_QOS_1 = 1,  // At least once
+    MQTT_QOS_2 = 2   // Exactly once
+} MQTT_QoS;
+
+typedef struct
+{
+    char broker[64];
+    uint16_t port;
+    char client_id[MQTT_MAX_CLIENT_ID_LEN];
+    char username[32];
+    char password[32];
+    uint16_t keepalive;
+    uint8_t clean_session;
+} MQTT_Config;
+
+typedef struct
+{
+    char topic[MQTT_MAX_TOPIC_LEN];
+    char message[MQTT_MAX_MESSAGE_LEN];
+    uint16_t message_len;
+    MQTT_QoS qos;
+    uint8_t retain;
+    uint16_t packet_id;
+} MQTT_Message;
+
+extern MQTT_ConnectionState mqtt_state;
+extern MQTT_Config mqtt_config;
+
+// Basic ESP8266 functions
 ESP8266_Status ESP_Init(void);
 ESP8266_Status ESP_ConnectWiFi(const char *ssid, const char *password, char *ip_buffer, uint16_t buffer_len);
 ESP8266_ConnectionState ESP_GetConnectionState(void);
+
+// MQTT functions
+ESP8266_Status ESP_MQTT_Init(const char *broker, uint16_t port, const char *client_id);
+ESP8266_Status ESP_MQTT_SetAuth(const char *username, const char *password);
+ESP8266_Status ESP_MQTT_Connect(void);
+ESP8266_Status ESP_MQTT_Disconnect(void);
+ESP8266_Status ESP_MQTT_Subscribe(const char *topic, MQTT_QoS qos);
+ESP8266_Status ESP_MQTT_Unsubscribe(const char *topic);
+ESP8266_Status ESP_MQTT_Publish(const char *topic, const char *message, MQTT_QoS qos, uint8_t retain);
+ESP8266_Status ESP_MQTT_CheckMessages(MQTT_Message *msg);
+MQTT_ConnectionState ESP_MQTT_GetState(void);
+
+// MQTT spec compliance functions
+ESP8266_Status ESP_MQTT_ValidateTopic(const char *topic, uint8_t is_subscription);
+ESP8266_Status ESP_MQTT_ValidateClientId(const char *client_id);
+ESP8266_Status ESP_MQTT_Ping(void);
+ESP8266_Status ESP_MQTT_CheckConnection(void);
 
 #endif /* INC_ESP8266_STM32_H_ */

@@ -12,6 +12,10 @@ uint8_t esp_dma_tx_buffer[ESP_DMA_TX_BUFFER_SIZE];
 volatile uint16_t esp_dma_rx_head = 0;
 volatile uint16_t esp_dma_rx_tail = 0;
 
+// MQTT global variables
+MQTT_ConnectionState mqtt_state = MQTT_DISCONNECTED;
+MQTT_Config mqtt_config = {0};
+
 // Legacy buffer
 static char esp_rx_buffer[2048];
 
@@ -310,6 +314,524 @@ static ESP8266_Status ESP_GetIP(char *ip_buffer, uint16_t buffer_len)
     DEBUG_LOG("Failed to fetch IP after retries.");
     ESP_ConnState = ESP8266_CONNECTED_NO_IP; // still connected, but no IP
     return ESP8266_ERROR;
+}
+
+// ========== MQTT IMPLEMENTATION ==========
+
+ESP8266_Status ESP_MQTT_Init(const char *broker, uint16_t port, const char *client_id)
+{
+    USER_LOG("Initializing MQTT configuration...");
+    
+    // Clear configuration
+    memset(&mqtt_config, 0, sizeof(mqtt_config));
+    
+    // Set broker and port
+    strncpy(mqtt_config.broker, broker, sizeof(mqtt_config.broker) - 1);
+    mqtt_config.port = port;
+    
+    // Set client ID
+    strncpy(mqtt_config.client_id, client_id, sizeof(mqtt_config.client_id) - 1);
+    
+    // Set defaults
+    mqtt_config.keepalive = 60;
+    mqtt_config.clean_session = 1;
+    
+    mqtt_state = MQTT_DISCONNECTED;
+    
+    USER_LOG("MQTT configured: Broker=%s:%d, ClientID=%s", broker, port, client_id);
+    return ESP8266_OK;
+}
+
+ESP8266_Status ESP_MQTT_SetAuth(const char *username, const char *password)
+{
+    if (username != NULL)
+    {
+        strncpy(mqtt_config.username, username, sizeof(mqtt_config.username) - 1);
+    }
+    
+    if (password != NULL)
+    {
+        strncpy(mqtt_config.password, password, sizeof(mqtt_config.password) - 1);
+    }
+    
+    DEBUG_LOG("MQTT authentication set");
+    return ESP8266_OK;
+}
+
+ESP8266_Status ESP_MQTT_Connect(void)
+{
+    char cmd[256];
+    ESP8266_Status result;
+    
+    USER_LOG("Connecting to MQTT broker...");
+    mqtt_state = MQTT_CONNECTING;
+    
+    // Validate client ID according to MQTT spec
+    if (ESP_MQTT_ValidateClientId(mqtt_config.client_id) != ESP8266_OK)
+    {
+        USER_LOG("Invalid client ID format");
+        mqtt_state = MQTT_CONNECTION_REFUSED_IDENTIFIER;
+        return ESP8266_ERROR;
+    }
+    
+    // Configure MQTT user configuration
+    snprintf(cmd, sizeof(cmd), "AT+MQTTUSERCFG=0,1,\"%s\",\"%s\",\"%s\",0,0,\"\"\r\n",
+             mqtt_config.client_id, 
+             mqtt_config.username[0] ? mqtt_config.username : "NULL",
+             mqtt_config.password[0] ? mqtt_config.password : "NULL");
+    
+    result = ESP_DMA_SendCommand(cmd, "OK", 5000);
+    if (result != ESP8266_OK)
+    {
+        USER_LOG("MQTT user config failed");
+        mqtt_state = MQTT_ERROR;
+        return result;
+    }
+    
+    // Configure MQTT connection parameters
+    snprintf(cmd, sizeof(cmd), "AT+MQTTCONN=0,\"%s\",%d,%d\r\n",
+             mqtt_config.broker, mqtt_config.port, mqtt_config.keepalive);
+    
+    result = ESP_DMA_SendCommand(cmd, "OK", 10000);
+    if (result != ESP8266_OK)
+    {
+        // Check for specific MQTT connection errors in response
+        if (strstr(esp_rx_buffer, "MQTT: CONNECT REFUSED"))
+        {
+            if (strstr(esp_rx_buffer, "PROTOCOL"))
+                mqtt_state = MQTT_CONNECTION_REFUSED_PROTOCOL;
+            else if (strstr(esp_rx_buffer, "IDENTIFIER"))
+                mqtt_state = MQTT_CONNECTION_REFUSED_IDENTIFIER;
+            else if (strstr(esp_rx_buffer, "SERVER"))
+                mqtt_state = MQTT_CONNECTION_REFUSED_SERVER;
+            else if (strstr(esp_rx_buffer, "CREDENTIALS"))
+                mqtt_state = MQTT_CONNECTION_REFUSED_CREDENTIALS;
+            else if (strstr(esp_rx_buffer, "UNAUTHORIZED"))
+                mqtt_state = MQTT_CONNECTION_REFUSED_UNAUTHORIZED;
+            else
+                mqtt_state = MQTT_ERROR;
+        }
+        else
+        {
+            mqtt_state = MQTT_ERROR;
+        }
+        USER_LOG("MQTT connection failed");
+        return result;
+    }
+    
+    // Wait for CONNACK and verify connection
+    HAL_Delay(2000);
+    result = ESP_MQTT_CheckConnection();
+    if (result == ESP8266_OK)
+    {
+        mqtt_state = MQTT_CONNECTED;
+        USER_LOG("MQTT connected successfully");
+    }
+    else
+    {
+        mqtt_state = MQTT_ERROR;
+        USER_LOG("MQTT connection verification failed");
+    }
+    
+    return result;
+}
+
+ESP8266_Status ESP_MQTT_Disconnect(void)
+{
+    ESP8266_Status result;
+    
+    USER_LOG("Disconnecting from MQTT broker...");
+    
+    result = ESP_DMA_SendCommand("AT+MQTTCLEAN=0\r\n", "OK", 5000);
+    if (result != ESP8266_OK)
+    {
+        DEBUG_LOG("MQTT disconnect failed");
+        mqtt_state = MQTT_ERROR;
+        return result;
+    }
+    
+    mqtt_state = MQTT_DISCONNECTED;
+    USER_LOG("MQTT disconnected");
+    return ESP8266_OK;
+}
+
+ESP8266_Status ESP_MQTT_Subscribe(const char *topic, MQTT_QoS qos)
+{
+    char cmd[256];
+    ESP8266_Status result;
+    
+    if (mqtt_state != MQTT_CONNECTED)
+    {
+        DEBUG_LOG("MQTT not connected, cannot subscribe");
+        return ESP8266_NOT_CONNECTED;
+    }
+    
+    // Validate topic according to MQTT spec
+    if (ESP_MQTT_ValidateTopic(topic, 1) != ESP8266_OK)
+    {
+        DEBUG_LOG("Invalid topic format for subscription: %s", topic);
+        return ESP8266_ERROR;
+    }
+    
+    // Validate QoS level
+    if (qos > MQTT_QOS_2)
+    {
+        DEBUG_LOG("Invalid QoS level: %d", qos);
+        return ESP8266_ERROR;
+    }
+    
+    USER_LOG("Subscribing to MQTT topic: %s (QoS %d)", topic, qos);
+    
+    snprintf(cmd, sizeof(cmd), "AT+MQTTSUB=0,\"%s\",%d\r\n", topic, qos);
+    
+    result = ESP_DMA_SendCommand(cmd, "OK", 5000);
+    if (result != ESP8266_OK)
+    {
+        DEBUG_LOG("MQTT subscribe failed for topic: %s", topic);
+        return result;
+    }
+    
+    USER_LOG("Successfully subscribed to: %s", topic);
+    return ESP8266_OK;
+}
+
+ESP8266_Status ESP_MQTT_Unsubscribe(const char *topic)
+{
+    char cmd[256];
+    ESP8266_Status result;
+    
+    if (mqtt_state != MQTT_CONNECTED)
+    {
+        DEBUG_LOG("MQTT not connected, cannot unsubscribe");
+        return ESP8266_NOT_CONNECTED;
+    }
+    
+    USER_LOG("Unsubscribing from MQTT topic: %s", topic);
+    
+    snprintf(cmd, sizeof(cmd), "AT+MQTTUNSUB=0,\"%s\"\r\n", topic);
+    
+    result = ESP_DMA_SendCommand(cmd, "OK", 5000);
+    if (result != ESP8266_OK)
+    {
+        DEBUG_LOG("MQTT unsubscribe failed for topic: %s", topic);
+        return result;
+    }
+    
+    USER_LOG("Successfully unsubscribed from: %s", topic);
+    return ESP8266_OK;
+}
+
+ESP8266_Status ESP_MQTT_Publish(const char *topic, const char *message, MQTT_QoS qos, uint8_t retain)
+{
+    char cmd[512];
+    ESP8266_Status result;
+    
+    if (mqtt_state != MQTT_CONNECTED)
+    {
+        DEBUG_LOG("MQTT not connected, cannot publish");
+        return ESP8266_NOT_CONNECTED;
+    }
+    
+    // Validate topic according to MQTT spec (no wildcards for publish)
+    if (ESP_MQTT_ValidateTopic(topic, 0) != ESP8266_OK)
+    {
+        DEBUG_LOG("Invalid topic format for publish: %s", topic);
+        return ESP8266_ERROR;
+    }
+    
+    // Validate QoS level
+    if (qos > MQTT_QOS_2)
+    {
+        DEBUG_LOG("Invalid QoS level: %d", qos);
+        return ESP8266_ERROR;
+    }
+    
+    // Validate message length
+    if (strlen(message) > MQTT_MAX_MESSAGE_LEN)
+    {
+        DEBUG_LOG("Message too long: %d bytes (max %d)", strlen(message), MQTT_MAX_MESSAGE_LEN);
+        return ESP8266_ERROR;
+    }
+    
+    USER_LOG("Publishing to MQTT topic: %s", topic);
+    DEBUG_LOG("Message: %s", message);
+    
+    snprintf(cmd, sizeof(cmd), "AT+MQTTPUB=0,\"%s\",\"%s\",%d,%d\r\n", 
+             topic, message, qos, retain);
+    
+    result = ESP_DMA_SendCommand(cmd, "OK", 5000);
+    if (result != ESP8266_OK)
+    {
+        DEBUG_LOG("MQTT publish failed for topic: %s", topic);
+        return result;
+    }
+    
+    USER_LOG("Successfully published to: %s", topic);
+    return ESP8266_OK;
+}
+
+ESP8266_Status ESP_MQTT_CheckMessages(MQTT_Message *msg)
+{
+    uint8_t temp_buffer[1024];
+    uint16_t received;
+    
+    if (!msg)
+    {
+        return ESP8266_ERROR;
+    }
+    
+    // Clear message structure
+    memset(msg, 0, sizeof(MQTT_Message));
+    
+    // Check for incoming data
+    received = ESP_DMA_GetReceivedData(temp_buffer, sizeof(temp_buffer));
+    
+    if (received > 0)
+    {
+        temp_buffer[received] = '\0';
+        char *buffer_str = (char*)temp_buffer;
+        
+        // Look for MQTT message pattern: +MQTTSUBRECV:0,"topic","message"
+        char *mqtt_msg = strstr(buffer_str, "+MQTTSUBRECV:");
+        if (mqtt_msg)
+        {
+            DEBUG_LOG("MQTT message received: %s", mqtt_msg);
+            
+            // Parse the message
+            char *topic_start = strchr(mqtt_msg, '"');
+            if (topic_start)
+            {
+                topic_start++; // Skip opening quote
+                char *topic_end = strchr(topic_start, '"');
+                if (topic_end)
+                {
+                    // Extract topic
+                    int topic_len = topic_end - topic_start;
+                    if (topic_len < MQTT_MAX_TOPIC_LEN)
+                    {
+                        strncpy(msg->topic, topic_start, topic_len);
+                        msg->topic[topic_len] = '\0';
+                        
+                        // Find message part
+                        char *msg_start = strchr(topic_end + 1, '"');
+                        if (msg_start)
+                        {
+                            msg_start++; // Skip opening quote
+                            char *msg_end = strchr(msg_start, '"');
+                            if (msg_end)
+                            {
+                                // Extract message
+                                int msg_len = msg_end - msg_start;
+                                if (msg_len < MQTT_MAX_MESSAGE_LEN)
+                                {
+                                    strncpy(msg->message, msg_start, msg_len);
+                                    msg->message[msg_len] = '\0';
+                                    msg->message_len = msg_len;
+                                    
+                                    USER_LOG("MQTT Received - Topic: %s, Message: %s", 
+                                             msg->topic, msg->message);
+                                    return ESP8266_OK;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    return ESP8266_NO_RESPONSE;
+}
+
+MQTT_ConnectionState ESP_MQTT_GetState(void)
+{
+    return mqtt_state;
+}
+
+// ========== MQTT SPECIFICATION COMPLIANCE FUNCTIONS ==========
+
+ESP8266_Status ESP_MQTT_ValidateTopic(const char *topic, uint8_t is_subscription)
+{
+    if (!topic || strlen(topic) == 0)
+    {
+        DEBUG_LOG("Topic cannot be empty");
+        return ESP8266_ERROR;
+    }
+    
+    if (strlen(topic) > MQTT_MAX_TOPIC_LEN - 1)
+    {
+        DEBUG_LOG("Topic too long: %d (max %d)", strlen(topic), MQTT_MAX_TOPIC_LEN - 1);
+        return ESP8266_ERROR;
+    }
+    
+    // Check for invalid characters (MQTT spec: UTF-8, no null characters)
+    for (int i = 0; topic[i] != '\0'; i++)
+    {
+        // Check for null character
+        if (topic[i] == '\0')
+        {
+            DEBUG_LOG("Topic contains null character");
+            return ESP8266_ERROR;
+        }
+        
+        // Check for control characters (0x00-0x1F, 0x7F-0x9F)
+        if ((topic[i] >= 0x00 && topic[i] <= 0x1F) || 
+            (topic[i] >= 0x7F && topic[i] <= 0x9F))
+        {
+            DEBUG_LOG("Topic contains control character: 0x%02X", topic[i]);
+            return ESP8266_ERROR;
+        }
+    }
+    
+    // For publish topics, wildcards are not allowed
+    if (!is_subscription)
+    {
+        if (strchr(topic, '+') || strchr(topic, '#'))
+        {
+            DEBUG_LOG("Wildcards not allowed in publish topics");
+            return ESP8266_ERROR;
+        }
+    }
+    else
+    {
+        // For subscription topics, validate wildcard usage
+        char *plus_pos = strchr(topic, '+');
+        char *hash_pos = strchr(topic, '#');
+        
+        // # wildcard must be at the end and preceded by /
+        if (hash_pos)
+        {
+            if (hash_pos != topic + strlen(topic) - 1)
+            {
+                DEBUG_LOG("# wildcard must be at end of topic");
+                return ESP8266_ERROR;
+            }
+            if (hash_pos != topic && *(hash_pos - 1) != '/')
+            {
+                DEBUG_LOG("# wildcard must be preceded by /");
+                return ESP8266_ERROR;
+            }
+        }
+        
+        // + wildcard must be between / characters or at start/end
+        if (plus_pos)
+        {
+            char *current = plus_pos;
+            while (current)
+            {
+                if (current != topic && *(current - 1) != '/')
+                {
+                    DEBUG_LOG("+ wildcard must be preceded by /");
+                    return ESP8266_ERROR;
+                }
+                if (*(current + 1) != '\0' && *(current + 1) != '/')
+                {
+                    DEBUG_LOG("+ wildcard must be followed by / or end");
+                    return ESP8266_ERROR;
+                }
+                current = strchr(current + 1, '+');
+            }
+        }
+    }
+    
+    return ESP8266_OK;
+}
+
+ESP8266_Status ESP_MQTT_ValidateClientId(const char *client_id)
+{
+    if (!client_id)
+    {
+        DEBUG_LOG("Client ID cannot be null");
+        return ESP8266_ERROR;
+    }
+    
+    size_t len = strlen(client_id);
+    
+    // MQTT spec: Client ID can be empty (server assigns one)
+    if (len == 0)
+    {
+        DEBUG_LOG("Empty client ID - server will assign one");
+        return ESP8266_OK;
+    }
+    
+    // Check length (MQTT spec allows up to 65535, but we limit to our buffer)
+    if (len > MQTT_MAX_CLIENT_ID_LEN - 1)
+    {
+        DEBUG_LOG("Client ID too long: %d (max %d)", len, MQTT_MAX_CLIENT_ID_LEN - 1);
+        return ESP8266_ERROR;
+    }
+    
+    // Check for valid UTF-8 characters (simplified check)
+    for (int i = 0; client_id[i] != '\0'; i++)
+    {
+        // Check for control characters
+        if ((client_id[i] >= 0x00 && client_id[i] <= 0x1F) || 
+            (client_id[i] >= 0x7F && client_id[i] <= 0x9F))
+        {
+            DEBUG_LOG("Client ID contains control character: 0x%02X", client_id[i]);
+            return ESP8266_ERROR;
+        }
+    }
+    
+    return ESP8266_OK;
+}
+
+ESP8266_Status ESP_MQTT_Ping(void)
+{
+    ESP8266_Status result;
+    
+    if (mqtt_state != MQTT_CONNECTED)
+    {
+        DEBUG_LOG("MQTT not connected, cannot ping");
+        return ESP8266_NOT_CONNECTED;
+    }
+    
+    DEBUG_LOG("Sending MQTT ping");
+    
+    // ESP8266 AT firmware handles PINGREQ/PINGRESP automatically
+    // We can verify connection by checking status
+    result = ESP_DMA_SendCommand("AT+MQTTCONN?\r\n", "+MQTTCONN:0", 3000);
+    
+    if (result == ESP8266_OK)
+    {
+        DEBUG_LOG("MQTT ping successful");
+        return ESP8266_OK;
+    }
+    else
+    {
+        DEBUG_LOG("MQTT ping failed - connection may be lost");
+        mqtt_state = MQTT_ERROR;
+        return ESP8266_ERROR;
+    }
+}
+
+ESP8266_Status ESP_MQTT_CheckConnection(void)
+{
+    uint8_t temp_buffer[256];
+    uint16_t received;
+    
+    // Check for connection status messages
+    received = ESP_DMA_GetReceivedData(temp_buffer, sizeof(temp_buffer));
+    
+    if (received > 0)
+    {
+        temp_buffer[received] = '\0';
+        char *buffer_str = (char*)temp_buffer;
+        
+        // Look for MQTT connection status
+        if (strstr(buffer_str, "MQTT CONNECTED"))
+        {
+            return ESP8266_OK;
+        }
+        else if (strstr(buffer_str, "MQTT DISCONNECTED") || 
+                 strstr(buffer_str, "MQTT: CONNECT REFUSED"))
+        {
+            return ESP8266_ERROR;
+        }
+    }
+    
+    // If no explicit status, try ping
+    return ESP_MQTT_Ping();
 }
 
 
