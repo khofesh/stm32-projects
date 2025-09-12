@@ -116,6 +116,8 @@ extern MQTT_Config mqtt_config;
 
 // Basic ESP8266 functions
 ESP8266_Status ESP_Init(void);
+ESP8266_Status ESP_DetectBaudRate(void);
+ESP8266_Status ESP_TestBasicUART(void);
 ESP8266_Status ESP_ConnectWiFi(const char *ssid, const char *password, char *ip_buffer, uint16_t buffer_len);
 ESP8266_ConnectionState ESP_GetConnectionState(void);
 

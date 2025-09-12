@@ -135,6 +135,12 @@ int main(void)
     USER_LOG("Failed to initialize... Check Debug logs");
     Error_Handler();
   }
+
+  if (ESP_ConnectWiFi("Arun_Rawat", "arun@321", ip_buf, sizeof(ip_buf)) != ESP8266_OK)
+  {
+    USER_LOG("Failed to connect to wifi... Check Debug logs");
+    Error_Handler();
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
