@@ -160,8 +160,8 @@ int main(void)
 
 	  if (rslt == BME280_OK)
 	  {
-		  // First line - pressure
-		  snprintf(line1, sizeof(line1), "press: %.1f", comp_data.pressure);
+		  // First line - pressure in hPa (hectopascals)
+		  snprintf(line1, sizeof(line1), "P:%.1fhPa", comp_data.pressure / 100.0);
 		  printf("%s\r\n", line1);
 
 		  // Second line - temperature and humidity
