@@ -152,8 +152,30 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  char line2[16];
+  char line1[16];
   while (1)
   {
+	  rslt = bme280_read_sensor_data(&comp_data, &dev);
+
+	  if (rslt == BME280_OK)
+	  {
+		  // First line - pressure
+		  snprintf(line1, sizeof(line1), "press: %.1f", comp_data.pressure);
+		  printf("%s\r\n", line1);
+
+		  // Second line - temperature and humidity
+		  snprintf(line2, sizeof(line2), "T:%.1fC H:%.1f%%",
+		                 comp_data.temperature, comp_data.humidity);
+
+		  printf("%s\r\n", line2);
+	  }
+	  else
+	  {
+		  printf("Failed to read sensor data! Error code: %d\r\n", rslt);
+	  }
+
+	  HAL_Delay(1000);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
