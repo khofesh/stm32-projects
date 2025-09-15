@@ -8,12 +8,14 @@
 
 #include "bme280_stm32.h"
 
+#define BME280_I2C BME280_I2C
+#define BME280_TIM BME280_TIM
 
 // i2c handle
-extern I2C_HandleTypeDef hi2c3;
+extern I2C_HandleTypeDef BME280_I2C;
 
 // TIM6
-extern TIM_HandleTypeDef htim6;
+extern TIM_HandleTypeDef BME280_TIM;
 
 // BME280 i2c address
 //The default for the SparkFun Environmental Combo board is 0x77 (jumper open).
@@ -28,7 +30,7 @@ int8_t user_i2c_read(uint8_t reg_addr, uint8_t *reg_data, uint32_t len, void *in
 {
     uint8_t dev_addr = *(uint8_t*)intf_ptr;
 
-    if (HAL_I2C_Mem_Read(&hi2c3, dev_addr, reg_addr, I2C_MEMADD_SIZE_8BIT,
+    if (HAL_I2C_Mem_Read(&BME280_I2C, dev_addr, reg_addr, I2C_MEMADD_SIZE_8BIT,
                          reg_data, len, BME280_I2C_TIMEOUT) == HAL_OK)
     {
         return BME280_OK;
@@ -44,7 +46,7 @@ int8_t user_i2c_write(uint8_t reg_addr, const uint8_t *reg_data, uint32_t len, v
 {
     uint8_t dev_addr = *(uint8_t*)intf_ptr;
 
-    if (HAL_I2C_Mem_Write(&hi2c3, dev_addr, reg_addr, I2C_MEMADD_SIZE_8BIT,
+    if (HAL_I2C_Mem_Write(&BME280_I2C, dev_addr, reg_addr, I2C_MEMADD_SIZE_8BIT,
                           (uint8_t*)reg_data, len, BME280_I2C_TIMEOUT) == HAL_OK)
     {
         return BME280_OK;
@@ -57,12 +59,12 @@ int8_t user_i2c_write(uint8_t reg_addr, const uint8_t *reg_data, uint32_t len, v
 
 static void delay_us_internal(uint32_t us) {
     // start timer if not already running
-    if (!(htim6.Instance->CR1 & TIM_CR1_CEN)) {
-        HAL_TIM_Base_Start(&htim6);
+    if (!(BME280_TIM.Instance->CR1 & TIM_CR1_CEN)) {
+        HAL_TIM_Base_Start(&BME280_TIM);
     }
 
-    __HAL_TIM_SET_COUNTER(&htim6, 0);
-    while(__HAL_TIM_GET_COUNTER(&htim6) < us);
+    __HAL_TIM_SET_COUNTER(&BME280_TIM, 0);
+    while(__HAL_TIM_GET_COUNTER(&BME280_TIM) < us);
 }
 
 // can't use TIM6 lol
