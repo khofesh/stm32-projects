@@ -30,19 +30,19 @@ void ESP_DMA_Init(void)
     esp_dma_rx_head = 0;
     esp_dma_rx_tail = 0;
 
-    DEBUG_LOG("DMA buffers initialized for UART4");
+    DEBUG_LOG("DMA buffers initialized for USART1");
 }
 
 void ESP_DMA_StartReceive(void)
 {
     // Start DMA reception in circular mode
     HAL_UART_Receive_DMA(&ESP_UART, esp_dma_rx_buffer, ESP_DMA_RX_BUFFER_SIZE);
-    DEBUG_LOG("DMA reception started for UART4");
+    DEBUG_LOG("DMA reception started for USART1");
 }
 
 uint16_t ESP_DMA_GetReceivedData(uint8_t *buffer, uint16_t max_len)
 {
-    uint16_t dma_head = ESP_DMA_RX_BUFFER_SIZE - __HAL_DMA_GET_COUNTER(&hdma_uart4_rx);
+    uint16_t dma_head = ESP_DMA_RX_BUFFER_SIZE - __HAL_DMA_GET_COUNTER(&hdma_usart1_rx);
     uint16_t data_len = 0;
 
     if (dma_head != esp_dma_rx_tail)
@@ -53,6 +53,13 @@ uint16_t ESP_DMA_GetReceivedData(uint8_t *buffer, uint16_t max_len)
             if (data_len > max_len)
                 data_len = max_len;
             memcpy(buffer, &esp_dma_rx_buffer[esp_dma_rx_tail], data_len);
+            
+            // Debug received data only when we actually get data
+            if (data_len > 0)
+            {
+                buffer[data_len] = '\0';
+                DEBUG_LOG("RX Data: %s (len=%d)", buffer, data_len);
+            }
         }
         else
         {
@@ -78,6 +85,13 @@ uint16_t ESP_DMA_GetReceivedData(uint8_t *buffer, uint16_t max_len)
             {
                 memcpy(buffer, &esp_dma_rx_buffer[esp_dma_rx_tail], max_len);
                 data_len = max_len;
+            }
+            
+            // Debug received data only when we actually get data
+            if (data_len > 0)
+            {
+                buffer[data_len] = '\0';
+                DEBUG_LOG("RX Data (wrapped): %s (len=%d)", buffer, data_len);
             }
         }
 
@@ -107,8 +121,13 @@ ESP8266_Status ESP_DMA_SendCommand(const char *cmd, const char *ack, uint32_t ti
             cmd_len = ESP_DMA_TX_BUFFER_SIZE;
         memcpy(esp_dma_tx_buffer, cmd, cmd_len);
 
+        // Check UART state before transmission
+        HAL_UART_StateTypeDef uart_state = HAL_UART_GetState(&ESP_UART);
+        DEBUG_LOG("UART state before TX: %lu", uart_state);
+
         if (HAL_UART_Transmit_DMA(&ESP_UART, esp_dma_tx_buffer, cmd_len) != HAL_OK)
         {
+            DEBUG_LOG("DMA transmission failed");
             return ESP8266_ERROR;
         }
 
@@ -117,9 +136,11 @@ ESP8266_Status ESP_DMA_SendCommand(const char *cmd, const char *ack, uint32_t ti
         {
             if ((HAL_GetTick() - tickstart) > timeout)
             {
+                DEBUG_LOG("TX timeout");
                 return ESP8266_TIMEOUT;
             }
         }
+        DEBUG_LOG("TX completed");
     }
 
     // Reset tick for reception timeout
@@ -173,31 +194,161 @@ ESP8266_Status ESP_DMA_SendCommand(const char *cmd, const char *ack, uint32_t ti
     return ESP8266_TIMEOUT;
 }
 
+ESP8266_Status ESP_TestBasicUART(void)
+{
+    uint8_t rx_buffer[64];
+    uint8_t tx_data[] = "AT\r\n";
+    HAL_StatusTypeDef status;
+    
+    USER_LOG("Testing basic UART communication (non-DMA)...");
+    
+    // Clear RX buffer
+    memset(rx_buffer, 0, sizeof(rx_buffer));
+    
+    // Send AT command using blocking transmission
+    status = HAL_UART_Transmit(&ESP_UART, tx_data, strlen((char*)tx_data), 1000);
+    if (status != HAL_OK)
+    {
+        DEBUG_LOG("UART TX failed: %d", status);
+        return ESP8266_ERROR;
+    }
+    
+    DEBUG_LOG("UART TX completed - sent: %s", tx_data);
+    
+    // Try to receive response using blocking reception
+    status = HAL_UART_Receive(&ESP_UART, rx_buffer, sizeof(rx_buffer)-1, 3000);
+    
+    if (status == HAL_OK)
+    {
+        rx_buffer[sizeof(rx_buffer)-1] = '\0';
+        DEBUG_LOG("UART RX success: %s", rx_buffer);
+        
+        if (strstr((char*)rx_buffer, "OK"))
+        {
+            USER_LOG("Basic UART communication working!");
+            return ESP8266_OK;
+        }
+    }
+    else if (status == HAL_TIMEOUT)
+    {
+        DEBUG_LOG("UART RX timeout - ESP32 not responding");
+        DEBUG_LOG("Check: 1) Power (3.3V not 5V), 2) Wiring, 3) AT firmware");
+    }
+    else
+    {
+        DEBUG_LOG("UART RX error: %d", status);
+    }
+    
+    return ESP8266_ERROR;
+}
+
+ESP8266_Status ESP_DetectBaudRate(void)
+{
+    uint32_t baud_rates[] = {115200, 9600, 38400, 57600, 460800, 921600};
+    uint8_t num_rates = sizeof(baud_rates) / sizeof(baud_rates[0]);
+    ESP8266_Status res;
+    
+    USER_LOG("Detecting ESP32 baud rate...");
+    
+    for (uint8_t i = 0; i < num_rates; i++)
+    {
+        USER_LOG("Testing baud rate: %lu", baud_rates[i]);
+        
+        // Reconfigure UART with new baud rate
+        HAL_UART_DeInit(&ESP_UART);
+        ESP_UART.Init.BaudRate = baud_rates[i];
+        if (HAL_UART_Init(&ESP_UART) != HAL_OK)
+        {
+            DEBUG_LOG("Failed to set baud rate %lu", baud_rates[i]);
+            continue;
+        }
+        
+        // Test with basic UART first (more reliable)
+        res = ESP_TestBasicUART();
+        if (res == ESP8266_OK)
+        {
+            USER_LOG("Found working baud rate: %lu", baud_rates[i]);
+            return ESP8266_OK;
+        }
+        
+        // If basic UART fails, try DMA
+        ESP_DMA_StartReceive();
+        HAL_Delay(500);
+        
+        // Test AT command with DMA
+        res = ESP_DMA_SendCommand("AT\r\n", "OK", 2000);
+        if (res == ESP8266_OK)
+        {
+            USER_LOG("Found working baud rate: %lu (DMA)", baud_rates[i]);
+            return ESP8266_OK;
+        }
+        
+        // Try alternative line endings
+        res = ESP_DMA_SendCommand("AT\n", "OK", 2000);
+        if (res == ESP8266_OK)
+        {
+            USER_LOG("Found working baud rate: %lu (with \\n)", baud_rates[i]);
+            return ESP8266_OK;
+        }
+    }
+    
+    DEBUG_LOG("No working baud rate found");
+    return ESP8266_ERROR;
+}
+
 ESP8266_Status ESP_Init(void)
 {
     ESP8266_Status res;
-    USER_LOG("Initializing ESP8266 with DMA...");
+    USER_LOG("Initializing ESP32 with DMA...");
 
-    // Initialize DMA for UART4
+    // Initialize DMA for USART1
     ESP_DMA_Init();
     ESP_DMA_StartReceive();
 
-    HAL_Delay(1000);
+    HAL_Delay(2000); // Longer delay for ESP32 boot
 
-    //	res = ESP_DMA_SendCommand("AT+RST\r\n", "OK", 2000);
-    //    if (res != ESP8266_OK){
-    //    	DEBUG_LOG("Failed to Reset ESP8266...");
-    //    	return res;
-    //    }
-    //
-    //    USER_LOG("Waiting 5 Seconds for Reset to Complete...");
-    //    HAL_Delay(5000);  // wait for reset to complete
-
-    res = ESP_DMA_SendCommand("AT\r\n", "OK", 2000);
+    // First try to detect the correct baud rate
+    res = ESP_DetectBaudRate();
     if (res != ESP8266_OK)
     {
-        DEBUG_LOG("ESP8266 Not Responding...");
-        return res;
+        DEBUG_LOG("Baud rate detection failed, trying default settings...");
+        
+        // Try different AT command formats for ESP32 compatibility
+        USER_LOG("Testing ESP32 AT communication with default baud...");
+        
+        // Test 1: Basic AT command
+        res = ESP_DMA_SendCommand("AT\r\n", "OK", 3000);
+        if (res != ESP8266_OK)
+        {
+            DEBUG_LOG("AT command failed, trying alternative formats...");
+            
+            // Test 2: Try without \r\n
+            res = ESP_DMA_SendCommand("AT", "OK", 3000);
+            if (res != ESP8266_OK)
+            {
+                // Test 3: Try with just \n
+                res = ESP_DMA_SendCommand("AT\n", "OK", 3000);
+                if (res != ESP8266_OK)
+                {
+                    // Test 4: Try with just \r
+                    res = ESP_DMA_SendCommand("AT\r", "OK", 3000);
+                    if (res != ESP8266_OK)
+                    {
+                        DEBUG_LOG("ESP32 Not Responding to any AT format...");
+                        return res;
+                    }
+                }
+            }
+        }
+    }
+
+    USER_LOG("ESP32 AT communication established!");
+
+    // Get ESP32 version info for debugging
+    res = ESP_DMA_SendCommand("AT+GMR\r\n", "OK", 3000);
+    if (res == ESP8266_OK)
+    {
+        DEBUG_LOG("ESP32 Version Info: %s", esp_rx_buffer);
     }
 
     res = ESP_DMA_SendCommand("ATE0\r\n", "OK", 2000); // Disable echo
@@ -206,7 +357,8 @@ ESP8266_Status ESP_Init(void)
         DEBUG_LOG("Disable echo Command Failed...");
         return res;
     }
-    USER_LOG("ESP8266 Initialized Successfully with DMA...");
+    
+    USER_LOG("ESP32 Initialized Successfully with DMA...");
     return ESP8266_OK;
 }
 

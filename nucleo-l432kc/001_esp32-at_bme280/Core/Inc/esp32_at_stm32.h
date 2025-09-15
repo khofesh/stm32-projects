@@ -2,14 +2,14 @@
  * https://controllerstech.com/stm32-esp8266-wifi-ip/
  */
 
-#ifndef INC_ESP8266_STM32_H_
-#define INC_ESP8266_STM32_H_
+#ifndef INC_ESP32_AT_STM32_H_
+#define INC_ESP32_AT_STM32_H_
 
 #include "main.h"
 #include <string.h>
 #include <stdio.h>
 
-#define ESP_UART huart4
+#define ESP_UART huart1
 
 #define ENABLE_USER_LOG 1
 #define ENABLE_DEBUG_LOG 1
@@ -19,8 +19,8 @@
 #define ESP_DMA_TX_BUFFER_SIZE 512
 
 extern UART_HandleTypeDef ESP_UART;
-extern DMA_HandleTypeDef hdma_uart4_rx;
-extern DMA_HandleTypeDef hdma_uart4_tx;
+extern DMA_HandleTypeDef hdma_usart1_rx;
+extern DMA_HandleTypeDef hdma_usart1_tx;
 
 // DMA buffers
 extern uint8_t esp_dma_rx_buffer[ESP_DMA_RX_BUFFER_SIZE];
@@ -116,6 +116,8 @@ extern MQTT_Config mqtt_config;
 
 // Basic ESP8266 functions
 ESP8266_Status ESP_Init(void);
+ESP8266_Status ESP_DetectBaudRate(void);
+ESP8266_Status ESP_TestBasicUART(void);
 ESP8266_Status ESP_ConnectWiFi(const char *ssid, const char *password, char *ip_buffer, uint16_t buffer_len);
 ESP8266_ConnectionState ESP_GetConnectionState(void);
 
@@ -136,4 +138,6 @@ ESP8266_Status ESP_MQTT_ValidateClientId(const char *client_id);
 ESP8266_Status ESP_MQTT_Ping(void);
 ESP8266_Status ESP_MQTT_CheckConnection(void);
 
-#endif /* INC_ESP8266_STM32_H_ */
+void ESP_DMA_StartReceive(void);
+
+#endif /* INC_ESP32_AT_STM32_H_ */
