@@ -13,7 +13,6 @@
 #include "main.h"
 #include "bme280_stm32.h"
 #include "esp32_at_stm32.h"
-#include "bme280.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -55,7 +54,7 @@ typedef enum {
 } mqtt_mode_t;
 
 // global variables
-extern struct bme280_dev bme280_device;
+extern struct bme280_dev dev;
 static sensor_data_t latest_sensor_data;
 static mqtt_mode_t current_mqtt_mode = MQTT_MODE_TLS;
 static uint32_t last_publish_time = 0;
@@ -282,7 +281,7 @@ void bme280_mqtt_task(void)
     }
 
     // read BME280
-    bme_result = bme280_read_sensor_data(&comp_data, &bme280_device);
+    bme_result = bme280_read_sensor_data(&comp_data, &dev);
     if (bme_result != BME280_OK)
     {
         USER_LOG("Failed to read BME280 data: %d", bme_result);
