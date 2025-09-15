@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include "ringbuffer.h"
 #include "esp8266_stm32.h"
+#include "bme280_stm32.h"
 #include <stdio.h>
 #include <string.h>
 /* USER CODE END Includes */
@@ -91,7 +92,8 @@ char ip_buf[16];
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+struct bme280_dev dev;
+struct bme280_data comp_data;
 /* USER CODE END 0 */
 
 /**
@@ -134,6 +136,18 @@ int main(void)
 
 
   UART_Transmit(&huart2, (uint8_t*)WELCOME_MSG, strlen(WELCOME_MSG));
+
+  int8_t rslt = bme280_init_sensor(&dev);
+
+  if (rslt == BME280_OK)
+  {
+      printf("BME280 initialization successful!\r\n");
+  }
+  else
+  {
+      printf("BME280 initialization failed! Error code: %d\r\n", rslt);
+      while(1);
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
