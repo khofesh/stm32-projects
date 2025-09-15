@@ -25,35 +25,101 @@ extern TIM_HandleTypeDef htim6;
 
 #define BME280_I2C_TIMEOUT 1000
 
+// I2C operation states for interrupt handling
+typedef enum {
+    I2C_STATE_READY = 0,
+    I2C_STATE_BUSY_TX,
+    I2C_STATE_BUSY_RX,
+    I2C_STATE_ERROR
+} I2C_StateTypeDef;
+
+// Global variables for interrupt-based I2C
+static volatile I2C_StateTypeDef i2c_state = I2C_STATE_READY;
+static volatile HAL_StatusTypeDef i2c_result = HAL_OK;
+
 int8_t user_i2c_read(uint8_t reg_addr, uint8_t *reg_data, uint32_t len, void *intf_ptr)
 {
     uint8_t dev_addr = *(uint8_t*)intf_ptr;
-
-    if (HAL_I2C_Mem_Read(&BME280_I2C, dev_addr, reg_addr, I2C_MEMADD_SIZE_8BIT,
-                         reg_data, len, BME280_I2C_TIMEOUT) == HAL_OK)
-    {
-        return BME280_OK;
+    uint32_t timeout_start = HAL_GetTick();
+    
+    // Wait for I2C to be ready
+    while (i2c_state != I2C_STATE_READY) {
+        if ((HAL_GetTick() - timeout_start) > BME280_I2C_TIMEOUT) {
+            return BME280_E_COMM_FAIL;
+        }
     }
-    else
-    {
+    
+    // Set state to busy for read operation
+    i2c_state = I2C_STATE_BUSY_RX;
+    i2c_result = HAL_OK;
+    
+    // Start interrupt-based memory read
+    if (HAL_I2C_Mem_Read_IT(&BME280_I2C, dev_addr, reg_addr, I2C_MEMADD_SIZE_8BIT,
+                            reg_data, len) != HAL_OK) {
+        i2c_state = I2C_STATE_READY;
         return BME280_E_COMM_FAIL;
     }
+    
+    // Wait for operation to complete
+    timeout_start = HAL_GetTick();
+    while (i2c_state == I2C_STATE_BUSY_RX) {
+        if ((HAL_GetTick() - timeout_start) > BME280_I2C_TIMEOUT) {
+            i2c_state = I2C_STATE_READY;
+            return BME280_E_COMM_FAIL;
+        }
+    }
+    
+    // Check result
+    if (i2c_state == I2C_STATE_ERROR || i2c_result != HAL_OK) {
+        i2c_state = I2C_STATE_READY;
+        return BME280_E_COMM_FAIL;
+    }
+    
+    i2c_state = I2C_STATE_READY;
+    return BME280_OK;
 }
 
 
 int8_t user_i2c_write(uint8_t reg_addr, const uint8_t *reg_data, uint32_t len, void *intf_ptr)
 {
     uint8_t dev_addr = *(uint8_t*)intf_ptr;
-
-    if (HAL_I2C_Mem_Write(&BME280_I2C, dev_addr, reg_addr, I2C_MEMADD_SIZE_8BIT,
-                          (uint8_t*)reg_data, len, BME280_I2C_TIMEOUT) == HAL_OK)
-    {
-        return BME280_OK;
+    uint32_t timeout_start = HAL_GetTick();
+    
+    // Wait for I2C to be ready
+    while (i2c_state != I2C_STATE_READY) {
+        if ((HAL_GetTick() - timeout_start) > BME280_I2C_TIMEOUT) {
+            return BME280_E_COMM_FAIL;
+        }
     }
-    else
-    {
+    
+    // Set state to busy for write operation
+    i2c_state = I2C_STATE_BUSY_TX;
+    i2c_result = HAL_OK;
+    
+    // Start interrupt-based memory write
+    if (HAL_I2C_Mem_Write_IT(&BME280_I2C, dev_addr, reg_addr, I2C_MEMADD_SIZE_8BIT,
+                             (uint8_t*)reg_data, len) != HAL_OK) {
+        i2c_state = I2C_STATE_READY;
         return BME280_E_COMM_FAIL;
     }
+    
+    // Wait for operation to complete
+    timeout_start = HAL_GetTick();
+    while (i2c_state == I2C_STATE_BUSY_TX) {
+        if ((HAL_GetTick() - timeout_start) > BME280_I2C_TIMEOUT) {
+            i2c_state = I2C_STATE_READY;
+            return BME280_E_COMM_FAIL;
+        }
+    }
+    
+    // Check result
+    if (i2c_state == I2C_STATE_ERROR || i2c_result != HAL_OK) {
+        i2c_state = I2C_STATE_READY;
+        return BME280_E_COMM_FAIL;
+    }
+    
+    i2c_state = I2C_STATE_READY;
+    return BME280_OK;
 }
 
 static void delay_us_internal(uint32_t us) {
@@ -145,5 +211,30 @@ int8_t bme280_read_sensor_data(struct bme280_data *comp_data, struct bme280_dev 
     rslt = bme280_get_sensor_data(BME280_ALL, comp_data, dev);
 
     return rslt;
+}
+
+// I2C interrupt callback functions
+void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c == &BME280_I2C) {
+        i2c_state = I2C_STATE_READY;
+        i2c_result = HAL_OK;
+    }
+}
+
+void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c == &BME280_I2C) {
+        i2c_state = I2C_STATE_READY;
+        i2c_result = HAL_OK;
+    }
+}
+
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c == &BME280_I2C) {
+        i2c_state = I2C_STATE_ERROR;
+        i2c_result = HAL_ERROR;
+    }
 }
 

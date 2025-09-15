@@ -17,7 +17,6 @@
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
-#include <esp32_at_stm32.h>
 #include "main.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -26,6 +25,7 @@
 #include "bme280_stm32.h"
 #include <stdio.h>
 #include <string.h>
+#include "esp32_at_stm32.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -136,6 +136,18 @@ int main(void)
 
 
   UART_Transmit(&huart2, (uint8_t*)WELCOME_MSG, strlen(WELCOME_MSG));
+
+  if (ESP_Init() != ESP8266_OK)
+  {
+    USER_LOG("Failed to initialize... Check Debug logs");
+    Error_Handler();
+  }
+
+  if (ESP_ConnectWiFi("Arun_Rawat", "arun@321", ip_buf, sizeof(ip_buf)) != ESP8266_OK)
+  {
+    USER_LOG("Failed to connect to wifi... Check Debug logs");
+    Error_Handler();
+  }
 
   int8_t rslt = bme280_init_sensor(&dev);
 
