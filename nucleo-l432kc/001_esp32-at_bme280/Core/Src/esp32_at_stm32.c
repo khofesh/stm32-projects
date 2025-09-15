@@ -2,7 +2,7 @@
  * https://controllerstech.com/stm32-esp8266-wifi-ip/
  */
 
-#include "esp8266_stm32.h"
+#include <esp32_at_stm32.h>
 
 ESP8266_ConnectionState ESP_ConnState = ESP8266_DISCONNECTED; // Default state
 

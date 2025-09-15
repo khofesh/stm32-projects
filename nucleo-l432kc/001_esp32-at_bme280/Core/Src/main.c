@@ -17,12 +17,12 @@
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
+#include <esp32_at_stm32.h>
 #include "main.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "ringbuffer.h"
-#include "esp8266_stm32.h"
 #include "bme280_stm32.h"
 #include <stdio.h>
 #include <string.h>

@@ -2,8 +2,8 @@
  * https://controllerstech.com/stm32-esp8266-wifi-ip/
  */
 
-#ifndef INC_ESP8266_STM32_H_
-#define INC_ESP8266_STM32_H_
+#ifndef INC_ESP32_AT_STM32_H_
+#define INC_ESP32_AT_STM32_H_
 
 #include "main.h"
 #include <string.h>
@@ -138,4 +138,4 @@ ESP8266_Status ESP_MQTT_ValidateClientId(const char *client_id);
 ESP8266_Status ESP_MQTT_Ping(void);
 ESP8266_Status ESP_MQTT_CheckConnection(void);
 
-#endif /* INC_ESP8266_STM32_H_ */
+#endif /* INC_ESP32_AT_STM32_H_ */
