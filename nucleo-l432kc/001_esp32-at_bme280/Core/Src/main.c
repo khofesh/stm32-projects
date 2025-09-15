@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "esp32_at_stm32.h"
+#include "bme280_mqtt_publisher.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -134,60 +135,24 @@ int main(void)
   RingBuffer_Init(&txBuf);
   RingBuffer_Init(&rxBuf);
 
-
-  UART_Transmit(&huart2, (uint8_t*)WELCOME_MSG, strlen(WELCOME_MSG));
-
-  if (ESP_Init() != ESP8266_OK)
-  {
-    USER_LOG("Failed to initialize... Check Debug logs");
-    Error_Handler();
-  }
-
-  if (ESP_ConnectWiFi("Arun_Rawat", "arun@321", ip_buf, sizeof(ip_buf)) != ESP8266_OK)
-  {
-    USER_LOG("Failed to connect to wifi... Check Debug logs");
-    Error_Handler();
-  }
-
+  // init bme280
   int8_t rslt = bme280_init_sensor(&dev);
 
-  if (rslt == BME280_OK)
-  {
-      printf("BME280 initialization successful!\r\n");
-  }
-  else
-  {
+  if (rslt != BME280_OK) {
       printf("BME280 initialization failed! Error code: %d\r\n", rslt);
-      while(1);
+      Error_Handler();
   }
+
+  printf("BME280 initialized!\r\n");
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  char line2[16];
-  char line1[16];
   while (1)
   {
-	  rslt = bme280_read_sensor_data(&comp_data, &dev);
-
-	  if (rslt == BME280_OK)
-	  {
-		  // First line - pressure in hPa (hectopascals)
-		  snprintf(line1, sizeof(line1), "P:%.1fhPa", comp_data.pressure / 100.0);
-		  printf("%s\r\n", line1);
-
-		  // Second line - temperature and humidity
-		  snprintf(line2, sizeof(line2), "T:%.1fC H:%.1f%%",
-		                 comp_data.temperature, comp_data.humidity);
-
-		  printf("%s\r\n", line2);
-	  }
-	  else
-	  {
-		  printf("Failed to read sensor data! Error code: %d\r\n", rslt);
-	  }
-
-	  HAL_Delay(1000);
+	  bme280_mqtt_task();
+	  HAL_Delay(100);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
