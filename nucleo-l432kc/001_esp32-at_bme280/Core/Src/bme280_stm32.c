@@ -8,14 +8,13 @@
 
 #include "bme280_stm32.h"
 
-#define BME280_I2C BME280_I2C
-#define BME280_TIM BME280_TIM
+// External handles from main.c
+extern I2C_HandleTypeDef hi2c1;
+extern TIM_HandleTypeDef htim6;
 
-// i2c handle
-extern I2C_HandleTypeDef BME280_I2C;
-
-// TIM6
-extern TIM_HandleTypeDef BME280_TIM;
+// Define aliases for BME280 usage
+#define BME280_I2C hi2c1
+#define BME280_TIM htim6
 
 // BME280 i2c address
 //The default for the SparkFun Environmental Combo board is 0x77 (jumper open).
