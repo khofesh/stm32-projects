@@ -117,9 +117,9 @@ int main(void)
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
 
-  HAL_Delay(1000);  // give ESP32 time to stabilize before STM32 starts communicating
-
   /* USER CODE BEGIN Init */
+
+  HAL_Delay(1000);  // give ESP32 time to stabilize before STM32 starts communicating
 
   /* USER CODE END Init */
 

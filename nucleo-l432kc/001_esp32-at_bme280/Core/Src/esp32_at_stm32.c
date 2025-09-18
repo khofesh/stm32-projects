@@ -4,6 +4,33 @@
 
 #include <esp32_at_stm32.h>
 
+// Helper to print safe preview of received data (printable ASCII only)
+static void log_rx_preview(const uint8_t *data, uint16_t len, const char *tag)
+{
+    char preview[128];
+    uint16_t n = len < (sizeof(preview) - 1) ? len : (sizeof(preview) - 1);
+    for (uint16_t i = 0; i < n; i++)
+    {
+        uint8_t c = data[i];
+        if (c >= 32 && c <= 126) // printable ASCII
+            preview[i] = (char)c;
+        else if (c == '\r' || c == '\n')
+            preview[i] = ' ';
+        else
+            preview[i] = '.';
+    }
+
+
+    preview[n] = '\0';
+    DEBUG_LOG("%s len=%u preview=\"%s\"", tag, len, preview);
+}
+
+
+// Helper to get current DMA head index (write position by DMA)
+static inline uint16_t esp_dma_get_head(void)
+{
+    return (uint16_t)(ESP_DMA_RX_BUFFER_SIZE - __HAL_DMA_GET_COUNTER(&hdma_usart1_rx));
+}
 ESP8266_ConnectionState ESP_ConnState = ESP8266_DISCONNECTED;
 
 // DMA buffers and variables
@@ -42,11 +69,24 @@ void ESP_DMA_StartReceive(void)
 
 uint16_t ESP_DMA_GetReceivedData(uint8_t *buffer, uint16_t max_len)
 {
-    uint16_t dma_head = ESP_DMA_RX_BUFFER_SIZE - __HAL_DMA_GET_COUNTER(&hdma_usart1_rx);
+    uint16_t dma_head = esp_dma_get_head();
     uint16_t data_len = 0;
 
     if (dma_head != esp_dma_rx_tail)
     {
+        // Calculate backlog in circular buffer
+        uint16_t backlog = (dma_head >= esp_dma_rx_tail)
+                           ? (dma_head - esp_dma_rx_tail)
+                           : (ESP_DMA_RX_BUFFER_SIZE - esp_dma_rx_tail + dma_head);
+
+        // If backlog is too large, fast-forward tail to keep only latest window
+        if (backlog > (uint16_t)(max_len * 2))
+        {
+            uint16_t new_tail = (dma_head + ESP_DMA_RX_BUFFER_SIZE - max_len) % ESP_DMA_RX_BUFFER_SIZE;
+            DEBUG_LOG("RX backlog %u too large, dropping stale data. Tail: %u -> %u", backlog, esp_dma_rx_tail, new_tail);
+            esp_dma_rx_tail = new_tail;
+        }
+
         if (dma_head > esp_dma_rx_tail)
         {
             data_len = dma_head - esp_dma_rx_tail;
@@ -54,11 +94,9 @@ uint16_t ESP_DMA_GetReceivedData(uint8_t *buffer, uint16_t max_len)
                 data_len = max_len;
             memcpy(buffer, &esp_dma_rx_buffer[esp_dma_rx_tail], data_len);
             
-            // Debug received data only when we actually get data
             if (data_len > 0)
             {
                 buffer[data_len] = '\0';
-                DEBUG_LOG("RX Data: %s (len=%d)", buffer, data_len);
             }
         }
         else
@@ -87,11 +125,9 @@ uint16_t ESP_DMA_GetReceivedData(uint8_t *buffer, uint16_t max_len)
                 data_len = max_len;
             }
             
-            // Debug received data only when we actually get data
             if (data_len > 0)
             {
                 buffer[data_len] = '\0';
-                DEBUG_LOG("RX Data (wrapped): %s (len=%d)", buffer, data_len);
             }
         }
 
@@ -106,11 +142,15 @@ ESP8266_Status ESP_DMA_SendCommand(const char *cmd, const char *ack, uint32_t ti
     uint32_t tickstart;
     int found = 0;
     uint16_t cmd_len = strlen(cmd);
-    uint8_t temp_buffer[1024];
+    uint8_t temp_buffer[256];
     uint16_t total_received = 0;
 
     memset(esp_rx_buffer, 0, sizeof(esp_rx_buffer));
     tickstart = HAL_GetTick();
+
+    // Sync RX tail to current head to ignore stale data from previous operations
+    esp_dma_rx_tail = esp_dma_get_head();
+    DEBUG_LOG("Sync RX tail to head at start: tail=%u", esp_dma_rx_tail);
 
     if (cmd_len > 0)
     {
@@ -183,14 +223,15 @@ ESP8266_Status ESP_DMA_SendCommand(const char *cmd, const char *ack, uint32_t ti
 
     if (found)
     {
-        DEBUG_LOG("DMA Full buffer: %s", esp_rx_buffer);
+        // Print a short preview of the response instead of full dump
+        log_rx_preview((const uint8_t*)esp_rx_buffer, total_received, "DMA Response");
         return ESP8266_OK;
     }
 
     if (total_received == 0)
         return ESP8266_NO_RESPONSE;
 
-    DEBUG_LOG("DMA Timeout or no ACK. Buffer: %s", esp_rx_buffer);
+    log_rx_preview((const uint8_t*)esp_rx_buffer, total_received, "DMA Timeout or no ACK");
     return ESP8266_TIMEOUT;
 }
 
@@ -482,13 +523,13 @@ ESP8266_Status ESP_MQTT_TestBrokerConnectivity(const char *broker, uint16_t port
     result = ESP_DMA_SendCommand(cmd, "CONNECT", 10000);
     
     if (result == ESP8266_OK) {
-        USER_LOG("✅ TCP connection to broker successful");
+        USER_LOG("TCP connection to broker successful");
         // Close the connection
         ESP_DMA_SendCommand("AT+CIPCLOSE\r\n", "OK", 3000);
         HAL_Delay(500);
         return ESP8266_OK;
     } else {
-        USER_LOG("❌ TCP connection to broker failed");
+        USER_LOG("TCP connection to broker failed");
         USER_LOG("Response: %s", esp_rx_buffer);
         return ESP8266_ERROR;
     }
@@ -523,9 +564,9 @@ ESP8266_Status ESP_MQTT_GetFirmwareInfo(void)
         snprintf(cmd, sizeof(cmd), "%s\r\n", mqtt_commands[i]);
         result = ESP_DMA_SendCommand(cmd, "OK", 2000);
         if (result == ESP8266_OK) {
-            USER_LOG("✅ %s supported", mqtt_commands[i]);
+            USER_LOG("%s supported", mqtt_commands[i]);
         } else {
-            USER_LOG("❌ %s not supported", mqtt_commands[i]);
+            USER_LOG("%s not supported", mqtt_commands[i]);
         }
     }
     
@@ -595,12 +636,12 @@ ESP8266_Status ESP_MQTT_Connect(void)
     snprintf(cmd, sizeof(cmd), "AT+CIPSTART=\"TCP\",\"%s\",%d\r\n", mqtt_config.broker, mqtt_config.port);
     result = ESP_DMA_SendCommand(cmd, "CONNECT", 10000);
     if (result == ESP8266_OK) {
-        USER_LOG("✅ Server is reachable");
+        USER_LOG("Server is reachable");
         // Close the test connection
         ESP_DMA_SendCommand("AT+CIPCLOSE\r\n", "OK", 3000);
         HAL_Delay(1000);
     } else {
-        USER_LOG("❌ Server NOT reachable - check network/firewall");
+        USER_LOG("Server NOT reachable - check network/firewall");
         mqtt_state = MQTT_ERROR;
         return ESP8266_ERROR;
     }
@@ -629,13 +670,13 @@ ESP8266_Status ESP_MQTT_Connect(void)
         }
     }
     if (result == ESP8266_OK) {
-        USER_LOG("✅ MQTT connected successfully!");
+        USER_LOG("MQTT connected successfully!");
         mqtt_state = MQTT_CONNECTED;
         return ESP8266_OK;
     }
     
     // connection failed
-    USER_LOG("❌ MQTT connection failed. Response: %s", esp_rx_buffer);
+    USER_LOG("MQTT connection failed. Response: %s", esp_rx_buffer);
     mqtt_state = MQTT_ERROR;
     return result;
 }
