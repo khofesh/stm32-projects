@@ -138,6 +138,10 @@ ESP8266_Status ESP_MQTT_ValidateClientId(const char *client_id);
 ESP8266_Status ESP_MQTT_Ping(void);
 ESP8266_Status ESP_MQTT_CheckConnection(void);
 
+// MQTT diagnostic functions
+ESP8266_Status ESP_MQTT_TestBrokerConnectivity(const char *broker, uint16_t port);
+ESP8266_Status ESP_MQTT_GetFirmwareInfo(void);
+
 void ESP_DMA_StartReceive(void);
 
 #endif /* INC_ESP32_AT_STM32_H_ */
