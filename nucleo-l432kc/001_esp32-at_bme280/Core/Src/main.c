@@ -39,6 +39,10 @@
 #define WELCOME_MSG "Welcome to the Nucleo management console\r\n"
 #define MAIN_MENU   "Select the option you are interested in:\r\n\t1. Toggle LD2 LED\r\n\t2. Read USER BUTTON status\r\n\t3. Clear screen and print this message "
 #define PROMPT "\r\n> "
+
+// WiFi configuration
+#define WIFI_SSID "___"
+#define WIFI_PASSWORD "___"
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -144,6 +148,21 @@ int main(void)
   }
 
   printf("BME280 initialized!\r\n");
+
+  // Initialize ESP32 and WiFi connection
+  ESP8266_Status esp_result = ESP_Init();
+  if (esp_result != ESP8266_OK) {
+      printf("ESP32 initialization failed! Error code: %d\r\n", esp_result);
+      printf("Continuing without WiFi/MQTT functionality\r\n");
+  } else {
+      esp_result = ESP_ConnectWiFi(WIFI_SSID, WIFI_PASSWORD, ip_buf, sizeof(ip_buf));
+      if (esp_result != ESP8266_OK) {
+          printf("WiFi connection failed! Error code: %d\r\n", esp_result);
+          printf("Continuing without WiFi/MQTT functionality\r\n");
+      } else {
+          printf("WiFi connected successfully, IP: %s\r\n", ip_buf);
+      }
+  }
 
   /* USER CODE END 2 */
 

@@ -4,7 +4,7 @@
 
 #include <esp32_at_stm32.h>
 
-ESP8266_ConnectionState ESP_ConnState = ESP8266_DISCONNECTED; // Default state
+ESP8266_ConnectionState ESP_ConnState = ESP8266_DISCONNECTED;
 
 // DMA buffers and variables
 uint8_t esp_dma_rx_buffer[ESP_DMA_RX_BUFFER_SIZE];
@@ -468,6 +468,70 @@ static ESP8266_Status ESP_GetIP(char *ip_buffer, uint16_t buffer_len)
     return ESP8266_ERROR;
 }
 
+// ========== MQTT DIAGNOSTIC FUNCTIONS ==========
+
+ESP8266_Status ESP_MQTT_TestBrokerConnectivity(const char *broker, uint16_t port)
+{
+    char cmd[128];
+    ESP8266_Status result;
+    
+    USER_LOG("Testing TCP connectivity to MQTT broker %s:%d", broker, port);
+    
+    // Test basic TCP connection to broker
+    snprintf(cmd, sizeof(cmd), "AT+CIPSTART=\"TCP\",\"%s\",%d\r\n", broker, port);
+    result = ESP_DMA_SendCommand(cmd, "CONNECT", 10000);
+    
+    if (result == ESP8266_OK) {
+        USER_LOG("✅ TCP connection to broker successful");
+        // Close the connection
+        ESP_DMA_SendCommand("AT+CIPCLOSE\r\n", "OK", 3000);
+        HAL_Delay(500);
+        return ESP8266_OK;
+    } else {
+        USER_LOG("❌ TCP connection to broker failed");
+        USER_LOG("Response: %s", esp_rx_buffer);
+        return ESP8266_ERROR;
+    }
+}
+
+ESP8266_Status ESP_MQTT_GetFirmwareInfo(void)
+{
+    ESP8266_Status result;
+    
+    USER_LOG("Getting ESP32 firmware information...");
+    
+    // Get AT version
+    result = ESP_DMA_SendCommand("AT+GMR\r\n", "OK", 3000);
+    if (result == ESP8266_OK) {
+        USER_LOG("Firmware info: %s", esp_rx_buffer);
+    }
+    
+    // Check available MQTT commands
+    USER_LOG("Checking MQTT command support...");
+    
+    const char* mqtt_commands[] = {
+        "AT+MQTTUSERCFG=?",
+        "AT+MQTTCONN=?", 
+        "AT+MQTTCLIENTID=?",
+        "AT+MQTTPUB=?",
+        "AT+MQTTSUB=?",
+        "AT+MQTTCLEAN=?"
+    };
+    
+    for (int i = 0; i < 6; i++) {
+        char cmd[32];
+        snprintf(cmd, sizeof(cmd), "%s\r\n", mqtt_commands[i]);
+        result = ESP_DMA_SendCommand(cmd, "OK", 2000);
+        if (result == ESP8266_OK) {
+            USER_LOG("✅ %s supported", mqtt_commands[i]);
+        } else {
+            USER_LOG("❌ %s not supported", mqtt_commands[i]);
+        }
+    }
+    
+    return ESP8266_OK;
+}
+
 // ========== MQTT IMPLEMENTATION ==========
 
 ESP8266_Status ESP_MQTT_Init(const char *broker, uint16_t port, const char *client_id)
@@ -526,65 +590,53 @@ ESP8266_Status ESP_MQTT_Connect(void)
         return ESP8266_ERROR;
     }
     
-    // Configure MQTT user configuration
-    snprintf(cmd, sizeof(cmd), "AT+MQTTUSERCFG=0,1,\"%s\",\"%s\",\"%s\",0,0,\"\"\r\n",
-             mqtt_config.client_id, 
-             mqtt_config.username[0] ? mqtt_config.username : "NULL",
-             mqtt_config.password[0] ? mqtt_config.password : "NULL");
-    
-    result = ESP_DMA_SendCommand(cmd, "OK", 5000);
-    if (result != ESP8266_OK)
-    {
-        USER_LOG("MQTT user config failed");
+    // Step 1: Test server connectivity first
+    USER_LOG("Testing server connectivity to %s:%d...", mqtt_config.broker, mqtt_config.port);
+    snprintf(cmd, sizeof(cmd), "AT+CIPSTART=\"TCP\",\"%s\",%d\r\n", mqtt_config.broker, mqtt_config.port);
+    result = ESP_DMA_SendCommand(cmd, "CONNECT", 10000);
+    if (result == ESP8266_OK) {
+        USER_LOG("✅ Server is reachable");
+        // Close the test connection
+        ESP_DMA_SendCommand("AT+CIPCLOSE\r\n", "OK", 3000);
+        HAL_Delay(1000);
+    } else {
+        USER_LOG("❌ Server NOT reachable - check network/firewall");
         mqtt_state = MQTT_ERROR;
-        return result;
+        return ESP8266_ERROR;
     }
     
-    // Configure MQTT connection parameters
-    snprintf(cmd, sizeof(cmd), "AT+MQTTCONN=0,\"%s\",%d,%d\r\n",
-             mqtt_config.broker, mqtt_config.port, mqtt_config.keepalive);
+    // Step 2: Skip MQTT user config and try direct connection
+    USER_LOG("Trying direct MQTT connection without user config...");
     
-    result = ESP_DMA_SendCommand(cmd, "OK", 10000);
-    if (result != ESP8266_OK)
-    {
-        // Check for specific MQTT connection errors in response
-        if (strstr(esp_rx_buffer, "MQTT: CONNECT REFUSED"))
-        {
-            if (strstr(esp_rx_buffer, "PROTOCOL"))
-                mqtt_state = MQTT_CONNECTION_REFUSED_PROTOCOL;
-            else if (strstr(esp_rx_buffer, "IDENTIFIER"))
-                mqtt_state = MQTT_CONNECTION_REFUSED_IDENTIFIER;
-            else if (strstr(esp_rx_buffer, "SERVER"))
-                mqtt_state = MQTT_CONNECTION_REFUSED_SERVER;
-            else if (strstr(esp_rx_buffer, "CREDENTIALS"))
-                mqtt_state = MQTT_CONNECTION_REFUSED_CREDENTIALS;
-            else if (strstr(esp_rx_buffer, "UNAUTHORIZED"))
-                mqtt_state = MQTT_CONNECTION_REFUSED_UNAUTHORIZED;
-            else
-                mqtt_state = MQTT_ERROR;
+    // Clean any existing MQTT state first
+    ESP_DMA_SendCommand("AT+MQTTCLEAN=0\r\n", "OK", 3000);
+    HAL_Delay(500);
+    
+    // Try direct connection
+    snprintf(cmd, sizeof(cmd), "AT+MQTTCONN=0,\"%s\",%d,0\r\n",
+             mqtt_config.broker, mqtt_config.port);
+    
+    result = ESP_DMA_SendCommand(cmd, "+MQTTCONNECTED", 15000);
+    if (result != ESP8266_OK) {
+        // try with minimal user config
+        USER_LOG("Direct connection failed, trying minimal config...");
+        snprintf(cmd, sizeof(cmd), "AT+MQTTUSERCFG=0,1,\"esp32\",\"\",\"\",0,0,\"\"\r\n");
+        result = ESP_DMA_SendCommand(cmd, "OK", 5000);
+        if (result == ESP8266_OK) {
+            snprintf(cmd, sizeof(cmd), "AT+MQTTCONN=0,\"%s\",%d,1\r\n",
+                     mqtt_config.broker, mqtt_config.port);
+            result = ESP_DMA_SendCommand(cmd, "+MQTTCONNECTED", 15000);
         }
-        else
-        {
-            mqtt_state = MQTT_ERROR;
-        }
-        USER_LOG("MQTT connection failed");
-        return result;
     }
-    
-    // Wait for CONNACK and verify connection
-    HAL_Delay(2000);
-    result = ESP_MQTT_CheckConnection();
-    if (result == ESP8266_OK)
-    {
+    if (result == ESP8266_OK) {
+        USER_LOG("✅ MQTT connected successfully!");
         mqtt_state = MQTT_CONNECTED;
-        USER_LOG("MQTT connected successfully");
-    }
-    else
-    {
-        mqtt_state = MQTT_ERROR;
-        USER_LOG("MQTT connection verification failed");
+        return ESP8266_OK;
     }
     
+    // connection failed
+    USER_LOG("❌ MQTT connection failed. Response: %s", esp_rx_buffer);
+    mqtt_state = MQTT_ERROR;
     return result;
 }
 
@@ -675,7 +727,8 @@ ESP8266_Status ESP_MQTT_Unsubscribe(const char *topic)
 
 ESP8266_Status ESP_MQTT_Publish(const char *topic, const char *message, MQTT_QoS qos, uint8_t retain)
 {
-    char cmd[512];
+    char cmd[1024];
+    char escaped_message[512];
     ESP8266_Status result;
     
     if (mqtt_state != MQTT_CONNECTED)
@@ -684,32 +737,41 @@ ESP8266_Status ESP_MQTT_Publish(const char *topic, const char *message, MQTT_QoS
         return ESP8266_NOT_CONNECTED;
     }
     
-    // Validate topic according to MQTT spec (no wildcards for publish)
-    if (ESP_MQTT_ValidateTopic(topic, 0) != ESP8266_OK)
-    {
-        DEBUG_LOG("Invalid topic format for publish: %s", topic);
-        return ESP8266_ERROR;
-    }
-    
-    // Validate QoS level
-    if (qos > MQTT_QOS_2)
-    {
-        DEBUG_LOG("Invalid QoS level: %d", qos);
-        return ESP8266_ERROR;
-    }
-    
-    // Validate message length
-    if (strlen(message) > MQTT_MAX_MESSAGE_LEN)
-    {
-        DEBUG_LOG("Message too long: %d bytes (max %d)", strlen(message), MQTT_MAX_MESSAGE_LEN);
-        return ESP8266_ERROR;
-    }
-    
     USER_LOG("Publishing to MQTT topic: %s", topic);
     DEBUG_LOG("Message: %s", message);
     
-    snprintf(cmd, sizeof(cmd), "AT+MQTTPUB=0,\"%s\",\"%s\",%d,%d\r\n", 
-             topic, message, qos, retain);
+    // Check message length and simplify if too long
+    if (strlen(message) > 100) {
+        USER_LOG("Message too long (%d chars), using simple format", strlen(message));
+        
+        // Parse temperature, humidity, pressure from JSON message
+        float temp = 0.0, hum = 0.0, press = 0.0;
+        sscanf(message, "{\"temperature\":%f,\"humidity\":%f,\"pressure\":%f", &temp, &hum, &press);
+        
+        snprintf(cmd, sizeof(cmd), "AT+MQTTPUB=0,\"%s\",\"T:%.1f H:%.1f P:%.1f\",%d,%d\r\n", 
+                 topic, temp, hum, press, qos, retain);
+    } else {
+        // Escape quotes in JSON message for AT command
+        int src_idx = 0, dst_idx = 0;
+        while (message[src_idx] != '\0' && dst_idx < sizeof(escaped_message) - 2)
+        {
+            if (message[src_idx] == '"')
+            {
+                escaped_message[dst_idx++] = '\\';
+                escaped_message[dst_idx++] = '"';
+            }
+            else
+            {
+                escaped_message[dst_idx++] = message[src_idx];
+            }
+            src_idx++;
+        }
+        escaped_message[dst_idx] = '\0';
+        
+        // Official ESP32 AT MQTT Publish Command with escaped message
+        snprintf(cmd, sizeof(cmd), "AT+MQTTPUB=0,\"%s\",\"%s\",%d,%d\r\n", 
+                 topic, escaped_message, qos, retain);
+    }
     
     result = ESP_DMA_SendCommand(cmd, "OK", 5000);
     if (result != ESP8266_OK)
@@ -799,8 +861,6 @@ MQTT_ConnectionState ESP_MQTT_GetState(void)
 {
     return mqtt_state;
 }
-
-// ========== MQTT SPECIFICATION COMPLIANCE FUNCTIONS ==========
 
 ESP8266_Status ESP_MQTT_ValidateTopic(const char *topic, uint8_t is_subscription)
 {
@@ -961,6 +1021,7 @@ ESP8266_Status ESP_MQTT_CheckConnection(void)
 {
     uint8_t temp_buffer[256];
     uint16_t received;
+    ESP8266_Status result;
     
     // Check for connection status messages
     received = ESP_DMA_GetReceivedData(temp_buffer, sizeof(temp_buffer));
@@ -982,7 +1043,20 @@ ESP8266_Status ESP_MQTT_CheckConnection(void)
         }
     }
     
-    // If no explicit status, try ping
+    // Check MQTT connection status using query command
+    result = ESP_DMA_SendCommand("AT+MQTTCONN?\r\n", "+MQTTCONN:", 3000);
+    if (result == ESP8266_OK) {
+        // Parse the response to check connection status
+        if (strstr(esp_rx_buffer, "+MQTTCONN:0,1")) {
+            DEBUG_LOG("MQTT connection verified as active");
+            return ESP8266_OK;
+        } else if (strstr(esp_rx_buffer, "+MQTTCONN:0,0")) {
+            DEBUG_LOG("MQTT connection verified as inactive");
+            return ESP8266_ERROR;
+        }
+    }
+    
+    // If query fails, try ping as fallback
     return ESP_MQTT_Ping();
 }
 
