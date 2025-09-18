@@ -117,6 +117,8 @@ int main(void)
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
 
+  HAL_Delay(1000);  // give ESP32 time to stabilize before STM32 starts communicating
+
   /* USER CODE BEGIN Init */
 
   /* USER CODE END Init */
@@ -138,6 +140,8 @@ int main(void)
   /* USER CODE BEGIN 2 */
   RingBuffer_Init(&txBuf);
   RingBuffer_Init(&rxBuf);
+
+  HAL_Delay(500);   // additional delay for I2C bus stabilization
 
   // init bme280
   int8_t rslt = bme280_init_sensor(&dev);
