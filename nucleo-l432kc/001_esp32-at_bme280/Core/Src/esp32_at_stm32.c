@@ -114,7 +114,7 @@ ESP8266_Status ESP_DMA_SendCommand(const char *cmd, const char *ack, uint32_t ti
 
     if (cmd_len > 0)
     {
-        DEBUG_LOG("DMA sending: %s", cmd);
+//        DEBUG_LOG("DMA sending: %s", cmd);
 
         // Copy command to DMA TX buffer
         if (cmd_len > ESP_DMA_TX_BUFFER_SIZE)
