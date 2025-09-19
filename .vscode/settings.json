@@ -1,0 +1,8 @@
+{
+  "files.associations": {
+    "*.yaml": "yaml",
+    "*.html": "html",
+    "*.css": "css",
+    "cstdint": "c"
+  }
+}

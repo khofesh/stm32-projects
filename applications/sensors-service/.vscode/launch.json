@@ -1,0 +1,41 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug service",
+      "type": "go",
+      "request": "launch",
+      "mode": "exec",
+      "program": "${workspaceFolder}/bin/service-debug",
+      "args": ["-config-path=./config.yaml", "-is-local=true"],
+      "env": {},
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "build debug service" // see tasks.json
+    },
+    {
+      "name": "Debug collect-data",
+      "type": "go",
+      "request": "launch",
+      "mode": "exec",
+      "program": "${workspaceFolder}/bin/collect-data-debug",
+      "args": ["-config-path=./config.yaml", "-is-local=true"],
+      "env": {},
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "build debug collect-data"
+    },
+    {
+      "name": "Debug sen55-reader",
+      "type": "go",
+      "request": "launch",
+      "mode": "exec",
+      "program": "${workspaceFolder}/bin/sen55-reader-debug",
+      "args": ["-config-path=./config.yaml", "-is-local=true"],
+      "env": {},
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "build debug sen55-reader"
+    }
+  ]
+}
