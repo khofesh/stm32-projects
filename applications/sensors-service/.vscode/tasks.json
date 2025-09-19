@@ -1,0 +1,53 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "go test (debug)",
+      "type": "shell",
+      "command": "go",
+      "args": ["test", "-c", "-o", "${fileDirname}/__debug_bin"],
+      "options": {
+        "cwd": "${fileDirname}"
+      }
+    },
+    {
+      "label": "build debug service",
+      "type": "shell",
+      "command": "make",
+      "args": ["build/debug/service"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
+      "label": "build debug collect-data",
+      "type": "shell",
+      "command": "make",
+      "args": ["build/debug/cli/collect-data"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
+      "label": "build debug sen55-reader",
+      "type": "shell",
+      "command": "make",
+      "args": ["build/debug/cli/sen55-reader"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+[Unit]
+Description=SEN55 Sensor Web Dashboard
+Documentation=https://github.com/khofesh/stm32-projects
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=sensor_user
+Group=sensor_user
+WorkingDirectory=/opt/sensors-service
+ExecStart=/opt/sensors-service/bin/linux/service
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sensors-web
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/sensors-service
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=512M
+
+# Environment
+Environment=PORT=8080
+Environment=CONFIG_FILE=/opt/sensors-service/config.json
+
+[Install]
+WantedBy=multi-user.target

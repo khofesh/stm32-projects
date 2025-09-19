@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEN55 Sensor Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌡️ SEN55 Sensor Dashboard</h1>
+            <div class="status-indicator">
+                <span id="connection-status" class="status-dot offline"></span>
+                <span id="last-update">Loading...</span>
+            </div>
+        </header>
+
+        <div class="controls">
+            <div class="time-selector">
+                <label for="time-range">Time Range:</label>
+                <select id="time-range">
+                    <option value="1">Last Hour</option>
+                    <option value="6">Last 6 Hours</option>
+                    <option value="24" selected>Last 24 Hours</option>
+                    <option value="72">Last 3 Days</option>
+                    <option value="168">Last Week</option>
+                </select>
+            </div>
+            <button id="refresh-btn" class="btn">🔄 Refresh</button>
+            <button id="auto-refresh-btn" class="btn toggle-btn" data-enabled="true">⏱️ Auto Refresh</button>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">🌡️</div>
+                <div class="stat-content">
+                    <div class="stat-value" id="current-temp">--</div>
+                    <div class="stat-label">Temperature (°C)</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">💧</div>
+                <div class="stat-content">
+                    <div class="stat-value" id="current-humidity">--</div>
+                    <div class="stat-label">Humidity (%)</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🌫️</div>
+                <div class="stat-content">
+                    <div class="stat-value" id="current-pm25">--</div>
+                    <div class="stat-label">PM2.5 (µg/m³)</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🏭</div>
+                <div class="stat-content">
+                    <div class="stat-value" id="current-voc">--</div>
+                    <div class="stat-label">VOC Index</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="charts-container">
+            <div class="chart-card">
+                <h3>🌡️ Temperature & Humidity</h3>
+                <canvas id="temp-humidity-chart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>🌫️ Particulate Matter (PM)</h3>
+                <canvas id="pm-chart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h3>🏭 Air Quality Indices</h3>
+                <canvas id="air-quality-chart"></canvas>
+            </div>
+        </div>
+
+        <div class="data-table-container">
+            <div class="table-header">
+                <h3>📊 Recent Measurements</h3>
+                <div class="table-controls">
+                    <button id="export-csv-btn" class="btn">📥 Export CSV</button>
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <table id="measurements-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>PM1.0</th>
+                            <th>PM2.5</th>
+                            <th>PM4.0</th>
+                            <th>PM10</th>
+                            <th>Temp (°C)</th>
+                            <th>Humidity (%)</th>
+                            <th>VOC Index</th>
+                            <th>NOx Index</th>
+                        </tr>
+                    </thead>
+                    <tbody id="measurements-tbody">
+                        <tr>
+                            <td colspan="9" class="loading">Loading data...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="stats-summary">
+            <h3>📈 Statistics Summary</h3>
+            <div class="summary-grid" id="stats-summary">
+                <div class="summary-item">
+                    <span class="summary-label">Total Records:</span>
+                    <span class="summary-value" id="total-records">--</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Avg PM2.5:</span>
+                    <span class="summary-value" id="avg-pm25">--</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Max PM2.5:</span>
+                    <span class="summary-value" id="max-pm25">--</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Avg Temperature:</span>
+                    <span class="summary-value" id="avg-temp">--</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Avg Humidity:</span>
+                    <span class="summary-value" id="avg-humidity">--</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>SEN55 Sensor Dashboard | Last updated: <span id="footer-timestamp">--</span></p>
+    </footer>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

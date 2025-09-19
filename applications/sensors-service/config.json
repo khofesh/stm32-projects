@@ -1,0 +1,11 @@
+{
+  "ble_address": "00:80:E1:26:06:2E",
+  "database": {
+    "host": "localhost",
+    "port": 5432,
+    "user": "sensor_user",
+    "password": "your_password",
+    "dbname": "sensors"
+  },
+  "collection_duration_seconds": 120
+}

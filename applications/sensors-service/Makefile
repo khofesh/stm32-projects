@@ -12,15 +12,20 @@ help:
 # DEVELOPMENT
 # ==================================================================================== #
 
-## run: run service
-.PHONY: run/service
-run/service:
+## run: run web service
+.PHONY: run/web
+run/web:
 	go run ./cmd/service 
 
-## run: run cli
-.PHONY: run/cli
-run/cli:
-	go run ./cmd/cli
+## run: run cli/collect-data
+.PHONY: run/cli/collect-data
+run/cli/collect-data:
+	go run ./cmd/cli/collect-data ./config.json
+
+## run: run cli/sen55-reader
+.PHONY: run/cli/sen55-reader
+run/cli/sen55-reader:
+	go run ./cmd/cli/sen55-reader 00:80:E1:26:06:2E
 
 # ==================================================================================== #
 # BUILD
@@ -40,6 +45,13 @@ build/cli/collect-data:
 	go build -ldflags="-s -w" -gcflags=all=-l -o=./bin/cli/collect-data ./cmd/cli/collect-data
 	GOOS=linux go build -ldflags="-s -w" -gcflags=all=-l -o=./bin/linux/cli/collect-data ./cmd/cli/collect-data
 
+## build/cli/sen55-reader: build the cmd/cli/sen55-reader application
+.PHONY: build/cli/sen55-reader
+build/cli/sen55-reader:
+	@echo 'Building cmd/cli/sen55-reader...'
+	go build -ldflags="-s -w" -gcflags=all=-l -o=./bin/cli/sen55-reader ./cmd/cli/sen55-reader
+	GOOS=linux go build -ldflags="-s -w" -gcflags=all=-l -o=./bin/linux/cli/sen55-reader ./cmd/cli/sen55-reader
+
 # ==================================================================================== #
 # BUILD DEBUG
 # ==================================================================================== #
@@ -48,13 +60,19 @@ build/cli/collect-data:
 .PHONY: build/debug/service
 build/debug/service:
 	@echo 'Building cmd/service...'
-	go build -gcflags=all="-N -l" -o=./bin/linux/service ./cmd/service
+	go build -gcflags=all="-N -l" -o=./bin/linux/service-debug ./cmd/service
 
 ## build/debug/cli/collect-data: build the cmd/cli/collect-data application
 .PHONY: build/debug/cli/collect-data
 build/debug/cli/collect-data:
 	@echo 'Building cmd/cli/collect-data...'
-	go build -gcflags=all="-N -l" -o=./bin/cli/collect-data ./cmd/cli/collect-data
+	go build -gcflags=all="-N -l" -o=./bin/cli/collect-data-debug ./cmd/cli/collect-data
+
+## build/debug/cli/sen55-reader: build the cmd/cli/sen55-reader application
+.PHONY: build/debug/cli/sen55-reader
+build/debug/cli/sen55-reader:
+	@echo 'Building cmd/cli/sen55-reader...'
+	go build -gcflags=all="-N -l" -o=./bin/cli/sen55-reader-debug ./cmd/cli/sen55-reader
 
 # ==================================================================================== #
 # QUALITY CONTROL

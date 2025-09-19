@@ -1,0 +1,31 @@
+[Unit]
+Description=SEN55 Sensor Data Collector
+After=network.target bluetooth.target
+Wants=network.target bluetooth.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/sensors-service
+ExecStart=/opt/sensors-service/collect-data /opt/sensors-service/config.json
+TimeoutStartSec=180
+TimeoutStopSec=30
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sensors-collect
+
+# Security settings
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log
+PrivateTmp=true
+
+# Environment
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+[Install]
+WantedBy=multi-user.target

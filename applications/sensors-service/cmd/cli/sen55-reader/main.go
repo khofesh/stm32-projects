@@ -1,13 +1,8 @@
 //go:build linux || darwin || windows
 // +build linux darwin windows
 
-// This example scans and then connects to a specific Bluetooth peripheral
-// and then display SEN55 data
-//
-// To run this on a desktop system:
-//
-//	go run ./examples/discover EE:74:7D:C9:2A:68
-//
+// how to:
+// go run main.go 00:80:E1:26:06:2E
 
 package main
 
@@ -130,7 +125,6 @@ func parseSEN55Data(data []byte) (*SEN55Data, error) {
 }
 
 func main() {
-	wait()
 
 	println("enabling")
 
@@ -281,7 +275,7 @@ func main() {
 		println(err)
 	}
 
-	done()
+	fmt.Println("done")
 }
 
 func must(action string, err error) {
@@ -300,13 +294,4 @@ func connectAddress() string {
 	address := os.Args[1]
 
 	return address
-}
-
-// wait on baremetal, proceed immediately on desktop OS.
-func wait() {
-}
-
-// done just prints a message and allows program to exit.
-func done() {
-	println("Done.")
 }
