@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="$PROJECT_DIR$/../.." vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../libraries/BME280_SensorAPI" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../libraries/DFRobot_AirQualitySensor" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../subs/MiniSTM32H7xx" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../subs/WeActStudio.STM32F4_64Pin_CoreBoard" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../subs/WeActStudio.STM32H5_64Pin_CoreBoard" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/../../subs/WeActStudio.STM32WB55CoreBoard" vcs="Git" />
+  </component>
+</project>
