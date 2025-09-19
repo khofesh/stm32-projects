@@ -12,9 +12,9 @@ help:
 # DEVELOPMENT
 # ==================================================================================== #
 
-## run: run service
-.PHONY: run/service
-run/service:
+## run: run web service
+.PHONY: run/web
+run/web:
 	go run ./cmd/service 
 
 ## run: run cli/collect-data
