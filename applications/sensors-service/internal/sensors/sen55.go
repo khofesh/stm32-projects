@@ -148,4 +148,3 @@ func convertFloat32PtrToFloat64Ptr(f *float32) *float64 {
 	val := float64(*f)
 	return &val
 }
-
