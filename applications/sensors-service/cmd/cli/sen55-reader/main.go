@@ -125,7 +125,6 @@ func parseSEN55Data(data []byte) (*SEN55Data, error) {
 }
 
 func main() {
-	wait()
 
 	println("enabling")
 
@@ -276,7 +275,7 @@ func main() {
 		println(err)
 	}
 
-	done()
+	fmt.Println("done")
 }
 
 func must(action string, err error) {
@@ -295,13 +294,4 @@ func connectAddress() string {
 	address := os.Args[1]
 
 	return address
-}
-
-// wait on baremetal, proceed immediately on desktop OS.
-func wait() {
-}
-
-// done just prints a message and allows program to exit.
-func done() {
-	println("Done.")
 }
