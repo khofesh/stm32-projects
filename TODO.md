@@ -44,9 +44,7 @@
   - https://www.raspberrypi-spy.co.uk/2013/10/analogue-sensors-on-the-raspberry-pi-using-an-mcp3008/
   - https://www.raspberrypi-spy.co.uk/2014/04/using-a-joystick-on-the-raspberry-pi-using-an-mcp3008/
 - [ ] log sensor data in sdcard
-- [ ] stm32 + esp32c6
+- [x] stm32 + esp32c6/esp32
 - [ ] keyestudio modules
 - [ ] MSC (Mass Storage Class)
 - [ ] using stm32f3disc, simulate the accelerometer and gyroscope in host computer. https://www.instructables.com/MPU-6050-Teapot-Project/
-
-
