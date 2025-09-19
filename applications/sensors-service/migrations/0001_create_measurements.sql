@@ -12,8 +12,8 @@ CREATE TABLE IF NOT EXISTS public.measurements (
     pm10        REAL,
     temperature REAL,
     humidity    REAL,
-    voc_index   SMALLINT,
-    nox_index   SMALLINT
+    voc_index   REAL,
+    nox_index   REAL
 );
 
 -- Convert to hypertable
@@ -28,7 +28,7 @@ ALTER TABLE public.measurements
     SET (timescaledb.compress,
          timescaledb.compress_segmentby = '');
 
--- Policy: compress data older than 7 days (adjust as needed)
+-- Policy: compress data older than 7 days
 -- Note: This will error if policy already exists, which is safe to ignore
 DO $$
 BEGIN

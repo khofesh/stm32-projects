@@ -15,8 +15,8 @@ type Measurement struct {
 	PM10        *float64  `json:"pm10"`
 	Temperature *float64  `json:"temperature"`
 	Humidity    *float64  `json:"humidity"`
-	VOCIndex    *int      `json:"voc_index"`
-	NOxIndex    *int      `json:"nox_index"`
+	VOCIndex    *float64  `json:"voc_index"`
+	NOxIndex    *float64  `json:"nox_index"`
 }
 
 // Stats represents statistical data for measurements

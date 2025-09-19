@@ -39,7 +39,7 @@ The initial migration creates a hypertable `public.measurements` with the follow
 - `pm10 REAL`
 - `temperature REAL`
 - `humidity REAL`
-- `voc_index SMALLINT`
-- `nox_index SMALLINT`
+- `voc_index REAL`
+- `nox_index REAL`
 
 It converts the table to a TimescaleDB hypertable and adds a descending time index. Compression is enabled with a policy to compress chunks older than 7 days.

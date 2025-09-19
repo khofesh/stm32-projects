@@ -127,8 +127,8 @@ func (s *SEN55Data) ToMeasurement() *data.Measurement {
 		PM10:        floatPtr(s.GetPM10()),
 		Temperature: convertFloat32PtrToFloat64Ptr(s.GetTemperature()),
 		Humidity:    convertFloat32PtrToFloat64Ptr(s.GetHumidity()),
-		VOCIndex:    convertFloat32PtrToIntPtr(s.GetVOCIndex()),
-		NOxIndex:    convertFloat32PtrToIntPtr(s.GetNOxIndex()),
+		VOCIndex:    convertFloat32PtrToFloat64Ptr(s.GetVOCIndex()),
+		NOxIndex:    convertFloat32PtrToFloat64Ptr(s.GetNOxIndex()),
 	}
 }
 
@@ -149,11 +149,3 @@ func convertFloat32PtrToFloat64Ptr(f *float32) *float64 {
 	return &val
 }
 
-// convertFloat32PtrToIntPtr converts *float32 to *int (for VOC/NOx indices)
-func convertFloat32PtrToIntPtr(f *float32) *int {
-	if f == nil {
-		return nil
-	}
-	val := int(*f)
-	return &val
-}
