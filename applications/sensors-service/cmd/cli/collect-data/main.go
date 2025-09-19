@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sensors-service/internal/config"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -20,18 +21,6 @@ const (
 	SEN55_SERVICE_UUID = "0000fe40-cc7a-482a-984a-7f2ed5b3e58f"
 	SEN55_CHAR_UUID    = "0000fe42-8e22-4541-9d4c-21edae82ed19"
 )
-
-type Config struct {
-	BLEAddress string `json:"ble_address"`
-	Database   struct {
-		Host     string `json:"host"`
-		Port     int    `json:"port"`
-		User     string `json:"user"`
-		Password string `json:"password"`
-		DBName   string `json:"dbname"`
-	} `json:"database"`
-	CollectionDuration time.Duration `json:"collection_duration_seconds"`
-}
 
 type SEN55Data struct {
 	PM1_0       uint16 // PM1.0 concentration (µg/m³ * 10)
@@ -101,7 +90,7 @@ func parseSEN55Data(data []byte) (*SEN55Data, error) {
 	return sensor, nil
 }
 
-func loadConfig() (*Config, error) {
+func loadConfig() (*config.Config, error) {
 	configFile := "config.json"
 	if len(os.Args) > 1 {
 		configFile = os.Args[1]
@@ -112,7 +101,7 @@ func loadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	var config Config
+	var config config.Config
 	if err := json.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
@@ -127,7 +116,7 @@ func loadConfig() (*Config, error) {
 	return &config, nil
 }
 
-func connectToDatabase(config *Config) (*sql.DB, error) {
+func connectToDatabase(config *config.Config) (*sql.DB, error) {
 	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
 		config.Database.Host, config.Database.Port, config.Database.User,
 		config.Database.Password, config.Database.DBName)

@@ -11,24 +11,11 @@ import (
 	"strconv"
 	"time"
 
+	"sensors-service/internal/config"
 	"sensors-service/internal/db"
 
 	_ "github.com/lib/pq"
 )
-
-type Config struct {
-	BLEAddress                 string `json:"ble_address"`
-	Database                   DatabaseConfig `json:"database"`
-	CollectionDurationSeconds int `json:"collection_duration_seconds"`
-}
-
-type DatabaseConfig struct {
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	User     string `json:"user"`
-	Password string `json:"password"`
-	DBName   string `json:"dbname"`
-}
 
 type Measurement struct {
 	Time        time.Time `json:"time"`
@@ -43,7 +30,7 @@ type Measurement struct {
 }
 
 type Server struct {
-	db       *sql.DB
+	db        *sql.DB
 	templates *template.Template
 }
 
@@ -98,14 +85,14 @@ func main() {
 	log.Fatal(http.ListenAndServe(port, nil))
 }
 
-func loadConfig(filename string) (*Config, error) {
+func loadConfig(filename string) (*config.ServiceConfig, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	var config Config
+	var config config.ServiceConfig
 	err = json.NewDecoder(file).Decode(&config)
 	return &config, err
 }
@@ -228,7 +215,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	`
 
 	type Stats struct {
-		TotalRecords    int      `json:"total_records"`
+		TotalRecords   int      `json:"total_records"`
 		AvgPM2_5       *float64 `json:"avg_pm2_5"`
 		MaxPM2_5       *float64 `json:"max_pm2_5"`
 		MinPM2_5       *float64 `json:"min_pm2_5"`
