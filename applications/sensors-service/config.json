@@ -7,5 +7,8 @@
     "password": "your_password",
     "dbname": "sensors"
   },
-  "collection_duration_seconds": 120
+  "collection_duration_seconds": 120,
+  "web_server": {
+    "port": 8080
+  }
 }

@@ -4,13 +4,13 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"sensors-service/internal/config"
+	"sensors-service/internal/data"
+	"sensors-service/internal/db"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -90,67 +90,42 @@ func parseSEN55Data(data []byte) (*SEN55Data, error) {
 	return sensor, nil
 }
 
-func loadConfig() (*config.Config, error) {
-	configFile := "config.json"
-	if len(os.Args) > 1 {
-		configFile = os.Args[1]
+// convertToMeasurement converts SEN55Data to data.Measurement
+func convertToMeasurement(sen55 *SEN55Data) *data.Measurement {
+	return &data.Measurement{
+		PM1_0:       floatPtr(sen55.GetPM1_0()),
+		PM2_5:       floatPtr(sen55.GetPM2_5()),
+		PM4_0:       floatPtr(sen55.GetPM4_0()),
+		PM10:        floatPtr(sen55.GetPM10()),
+		Temperature: convertFloat32PtrToFloat64Ptr(sen55.GetTemperature()),
+		Humidity:    convertFloat32PtrToFloat64Ptr(sen55.GetHumidity()),
+		VOCIndex:    convertInt16PtrToIntPtr(sen55.GetVOCIndex()),
+		NOxIndex:    convertInt16PtrToIntPtr(sen55.GetNOxIndex()),
 	}
-
-	data, err := os.ReadFile(configFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
-	}
-
-	var config config.Config
-	if err := json.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse config file: %w", err)
-	}
-
-	// Set default collection duration if not specified
-	if config.CollectionDuration == 0 {
-		config.CollectionDuration = 2 * time.Minute
-	} else {
-		config.CollectionDuration = config.CollectionDuration * time.Second
-	}
-
-	return &config, nil
 }
 
-func connectToDatabase(config *config.Config) (*sql.DB, error) {
-	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-		config.Database.Host, config.Database.Port, config.Database.User,
-		config.Database.Password, config.Database.DBName)
-
-	db, err := sql.Open("postgres", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
-	}
-
-	if err := db.Ping(); err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
-	}
-
-	return db, nil
+// floatPtr converts float32 to *float64
+func floatPtr(f float32) *float64 {
+	val := float64(f)
+	return &val
 }
 
-func insertSensorData(db *sql.DB, data *SEN55Data) error {
-	query := `
-		INSERT INTO public.measurements (time, pm1_0, pm2_5, pm4_0, pm10, temperature, humidity, voc_index, nox_index)
-		VALUES (NOW(), $1, $2, $3, $4, $5, $6, $7, $8)
-	`
+// convertFloat32PtrToFloat64Ptr converts *float32 to *float64
+func convertFloat32PtrToFloat64Ptr(f *float32) *float64 {
+	if f == nil {
+		return nil
+	}
+	val := float64(*f)
+	return &val
+}
 
-	_, err := db.Exec(query,
-		data.GetPM1_0(),
-		data.GetPM2_5(),
-		data.GetPM4_0(),
-		data.GetPM10(),
-		data.GetTemperature(),
-		data.GetHumidity(),
-		data.GetVOCIndex(),
-		data.GetNOxIndex(),
-	)
-
-	return err
+// convertInt16PtrToIntPtr converts *int16 to *int
+func convertInt16PtrToIntPtr(i *int16) *int {
+	if i == nil {
+		return nil
+	}
+	val := int(*i)
+	return &val
 }
 
 func main() {
@@ -158,7 +133,12 @@ func main() {
 	log.Println("Starting SEN55 data collector...")
 
 	// Load configuration
-	config, err := loadConfig()
+	configFile := "config.json"
+	if len(os.Args) > 1 {
+		configFile = os.Args[1]
+	}
+
+	config, err := config.LoadConfig(configFile)
 	if err != nil {
 		log.Fatalf("Configuration error: %v", err)
 	}
@@ -166,14 +146,24 @@ func main() {
 	log.Printf("Loaded config: BLE Address=%s, DB Host=%s:%d",
 		config.BLEAddress, config.Database.Host, config.Database.Port)
 
-	// Connect to database
-	db, err := connectToDatabase(config)
+	// Connect to database using shared db package
+	dbConfig := db.DBConfig{
+		Dsn:          config.GetDSN(),
+		MaxOpenConns: 25,
+		MaxIdleConns: 25,
+		MaxIdleTime:  15 * time.Minute,
+	}
+
+	database, err := db.OpenDB(dbConfig)
 	if err != nil {
 		log.Fatalf("Database connection error: %v", err)
 	}
-	defer db.Close()
+	defer database.Close()
 
 	log.Println("Connected to TimescaleDB successfully")
+
+	// Initialize data models
+	models := data.NewModels(database)
 
 	// Enable BLE adapter
 	adapter := bluetooth.DefaultAdapter
@@ -251,7 +241,8 @@ func main() {
 	}
 
 	// Set up data collection
-	log.Printf("Starting data collection for %v...", config.CollectionDuration)
+	collectionDuration := config.GetCollectionDuration()
+	log.Printf("Starting data collection for %v...", collectionDuration)
 	dataCount := 0
 	startTime := time.Now()
 
@@ -263,8 +254,9 @@ func main() {
 				return
 			}
 
-			// Insert data into database
-			if err := insertSensorData(db, sensorData); err != nil {
+			// Convert to measurement and insert into database
+			measurement := convertToMeasurement(sensorData)
+			if err := models.Measurements.Insert(measurement); err != nil {
 				log.Printf("Error inserting data: %v", err)
 				return
 			}
@@ -292,9 +284,9 @@ func main() {
 	}
 
 	// Run for the configured duration
-	for time.Since(startTime) < config.CollectionDuration {
+	for time.Since(startTime) < collectionDuration {
 		time.Sleep(1 * time.Second)
 	}
 
-	log.Printf("Data collection completed. Collected %d data points in %v", dataCount, config.CollectionDuration)
+	log.Printf("Data collection completed. Collected %d data points in %v", dataCount, collectionDuration)
 }

@@ -1,53 +1,36 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 
 	"sensors-service/internal/config"
+	"sensors-service/internal/data"
 	"sensors-service/internal/db"
 
 	_ "github.com/lib/pq"
 )
 
-type Measurement struct {
-	Time        time.Time `json:"time"`
-	PM1_0       *float64  `json:"pm1_0"`
-	PM2_5       *float64  `json:"pm2_5"`
-	PM4_0       *float64  `json:"pm4_0"`
-	PM10        *float64  `json:"pm10"`
-	Temperature *float64  `json:"temperature"`
-	Humidity    *float64  `json:"humidity"`
-	VOCIndex    *int      `json:"voc_index"`
-	NOxIndex    *int      `json:"nox_index"`
-}
-
 type Server struct {
-	db        *sql.DB
+	models    *data.Models
 	templates *template.Template
 }
 
 func main() {
 	// Load configuration
-	config, err := loadConfig("config.json")
+	config, err := config.LoadConfig("config.json")
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
 	// Connect to database
-	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-		config.Database.Host, config.Database.Port, config.Database.User,
-		config.Database.Password, config.Database.DBName)
-
 	dbConfig := db.DBConfig{
-		Dsn:          dsn,
+		Dsn:          config.GetDSN(),
 		MaxOpenConns: 25,
 		MaxIdleConns: 25,
 		MaxIdleTime:  15 * time.Minute,
@@ -61,6 +44,9 @@ func main() {
 
 	log.Println("Connected to database successfully")
 
+	// Initialize data models
+	models := data.NewModels(database)
+
 	// Parse templates
 	templates, err := template.ParseGlob("web/templates/*.html")
 	if err != nil {
@@ -69,7 +55,7 @@ func main() {
 
 	// Create server
 	server := &Server{
-		db:        database,
+		models:    models,
 		templates: templates,
 	}
 
@@ -80,21 +66,9 @@ func main() {
 	http.HandleFunc("/api/stats", server.handleStats)
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static/"))))
 
-	port := ":8080"
+	port := fmt.Sprintf(":%d", config.WebServer.Port)
 	log.Printf("Starting server on port %s", port)
 	log.Fatal(http.ListenAndServe(port, nil))
-}
-
-func loadConfig(filename string) (*config.ServiceConfig, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	var config config.ServiceConfig
-	err = json.NewDecoder(file).Decode(&config)
-	return &config, err
 }
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
@@ -132,32 +106,11 @@ func (s *Server) handleMeasurements(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Query database
-	query := `
-		SELECT time, pm1_0, pm2_5, pm4_0, pm10, temperature, humidity, voc_index, nox_index
-		FROM public.measurements
-		WHERE time >= NOW() - INTERVAL '%d hours'
-		ORDER BY time DESC
-		LIMIT $1 OFFSET $2
-	`
-
-	rows, err := s.db.Query(fmt.Sprintf(query, hours), limit, offset)
+	// Get measurements from repository
+	measurements, err := s.models.Measurements.GetMeasurements(hours, limit, offset)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
-	}
-	defer rows.Close()
-
-	var measurements []Measurement
-	for rows.Next() {
-		var m Measurement
-		err := rows.Scan(&m.Time, &m.PM1_0, &m.PM2_5, &m.PM4_0, &m.PM10,
-			&m.Temperature, &m.Humidity, &m.VOCIndex, &m.NOxIndex)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		measurements = append(measurements, m)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -165,18 +118,9 @@ func (s *Server) handleMeasurements(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLatest(w http.ResponseWriter, r *http.Request) {
-	query := `
-		SELECT time, pm1_0, pm2_5, pm4_0, pm10, temperature, humidity, voc_index, nox_index
-		FROM public.measurements
-		ORDER BY time DESC
-		LIMIT 1
-	`
-
-	var m Measurement
-	err := s.db.QueryRow(query).Scan(&m.Time, &m.PM1_0, &m.PM2_5, &m.PM4_0, &m.PM10,
-		&m.Temperature, &m.Humidity, &m.VOCIndex, &m.NOxIndex)
+	m, err := s.models.Measurements.GetLatest()
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if err == data.ErrRecordNotFound {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{"error": "No data available"})
 			return
@@ -198,40 +142,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	query := `
-		SELECT 
-			COUNT(*) as total_records,
-			AVG(pm2_5) as avg_pm2_5,
-			MAX(pm2_5) as max_pm2_5,
-			MIN(pm2_5) as min_pm2_5,
-			AVG(temperature) as avg_temperature,
-			MAX(temperature) as max_temperature,
-			MIN(temperature) as min_temperature,
-			AVG(humidity) as avg_humidity,
-			MAX(humidity) as max_humidity,
-			MIN(humidity) as min_humidity
-		FROM public.measurements
-		WHERE time >= NOW() - INTERVAL '%d hours'
-	`
-
-	type Stats struct {
-		TotalRecords   int      `json:"total_records"`
-		AvgPM2_5       *float64 `json:"avg_pm2_5"`
-		MaxPM2_5       *float64 `json:"max_pm2_5"`
-		MinPM2_5       *float64 `json:"min_pm2_5"`
-		AvgTemperature *float64 `json:"avg_temperature"`
-		MaxTemperature *float64 `json:"max_temperature"`
-		MinTemperature *float64 `json:"min_temperature"`
-		AvgHumidity    *float64 `json:"avg_humidity"`
-		MaxHumidity    *float64 `json:"max_humidity"`
-		MinHumidity    *float64 `json:"min_humidity"`
-	}
-
-	var stats Stats
-	err := s.db.QueryRow(fmt.Sprintf(query, hours)).Scan(
-		&stats.TotalRecords, &stats.AvgPM2_5, &stats.MaxPM2_5, &stats.MinPM2_5,
-		&stats.AvgTemperature, &stats.MaxTemperature, &stats.MinTemperature,
-		&stats.AvgHumidity, &stats.MaxHumidity, &stats.MinHumidity)
+	stats, err := s.models.Measurements.GetStats(hours)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
