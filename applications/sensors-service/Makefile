@@ -17,10 +17,15 @@ help:
 run/service:
 	go run ./cmd/service 
 
-## run: run cli
-.PHONY: run/cli
-run/cli:
-	go run ./cmd/cli
+## run: run cli/collect-data
+.PHONY: run/cli/collect-data
+run/cli/collect-data:
+	go run ./cmd/cli/collect-data
+
+## run: run cli/sen55-reader
+.PHONY: run/cli/sen55-reader
+run/cli/sen55-reader:
+	go run ./cmd/cli/sen55-reader 00:80:E1:26:06:2E
 
 # ==================================================================================== #
 # BUILD
