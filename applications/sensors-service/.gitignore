@@ -1,0 +1,32 @@
+# Binaries for the current OS and architecture
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go build artifacts
+*.test
+*.out
+
+# Dependency management
+# go.mod and go.sum should generally be committed, but some tools might generate other files
+# For example, if you're using a vendor directory
+vendor/
+
+# IDE and editor specific files
+.idea/
+.vscode/
+*.swp
+*.bak
+*~
+
+# Operating System specific files
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+tmp/
+
+# Binaries
+bin/
