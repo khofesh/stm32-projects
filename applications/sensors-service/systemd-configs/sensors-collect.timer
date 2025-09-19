@@ -1,0 +1,11 @@
+[Unit]
+Description=Run SEN55 Sensor Data Collector every 15 minutes
+Requires=sensors-collect.service
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

@@ -20,7 +20,7 @@ run/service:
 ## run: run cli/collect-data
 .PHONY: run/cli/collect-data
 run/cli/collect-data:
-	go run ./cmd/cli/collect-data
+	go run ./cmd/cli/collect-data ./config.json
 
 ## run: run cli/sen55-reader
 .PHONY: run/cli/sen55-reader
