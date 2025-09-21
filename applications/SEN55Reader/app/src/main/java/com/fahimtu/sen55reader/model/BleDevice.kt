@@ -3,10 +3,10 @@ package com.fahimtu.sen55reader.model
 import android.bluetooth.BluetoothDevice
 
 data class BleDevice(
-    val device: BluetoothDevice? = null, // Optional for Kable compatibility
+    val device: BluetoothDevice? = null,
     val rssi: Int,
     val name: String?,
-    val address: String = device?.address ?: "" // Explicit address for Kable
+    val address: String = device?.address ?: ""
 ) {
     val displayName: String get() = name ?: "Unknown Device"
 

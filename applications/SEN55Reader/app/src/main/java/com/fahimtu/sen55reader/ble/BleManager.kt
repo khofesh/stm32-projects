@@ -8,15 +8,16 @@ import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.ScanCallback
-import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.LocationManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.annotation.RequiresPermission
 import androidx.core.app.ActivityCompat
 import com.fahimtu.sen55reader.model.SEN55Data
 import com.fahimtu.sen55reader.model.BleDevice
@@ -246,13 +247,7 @@ class BleManager(private val context: Context) {
             .build()
 
         Log.i(TAG, "Scan settings: Low Latency mode, All matches callback")
-        Log.i(TAG, "Bluetooth adapter enabled: ${bluetoothAdapter.isEnabled}")
-        Log.i(TAG, "Bluetooth LE scanner available: ${bluetoothLeScanner != null}")
-        Log.i(TAG, "Bluetooth adapter name: ${bluetoothAdapter.name}")
-        Log.i(TAG, "Bluetooth adapter address: ${bluetoothAdapter.address}")
-        Log.i(TAG, "BLE supported: ${context.packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)}")
-        Log.i(TAG, "Bluetooth state: ${bluetoothAdapter.state}")
-        
+
         // Check if there are any bonded devices (paired devices)
         try {
             val bondedDevices = bluetoothAdapter.bondedDevices
@@ -387,7 +382,11 @@ class BleManager(private val context: Context) {
 
         if (characteristic != null && gatt != null && isConnected) {
             val command = if (turnOn) BleConstants.LED_ON_COMMAND else BleConstants.LED_OFF_COMMAND
-            val writeResult = gatt.writeCharacteristic(characteristic, command, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+            val writeResult = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                gatt.writeCharacteristic(characteristic, command, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+            } else {
+                TODO("VERSION.SDK_INT < TIRAMISU")
+            }
             if (writeResult == BluetoothGatt.GATT_SUCCESS) {
                 Log.d(TAG, "LED ${if (turnOn) "ON" else "OFF"} command sent")
             } else {
@@ -413,7 +412,11 @@ class BleManager(private val context: Context) {
             // Enable notifications on the remote device
             val descriptor = characteristic.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"))
             if (descriptor != null) {
-                val writeResult = gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                val writeResult = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                } else {
+                    TODO("VERSION.SDK_INT < TIRAMISU")
+                }
                 if (writeResult == BluetoothGatt.GATT_SUCCESS) {
                     Log.d(TAG, "Notifications enabled for SEN55 data")
                 } else {
@@ -431,6 +434,7 @@ class BleManager(private val context: Context) {
         }
     }
 
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     private fun cleanup() {
         sen55Characteristic = null
         ledCharacteristic = null
