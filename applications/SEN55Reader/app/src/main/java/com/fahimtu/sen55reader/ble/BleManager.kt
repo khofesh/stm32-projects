@@ -192,9 +192,9 @@ class BleManager(private val context: Context) {
 
         override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                Log.d(TAG, "Characteristic write successful")
+                Log.d(TAG, "Characteristic write successful for ${characteristic.uuid}")
             } else {
-                Log.e(TAG, "Characteristic write failed with status: $status")
+                Log.e(TAG, "Characteristic write failed with status: $status for ${characteristic.uuid}")
             }
         }
     }
@@ -383,9 +383,15 @@ class BleManager(private val context: Context) {
         if (characteristic != null && gatt != null && isConnected) {
             val command = if (turnOn) BleConstants.LED_ON_COMMAND else BleConstants.LED_OFF_COMMAND
             val writeResult = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                gatt.writeCharacteristic(characteristic, command, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                gatt.writeCharacteristic(characteristic, command, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
             } else {
-                TODO("VERSION.SDK_INT < TIRAMISU")
+                // For older Android versions, set the write type on the characteristic first
+                @Suppress("DEPRECATION")
+                characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                @Suppress("DEPRECATION")
+                characteristic.value = command
+                @Suppress("DEPRECATION")
+                gatt.writeCharacteristic(characteristic)
             }
             if (writeResult == BluetoothGatt.GATT_SUCCESS) {
                 Log.d(TAG, "LED ${if (turnOn) "ON" else "OFF"} command sent")
