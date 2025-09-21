@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.fahimtu.sen55reader"
-        minSdk = 24
+        minSdk = 31
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -40,7 +40,6 @@ android {
 }
 
 dependencies {
-
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -49,6 +48,32 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+
+    // ViewModel and LiveData for Compose
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    implementation("androidx.compose.runtime:runtime-livedata:1.7.5")
+
+    // Navigation for Compose
+    implementation("androidx.navigation:navigation-compose:2.8.4")
+
+    // Icons
+    implementation("androidx.compose.material:material-icons-extended:1.7.5")
+
+    // Permission handling
+    implementation("com.google.accompanist:accompanist-permissions:0.34.0")
+
+    // Alternative BLE library - RxAndroidBle
+    implementation("com.polidea.rxandroidble3:rxandroidble:1.18.1")
+
+    // RxJava dependencies for RxAndroidBle
+    implementation("io.reactivex.rxjava3:rxjava:3.1.8")
+    implementation("io.reactivex.rxjava3:rxandroid:3.0.2")
+
+    // Coroutines
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
+
+    implementation(libs.androidx.recyclerview)
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
