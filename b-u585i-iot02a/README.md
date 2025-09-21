@@ -9,6 +9,7 @@
 components: https://github.com/STMicroelectronics/STM32CubeU5/tree/main/Drivers/BSP/Components
 
 - EMW3080 -> https://github.com/STMicroelectronics/stm32-mx-wifi
+  - https://docs.mxchip.com/en/vgd1r7noe52abqh8/ohlmv1/xstr46.html
 - IIS2MDCTR -> https://github.com/STMicroelectronics/stm32-iis2mdc
 - ISM330DHCX -> https://github.com/STMicroelectronics/stm32-ism330dhcx/
 - LPS22HH -> https://github.com/STMicroelectronics/stm32-lps22hh/
