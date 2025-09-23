@@ -646,29 +646,23 @@ ESP8266_Status ESP_MQTT_Connect(void)
         return ESP8266_ERROR;
     }
     
-    // Step 2: Skip MQTT user config and try direct connection
-    USER_LOG("Trying direct MQTT connection without user config...");
+    // Step 2: Minimal MQTT config
     
     // Clean any existing MQTT state first
     ESP_DMA_SendCommand("AT+MQTTCLEAN=0\r\n", "OK", 3000);
     HAL_Delay(500);
     
-    // Try direct connection
-    snprintf(cmd, sizeof(cmd), "AT+MQTTCONN=0,\"%s\",%d,0\r\n",
-             mqtt_config.broker, mqtt_config.port);
-    
-    result = ESP_DMA_SendCommand(cmd, "+MQTTCONNECTED", 15000);
-    if (result != ESP8266_OK) {
-        // try with minimal user config
-        USER_LOG("Direct connection failed, trying minimal config...");
-        snprintf(cmd, sizeof(cmd), "AT+MQTTUSERCFG=0,1,\"esp32\",\"\",\"\",0,0,\"\"\r\n");
-        result = ESP_DMA_SendCommand(cmd, "OK", 5000);
-        if (result == ESP8266_OK) {
-            snprintf(cmd, sizeof(cmd), "AT+MQTTCONN=0,\"%s\",%d,1\r\n",
-                     mqtt_config.broker, mqtt_config.port);
-            result = ESP_DMA_SendCommand(cmd, "+MQTTCONNECTED", 15000);
-        }
+
+    // try with minimal user config
+    USER_LOG("Connect to MQTT with minimal config...");
+    snprintf(cmd, sizeof(cmd), "AT+MQTTUSERCFG=0,1,\"esp32\",\"\",\"\",0,0,\"\"\r\n");
+    result = ESP_DMA_SendCommand(cmd, "OK", 5000);
+    if (result == ESP8266_OK) {
+    	snprintf(cmd, sizeof(cmd), "AT+MQTTCONN=0,\"%s\",%d,1\r\n",
+    			mqtt_config.broker, mqtt_config.port);
+    	result = ESP_DMA_SendCommand(cmd, "+MQTTCONNECTED", 15000);
     }
+
     if (result == ESP8266_OK) {
         USER_LOG("MQTT connected successfully!");
         mqtt_state = MQTT_CONNECTED;
@@ -784,12 +778,12 @@ ESP8266_Status ESP_MQTT_Publish(const char *topic, const char *message, MQTT_QoS
     // Check message length and simplify if too long
     if (strlen(message) > 100) {
         USER_LOG("Message too long (%d chars), using simple format", strlen(message));
-        
+
         // Parse temperature, humidity, pressure from JSON message
         float temp = 0.0, hum = 0.0, press = 0.0;
         sscanf(message, "{\"temperature\":%f,\"humidity\":%f,\"pressure\":%f", &temp, &hum, &press);
-        
-        snprintf(cmd, sizeof(cmd), "AT+MQTTPUB=0,\"%s\",\"T:%.1f H:%.1f P:%.1f\",%d,%d\r\n", 
+
+        snprintf(cmd, sizeof(cmd), "AT+MQTTPUB=0,\"%s\",\"T:%.1f H:%.1f P:%.1f\",%d,%d\r\n",
                  topic, temp, hum, press, qos, retain);
     } else {
         // Escape quotes in JSON message for AT command
@@ -808,9 +802,9 @@ ESP8266_Status ESP_MQTT_Publish(const char *topic, const char *message, MQTT_QoS
             src_idx++;
         }
         escaped_message[dst_idx] = '\0';
-        
+
         // Official ESP32 AT MQTT Publish Command with escaped message
-        snprintf(cmd, sizeof(cmd), "AT+MQTTPUB=0,\"%s\",\"%s\",%d,%d\r\n", 
+        snprintf(cmd, sizeof(cmd), "AT+MQTTPUB=0,\"%s\",\"%s\",%d,%d\r\n",
                  topic, escaped_message, qos, retain);
     }
     
