@@ -3,6 +3,7 @@
     "*.yaml": "yaml",
     "*.html": "html",
     "*.css": "css",
-    "cstdint": "c"
+    "cstdint": "c",
+    "main.h": "c"
   }
 }

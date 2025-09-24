@@ -14,7 +14,7 @@
 #define ESP_UART       huart1   // UART connected to ESP32
 
 #define ENABLE_USER_LOG   1
-#define ENABLE_DEBUG_LOG  0
+#define ENABLE_DEBUG_LOG  1
 
 extern UART_HandleTypeDef ESP_UART;
 

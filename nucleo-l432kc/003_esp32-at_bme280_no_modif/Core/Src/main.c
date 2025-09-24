@@ -137,7 +137,7 @@ int main(void)
   RingBuffer_Init(&txBuf);
   RingBuffer_Init(&rxBuf);
 
-//  HAL_Delay(500);   // additional delay for I2C bus stabilization
+  HAL_Delay(500);   // additional delay for I2C bus stabilization
 
   // init bme280
   int8_t rslt = bme280_init_sensor(&dev);
@@ -448,6 +448,47 @@ uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
 	      return 0;
 	  }
 	  return 1;
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle)
+{
+  /* Set transmission flag: transfer complete*/
+  UartReady = SET;
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart == &huart2)
+  {
+    if (RingBuffer_GetDataLength(&txBuf) > 0)
+    {
+      RingBuffer_Read(&txBuf, &txData, 1);
+      HAL_UART_Transmit_IT(huart, &txData, 1);
+    }
+    else
+    {
+      UartTxComplete = SET; // Mark transmission as complete when buffer is empty
+    }
+  }
+}
+
+void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart == &huart1)
+  {
+    // UART4 DMA RX half complete - update tail pointer for circular buffer
+    // This helps in handling continuous reception
+  }
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  if (huart == &huart1)
+  {
+    // Handle UART4 errors - restart DMA reception if needed
+    HAL_UART_DMAStop(&huart1);
+
+  }
 }
 /* USER CODE END 4 */
 
