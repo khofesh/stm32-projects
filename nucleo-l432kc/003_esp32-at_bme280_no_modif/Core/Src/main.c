@@ -149,6 +149,15 @@ int main(void)
 
   printf("BME280 initialized!\r\n");
 
+  if (ESP_Init() != ESP32_OK){
+	  USER_LOG("Failed to initialize... Check Debug logs");
+	  Error_Handler();
+  }
+
+  if (ESP_ConnectWiFi(WIFI_SSID, WIFI_PASSWORD, ip_buf, sizeof(ip_buf)) != ESP32_OK){
+	  USER_LOG("Failed to connect to wifi... Check Debug logs");
+	  Error_Handler();
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
