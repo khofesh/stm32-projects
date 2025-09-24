@@ -21,7 +21,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
+#include "ringbuffer.h"
+#include "esp32c3_at_stm32.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,7 +33,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define WIFI_SSID "___"
+#define WIFI_PASSWORD "___"
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -48,7 +51,13 @@ DMA_HandleTypeDef hdma_usart1_rx;
 DMA_HandleTypeDef hdma_usart1_tx;
 
 /* USER CODE BEGIN PV */
+char readBuf[1];
+uint8_t txData;
+__IO ITStatus UartReady = SET;
+__IO ITStatus UartTxComplete = SET;
+RingBuffer txBuf, rxBuf;
 
+char ip_buf[16];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -82,6 +91,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+  HAL_Delay(1000);  // give ESP32C# time to stabilize before STM32 starts communicating
 
   /* USER CODE END Init */
 
@@ -97,6 +107,8 @@ int main(void)
   MX_DMA_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  RingBuffer_Init(&txBuf);
+  RingBuffer_Init(&rxBuf);
 
   /* USER CODE END 2 */
 
@@ -116,8 +128,20 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
+  if (ESP_Init() != ESP32C3_OK){
+	  USER_LOG("Failed to initialize... Check Debug logs");
+	  Error_Handler();
+  }
+
+  if (ESP_ConnectWiFi(WIFI_SSID, WIFI_PASSWORD, ip_buf, sizeof(ip_buf)) != ESP32C3_OK){
+	  USER_LOG("Failed to connect to wifi... Check Debug logs");
+	  Error_Handler();
+  }
+
   while (1)
   {
+
 
     /* USER CODE END WHILE */
 
