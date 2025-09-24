@@ -208,6 +208,32 @@ ESP32_Status ESP_SendToThingSpeak(const char *apiKey, float val1, float val2, fl
     return ESP32_ERROR;
 }
 
+ESP32_Status ESP_TestSimpleAPI(void)
+{
+    char cmd[256];
+    ESP32_Status result;
+
+    // Try httpbin.org
+    snprintf(cmd, sizeof(cmd), "AT+CIPSTART=\"SSL\",\"httpbin.org\",443\r\n");
+    result = ESP_SendCommand(cmd, "CONNECT", 10000);
+    if (result != ESP32_OK) return result;
+
+    char httpReq[] = "GET /json HTTP/1.0\r\nHost: httpbin.org\r\n\r\n";
+
+    snprintf(cmd, sizeof(cmd), "AT+CIPSEND=%d\r\n", (int)strlen(httpReq));
+    result = ESP_SendCommand(cmd, ">", 5000);
+    if (result != ESP32_OK) return result;
+
+    result = ESP_SendCommand(httpReq, "SEND OK", 8000);
+    if (result == ESP32_OK) {
+        USER_LOG("Simple API test SUCCESS!");
+        HAL_Delay(2000);
+        USER_LOG("Response: %s", esp_rx_buffer);
+    }
+
+    return result;
+}
+
 static ESP32_Status ESP_SendCommand(const char *cmd, const char *ack, uint32_t timeout)
 {
     uint8_t ch;
