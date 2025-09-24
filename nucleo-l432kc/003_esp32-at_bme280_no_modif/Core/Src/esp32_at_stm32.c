@@ -6,6 +6,7 @@
  */
 
 #include "esp32_at_stm32.h"
+#include "stdlib.h"
 
 
 ESP32_ConnectionState ESP_ConnState = ESP32_DISCONNECTED;   // Default state
@@ -144,6 +145,66 @@ static ESP32_Status ESP_GetIP(char *ip_buffer, uint16_t buffer_len)
 
     DEBUG_LOG("Failed to fetch IP after retries.");
     ESP_ConnState = ESP32_CONNECTED_NO_IP;  // still connected, but no IP
+    return ESP32_ERROR;
+}
+
+ESP32_Status ESP_SendToThingSpeak(const char *apiKey, float val1, float val2, float val3)
+{
+	char cmd[256];
+	ESP32_Status result;
+
+	USER_LOG("connecting to thingspeak...");
+
+	// start TCP connection - port 80
+	snprintf(cmd, sizeof(cmd), "AT+CIPSTART=\"TCP\",\"api.thingspeak.com\",80\r\n");
+	result = ESP_SendCommand(cmd, "CONNECT", 5000);
+
+	// build HTTP GET request
+	char httpReq[256];
+	snprintf(httpReq, sizeof(httpReq),
+			"GET /update?api_key=%s&field1=%.2f&field2=%.2f&field3=%.2f\r\n", apiKey, val1, val2, val3);
+
+	// tell esp how many bytes we will send
+	snprintf(cmd, sizeof(cmd), "AT+CIPSEND=%d\r\n", (int)strlen(httpReq));
+	result = ESP_SendCommand(cmd, ">", 2000);
+	if (result != ESP32_OK)
+	{
+		USER_LOG("CIPSEND failed.");
+		return result;
+	}
+
+	// send actual request and wait for ThingSpeak response
+	result = ESP_SendCommand(httpReq, "SEND OK", 5000);
+    if (result != ESP32_OK)
+    {
+        USER_LOG("Failed to send HTTP request.");
+        return result;
+    }
+
+    // parse ThingSpeak reply in esp_rx_buffer
+    char *ipd = strstr(esp_rx_buffer, "IPD,");
+    if (ipd)
+    {
+    	char *colon = strchr(ipd, ':');
+    	if (colon)
+    	{
+    		int entryId = atoi(colon + 1); // convert server reply to int
+    		USER_LOG("thingspeak entry ID: %d", entryId);
+
+    		if (entryId > 0)
+    		{
+    			USER_LOG("update successful");
+    			return ESP32_OK;
+    		}
+    		else
+    		{
+    			USER_LOG("ThingSpeak returned invalid entry ID.");
+    			return ESP32_OK;
+    		}
+    	}
+    }
+
+    USER_LOG("no valid thingspeak response found");
     return ESP32_ERROR;
 }
 
