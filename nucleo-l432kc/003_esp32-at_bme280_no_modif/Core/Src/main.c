@@ -92,6 +92,7 @@ int _write(int file, char *ptr, int len)
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 char ip_buf[16];
+
 struct bme280_dev dev;
 struct bme280_data comp_data;
 /* USER CODE END 0 */
@@ -142,20 +143,29 @@ int main(void)
   // init bme280
   int8_t rslt = bme280_init_sensor(&dev);
 
-  if (rslt != BME280_OK) {
+  if (rslt != BME280_OK)
+  {
       printf("BME280 initialization failed! Error code: %d\r\n", rslt);
       Error_Handler();
   }
 
   printf("BME280 initialized!\r\n");
 
-  if (ESP_Init() != ESP32_OK){
+  if (ESP_Init() != ESP32_OK)
+  {
 	  USER_LOG("Failed to initialize... Check Debug logs");
 	  Error_Handler();
   }
 
-  if (ESP_ConnectWiFi(WIFI_SSID, WIFI_PASSWORD, ip_buf, sizeof(ip_buf)) != ESP32_OK){
+  if (ESP_ConnectWiFi(WIFI_SSID, WIFI_PASSWORD, ip_buf, sizeof(ip_buf)) != ESP32_OK)
+  {
 	  USER_LOG("Failed to connect to wifi... Check Debug logs");
+	  Error_Handler();
+  }
+
+  if (ESP_TestSimpleAPI() != ESP32_OK)
+  {
+	  USER_LOG("Failed to get data from TheMealDB");
 	  Error_Handler();
   }
   /* USER CODE END 2 */
@@ -203,7 +213,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_MSI;
   RCC_OscInitStruct.PLL.PLLM = 1;
-  RCC_OscInitStruct.PLL.PLLN = 16;
+  RCC_OscInitStruct.PLL.PLLN = 40;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV7;
   RCC_OscInitStruct.PLL.PLLQ = RCC_PLLQ_DIV2;
   RCC_OscInitStruct.PLL.PLLR = RCC_PLLR_DIV2;
@@ -221,7 +231,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_4) != HAL_OK)
   {
     Error_Handler();
   }
@@ -247,7 +257,7 @@ static void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
-  hi2c1.Init.Timing = 0x00B07CB4;
+  hi2c1.Init.Timing = 0x10D19CE4;
   hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
@@ -485,7 +495,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
   if (huart == &huart1)
   {
-    // Handle UART4 errors - restart DMA reception if needed
+    // Handle UART1 errors - restart DMA reception if needed
     HAL_UART_DMAStop(&huart1);
 
   }
