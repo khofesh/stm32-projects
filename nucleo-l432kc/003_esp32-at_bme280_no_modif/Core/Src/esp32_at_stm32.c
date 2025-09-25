@@ -6,13 +6,18 @@
  */
 
 #include "esp32_at_stm32.h"
-#include "stdlib.h"
+#include <stdlib.h>
 
 
 ESP32_ConnectionState ESP_ConnState = ESP32_DISCONNECTED;   // Default state
+
 static char esp_rx_buffer[2048];
 static ESP32_Status ESP_GetIP(char *ip_buffer, uint16_t buffer_len);
 static ESP32_Status ESP_SendCommand(const char *cmd, const char *ack, uint32_t timeout);
+static ESP32_Status ESP_SendBinary(uint8_t *bin, size_t len, const char *ack, uint32_t timeout);
+static int MQTT_BuildConnect(uint8_t *packet, const char *clientID, const char *username,
+		const char *password, uint16_t keepalive);
+
 
 ESP32_Status ESP_Init(void)
 {
@@ -66,7 +71,7 @@ ESP32_Status ESP_ConnectWiFi(const char *ssid, const char *password, char *ip_bu
     if (result != ESP32_OK)
     {
     	USER_LOG("WiFi connection failed.");
-        ESP_ConnState = ESP32_NOT_CONNECTED;
+        ESP_ConnState = ESP32_DISCONNECTED;
         return result;
     }
 
@@ -87,65 +92,6 @@ ESP32_Status ESP_ConnectWiFi(const char *ssid, const char *password, char *ip_bu
 ESP32_ConnectionState ESP_GetConnectionState(void)
 {
     return ESP_ConnState;
-}
-
-static ESP32_Status ESP_GetIP(char *ip_buffer, uint16_t buffer_len)
-{
-	DEBUG_LOG("Fetching IP Address...");
-
-    for (int attempt = 1; attempt <= 3; attempt++)
-    {
-        ESP32_Status result = ESP_SendCommand("AT+CIFSR\r\n", "OK", 5000);
-        if (result != ESP32_OK)
-        {
-        	DEBUG_LOG("CIFSR failed on attempt %d", attempt);
-            continue;
-        }
-
-        char *search = esp_rx_buffer;
-        char *last_ip = NULL;
-
-        while ((search = strstr(search, "STAIP,")) != NULL)
-        {
-            char *ip_start = strstr(search, "STAIP,\"");
-            if (ip_start)
-            {
-                ip_start += 7;
-                char *end = strchr(ip_start, '"');
-                if (end && ((end - ip_start) < buffer_len))
-                {
-                    last_ip = ip_start;
-                }
-            }
-            search += 6;
-        }
-
-        if (last_ip)
-        {
-            char *end = strchr(last_ip, '"');
-            strncpy(ip_buffer, last_ip, end - last_ip);
-            ip_buffer[end - last_ip] = '\0';
-
-            if (strcmp(ip_buffer, "0.0.0.0") == 0)
-            {
-            	DEBUG_LOG("Attempt %d: IP not ready yet (0.0.0.0). Retrying...", attempt);
-                ESP_ConnState = ESP32_CONNECTED_NO_IP;
-                HAL_Delay(1000);
-                continue;
-            }
-
-            DEBUG_LOG("Got IP: %s", ip_buffer);
-            ESP_ConnState = ESP32_CONNECTED_IP;
-            return ESP32_OK;
-        }
-
-        DEBUG_LOG("Attempt %d: Failed to parse STAIP.", attempt);
-        HAL_Delay(500);
-    }
-
-    DEBUG_LOG("Failed to fetch IP after retries.");
-    ESP_ConnState = ESP32_CONNECTED_NO_IP;  // still connected, but no IP
-    return ESP32_ERROR;
 }
 
 ESP32_Status ESP_SendToThingSpeak(const char *apiKey, float val1, float val2, float val3)
@@ -234,6 +180,206 @@ ESP32_Status ESP_TestSimpleAPI(void)
     return result;
 }
 
+/***************** MQTT implementation ****************************/
+ESP32_Status ESP_MQTT_Connect(const char *broker, uint16_t port, const char *clientID,
+		const char *username, const char *password, uint16_t keepalive)
+{
+	char cmd[64];
+	uint8_t  packet[256];
+	int len = 0;
+	ESP32_Status res;
+
+	USER_LOG("connecting to MQTT broker %s:%d", broker, port);
+
+	// 1. TCP connect
+	snprintf(cmd, sizeof(cmd), "AT+CIPSTART=\"TCP\",\"%s\",%d\r\n", broker, port);
+	res = ESP_SendCommand(cmd, "CONNECT", 5000);
+	if (res != ESP32_OK)
+	{
+		DEBUG_LOG("CIPSTART failed with ESP error %d..", res);
+		return res;
+	}
+
+	// 2. build MQTT CONNECT packet
+	len = MQTT_BuildConnect(packet, clientID, username, password, keepalive);
+
+	// 3. tell ESP how many bytes to send
+	snprintf(cmd, sizeof(cmd), "AT+CIPSEND=%d\r\n", len);
+	res = ESP_SendCommand(cmd, ">", 2000);
+	if (res != ESP32_OK)
+	{
+		DEBUG_LOG("CIPSEND failed with ESP error %d..", res);
+		return res;
+	}
+
+	// 4. send packet and wait for CONNACK
+	res = ESP_SendBinary(packet, len, "\x20", 5000);
+	if (res != ESP32_OK)
+	{
+		DEBUG_LOG("send connect command failed with ESP error %d..", res);
+		USER_LOG("MQTT CONNACK failed.");
+		return res;
+	}
+
+	USER_LOG("MQTT CONNACK received, broker accepted connection.");
+	return ESP32_OK;
+}
+
+ESP32_Status ESP_MQTT_Publish(const char *topic, const char *message, uint8_t qos)
+{
+	char cmd[64];
+	uint8_t packet[256];
+	int len = 0;
+	ESP32_Status res;
+
+	USER_LOG("publishing to MQTT topic:message %s:%s", topic, message);
+
+	// 1. build MQTT publish packet
+
+	/* fixed header */
+	packet[len++] = 0x30 | (qos << 1); // PUBLISH, QoS
+	int remLenPos = len++;
+
+	/* variable header */
+	// topic
+	uint16_t tlen = strlen(topic);
+	packet[len++] = tlen >> 8; // store topic len
+	packet[len++] = tlen & 0xFF; // store topic len
+	memcpy(&packet[len], topic, tlen);
+	len += tlen;
+
+	/* payload */
+	// message
+	uint16_t mlen = strlen(message);
+	memcpy(&packet[len], message, mlen); // store message
+	len += mlen;
+
+	// remaining length
+	packet[remLenPos] = len - 2; // remove first 2 bytes of fixed header
+
+	// 2. tell ESP how many bytes to send
+	snprintf(cmd, sizeof(cmd), "AT+CIPSEND=%d\r\n", len);
+	res = ESP_SendCommand(cmd, ">", len);
+	if (res != ESP32_OK)
+	{
+		DEBUG_LOG("CIPSEND failed with ESP error %d..", res);
+		return res;
+	}
+
+	// 3. send packet and wait for ACK
+	res = ESP_SendBinary(packet, len, "SEND OK", 5000);
+	if (res != ESP32_OK)
+	{
+		DEBUG_LOG("publish command failed with ESP error %d..", res);
+		return res;
+	}
+
+	USER_LOG("successfully published to broker..");
+	return ESP32_OK;
+}
+
+ESP32_Status ESP_MQTT_Ping(void)
+{
+	char cmd[32];
+	ESP32_Status res;
+	uint8_t packet[2];
+
+	USER_LOG("sending PINGREQ");
+
+	// 1. build MQTT publish packet
+	/* fixed header - PINGREQ*/
+	packet[0] = 0xC0;
+	packet[1] = 0x00;
+
+	// 2. tell ESP how many bytes to send
+	snprintf(cmd, sizeof(cmd), "AT+CIPSEND=2\r\n");
+	res = ESP_SendCommand(cmd, ">", 2000);
+	if (res != ESP32_OK)
+	{
+		DEBUG_LOG("CIPSEND Failed with ESP ERROR %d..", res);
+		return res;
+	}
+
+	// 3. send packet and wait for PINGRESP (0xD0 0x00)
+	res = ESP_SendBinary(packet, 2, "\xD0", 2000);
+	if (res != ESP32_OK)
+	{
+		DEBUG_LOG("Publish Command Failed with ESP ERROR %d..", res);
+		return res;
+	}
+
+	USER_LOG("PINGREQ successful");
+	return ESP32_OK;
+}
+
+ESP32_Status ESP_CheckTCPConnection(void)
+{
+	return ESP_SendCommand("AT+CIPSTARTS\r\n", "STATUS:3", 2000);
+}
+
+/***************** static functions ****************************/
+
+static ESP32_Status ESP_GetIP(char *ip_buffer, uint16_t buffer_len)
+{
+	DEBUG_LOG("Fetching IP Address...");
+
+    for (int attempt = 1; attempt <= 3; attempt++)
+    {
+        ESP32_Status result = ESP_SendCommand("AT+CIFSR\r\n", "OK", 5000);
+        if (result != ESP32_OK)
+        {
+        	DEBUG_LOG("CIFSR failed on attempt %d", attempt);
+            continue;
+        }
+
+        char *search = esp_rx_buffer;
+        char *last_ip = NULL;
+
+        while ((search = strstr(search, "STAIP,")) != NULL)
+        {
+            char *ip_start = strstr(search, "STAIP,\"");
+            if (ip_start)
+            {
+                ip_start += 7;
+                char *end = strchr(ip_start, '"');
+                if (end && ((end - ip_start) < buffer_len))
+                {
+                    last_ip = ip_start;
+                }
+            }
+            search += 6;
+        }
+
+        if (last_ip)
+        {
+            char *end = strchr(last_ip, '"');
+            strncpy(ip_buffer, last_ip, end - last_ip);
+            ip_buffer[end - last_ip] = '\0';
+
+            if (strcmp(ip_buffer, "0.0.0.0") == 0)
+            {
+            	DEBUG_LOG("Attempt %d: IP not ready yet (0.0.0.0). Retrying...", attempt);
+                ESP_ConnState = ESP32_CONNECTED_NO_IP;
+                HAL_Delay(1000);
+                continue;
+            }
+
+            DEBUG_LOG("Got IP: %s", ip_buffer);
+            ESP_ConnState = ESP32_CONNECTED_IP;
+            return ESP32_OK;
+        }
+
+        DEBUG_LOG("Attempt %d: Failed to parse STAIP.", attempt);
+        HAL_Delay(500);
+    }
+
+    DEBUG_LOG("Failed to fetch IP after retries.");
+    ESP_ConnState = ESP32_CONNECTED_NO_IP;  // still connected, but no IP
+    return ESP32_ERROR;
+}
+
+
+
 static ESP32_Status ESP_SendCommand(const char *cmd, const char *ack, uint32_t timeout)
 {
     uint8_t ch;
@@ -288,4 +434,108 @@ static ESP32_Status ESP_SendCommand(const char *cmd, const char *ack, uint32_t t
 
     DEBUG_LOG("Timeout or no ACK. Buffer: %s", esp_rx_buffer);
     return ESP32_TIMEOUT;
+}
+
+static ESP32_Status ESP_SendBinary(uint8_t *bin, size_t len, const char *ack, uint32_t timeout)
+{
+	uint8_t ch;
+	uint16_t idx = 0;
+	uint32_t tickstart;
+	int found = 0;
+
+	memset(esp_rx_buffer, 0, sizeof(esp_rx_buffer));
+	tickstart = HAL_GetTick();
+
+	if (len > 0)
+	{
+		DEBUG_LOG("sending binary packet");
+		if (HAL_UART_Transmit(&ESP_UART, bin, len, HAL_MAX_DELAY) != HAL_OK)
+		{
+			return ESP32_ERROR;
+		}
+	}
+
+	while ((HAL_GetTick() - tickstart) < timeout && idx < sizeof(esp_rx_buffer) - 1)
+	{
+		if (HAL_UART_Receive(&ESP_UART, &ch, 1, 10) == HAL_OK)
+		{
+			esp_rx_buffer[idx++] = ch;
+			esp_rx_buffer[idx] = '\0';
+
+			// check for ACK
+			if (!found && strstr(esp_rx_buffer, ack))
+			{
+				DEBUG_LOG("Matched ACK: %s", ack);
+				found = 1; // mark as found but keep reading
+			}
+
+			// handle link not valid ERROR
+			if (strstr(esp_rx_buffer, "ERROR"))
+			{
+				DEBUG_LOG("ESP disconnected");
+				return ESP32_OK;
+			}
+		}
+	}
+
+	if (found)
+	{
+		DEBUG_LOG("full buffer: %s", esp_rx_buffer);
+		return ESP32_OK;
+	}
+
+	DEBUG_LOG("timeout or no ACK. buffer: %s", esp_rx_buffer);
+	return ESP32_TIMEOUT;
+}
+
+static int MQTT_BuildConnect(uint8_t *packet, const char *clientID, const char *username,
+		const char *password, uint16_t keepalive)
+{
+    int len = 0;
+    /* Fixed Header */
+    packet[len++] = 0x10;   // CONNECT packet type
+    int remLenPos = len++;  // Remaining length placeholder
+
+    /* Variable Header */
+    packet[len++] = 0x00; packet[len++] = 0x04;
+    packet[len++] = 'M'; packet[len++] = 'Q'; packet[len++] = 'T'; packet[len++] = 'T';
+    packet[len++] = 0x04;   // Protocol Level = 4 (MQTT 3.1.1)
+
+    uint8_t connectFlags = 0x02; // Clean Session
+    if (username) connectFlags |= 0x80;
+    if (password) connectFlags |= 0x40;
+    packet[len++] = connectFlags;
+
+    // Keep Alive
+    packet[len++] = (keepalive >> 8) & 0xFF;
+    packet[len++] = (keepalive & 0xFF);
+
+    /* Payload */
+    // Client ID
+    uint16_t cid_len = strlen(clientID);
+    packet[len++] = cid_len >> 8;
+    packet[len++] = cid_len & 0xFF;
+    memcpy(&packet[len], clientID, cid_len); len += cid_len;
+
+    // Username
+    if (username)
+    {
+        uint16_t ulen = strlen(username);
+        packet[len++] = ulen >> 8;
+        packet[len++] = ulen & 0xFF;
+        memcpy(&packet[len], username, ulen); len += ulen;
+    }
+
+    // Password
+    if (password)
+    {
+        uint16_t plen = strlen(password);
+        packet[len++] = plen >> 8;
+        packet[len++] = plen & 0xFF;
+        memcpy(&packet[len], password, plen); len += plen;
+    }
+
+    // Remaining length from Fixed Header
+    packet[remLenPos] = len - 2;  // remove first 2 bytes of Fixed Header
+    return len;
 }

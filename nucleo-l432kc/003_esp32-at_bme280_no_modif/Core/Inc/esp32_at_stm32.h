@@ -35,15 +35,15 @@ typedef enum {
     ESP32_ERROR,
     ESP32_TIMEOUT,
     ESP32_NO_RESPONSE,
-    ESP32_NOT_CONNECTED,
-    ESP32_CONNECTED_NO_IP,
-    ESP32_CONNECTED_IP
 } ESP32_Status;
 
 typedef enum {
     ESP32_DISCONNECTED = 0,
-    ESP32_CONNECTED
+    ESP32_CONNECTED_NO_IP,
+    ESP32_CONNECTED_IP
 } ESP32_ConnectionState;
+
+extern ESP32_ConnectionState ESP_ConnState;
 
 extern ESP32_ConnectionState ESP_ConnState;
 /* ------------------------------------- */
@@ -52,6 +52,13 @@ extern ESP32_ConnectionState ESP_ConnState;
 ESP32_Status ESP_Init(void);
 ESP32_Status ESP_ConnectWiFi(const char *ssid, const char *password, char *ip_buffer, uint16_t buffer_len);
 ESP32_ConnectionState ESP_GetConnectionState(void);
+ESP32_Status ESP_CheckTCPConnection(void);
+
 ESP32_Status ESP_SendToThingSpeak(const char *apiKey, float val1, float val2, float val3);
 // check whether esp32 supports https or not
 ESP32_Status ESP_TestSimpleAPI(void);
+
+// mqtt
+ESP32_Status ESP_MQTT_Connect(const char *broker, uint16_t port, const char *clientID, const char *username, const char *password, uint16_t keepalive);
+ESP32_Status ESP_MQTT_Publish(const char *topic, const char *message, uint8_t qos);
+ESP32_Status ESP_MQTT_Ping(void);
