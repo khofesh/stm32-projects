@@ -95,8 +95,6 @@ int _write(int file, char *ptr, int len)
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 char ip_buf[16];
-int count1 = 0;
-char count_arr[30];
 
 struct bme280_dev dev;
 struct bme280_data comp_data;
@@ -181,10 +179,35 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  snprintf(count_arr, sizeof(count_arr), "STM32: %d", count1++);
+	  // read BME280 sensor data
+	  uint32_t current_time = HAL_GetTick();
+	  int8_t bme_result = bme280_read_sensor_data(&comp_data, &dev);
+	  if (bme_result != BME280_OK)
+	  {
+		  USER_LOG("Failed to read BME280 data: %d", bme_result);
+		  Error_Handler();
+	  }
+
+
+	  char json_message[256];
+	  snprintf(json_message, sizeof(json_message),
+			  "{"
+			  "\"temp\":%.2f,"
+			  "\"hum\":%.2f,"
+			  "\"press\":%.2f,"
+			  "\"time\":%lu,"
+			  "\"unit_t\":\"C\","
+			  "\"unit_h\":\"%%\","
+			  "\"unit_p\":\"hPa\""
+			  "}",
+			  comp_data.temperature,
+			  comp_data.humidity,
+			  comp_data.pressure,
+			  current_time);
+
 	  if (ESP_CheckTCPConnection() == ESP32_OK)
 	  {
-		  ESP_MQTT_Publish(TOPIC_ALL_DATA, count_arr, 0);
+		  ESP_MQTT_Publish(TOPIC_ALL_DATA, json_message, 0);
 	  }
   }
   /* USER CODE END 3 */
