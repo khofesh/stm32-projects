@@ -118,7 +118,7 @@ int main(void)
 
   /* USER CODE BEGIN Init */
 
-//  HAL_Delay(1000);  // give ESP32 time to stabilize before STM32 starts communicating
+  HAL_Delay(2000);  // give ESP32 time to stabilize before STM32 starts communicating
 
   /* USER CODE END Init */
 
@@ -141,7 +141,7 @@ int main(void)
   RingBuffer_Init(&txBuf);
   RingBuffer_Init(&rxBuf);
 
-  HAL_Delay(500);   // additional delay for I2C bus stabilization
+//  HAL_Delay(500);   // additional delay for I2C bus stabilization
 
   // init bme280
   int8_t rslt = bme280_init_sensor(&dev);
@@ -180,7 +180,6 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 	  // read BME280 sensor data
-	  uint32_t current_time = HAL_GetTick();
 	  int8_t bme_result = bme280_read_sensor_data(&comp_data, &dev);
 	  if (bme_result != BME280_OK)
 	  {
@@ -195,15 +194,13 @@ int main(void)
 			  "\"temp\":%.2f,"
 			  "\"hum\":%.2f,"
 			  "\"press\":%.2f,"
-			  "\"time\":%lu,"
 			  "\"unit_t\":\"C\","
 			  "\"unit_h\":\"%%\","
 			  "\"unit_p\":\"hPa\""
 			  "}",
 			  comp_data.temperature,
 			  comp_data.humidity,
-			  comp_data.pressure,
-			  current_time);
+			  comp_data.pressure);
 
 	  if (ESP_CheckTCPConnection() == ESP32_OK)
 	  {
