@@ -13,7 +13,7 @@ ESP32_ConnectionState ESP_ConnState = ESP32_DISCONNECTED;   // Default state
 
 static char esp_rx_buffer[2048];
 static ESP32_Status ESP_GetIP(char *ip_buffer, uint16_t buffer_len);
-static ESP32_Status ESP_SendCommand(char *cmd, const char *ack, uint32_t timeout);
+static ESP32_Status ESP_SendCommand(const char *cmd, const char *ack, uint32_t timeout);
 static ESP32_Status ESP_SendBinary(uint8_t *bin, size_t len, const char *ack, uint32_t timeout);
 static int MQTT_BuildConnect(uint8_t *packet, const char *clientID, const char *username,
 		const char *password, uint16_t keepalive);
@@ -25,86 +25,83 @@ ESP32_Status ESP_Init(void)
 	USER_LOG("Initializing ESP32...");
 	HAL_Delay(1000);
 
-	//	res = ESP_SendCommand("AT+RST\r\n", "OK", 2000);
-	//    if (res != ESP32_OK){
-	//    	DEBUG_LOG("Failed to Reset ESP32...");
-	//    	return res;
-	//    }
-	//
-	//    USER_LOG("Waiting 5 Seconds for Reset to Complete...");
-	//    HAL_Delay(5000);  // wait for reset to complete
+//	res = ESP_SendCommand("AT+RST\r\n", "OK", 2000);
+//    if (res != ESP32_OK){
+//    	DEBUG_LOG("Failed to Reset ESP32...");
+//    	return res;
+//    }
+//
+//    USER_LOG("Waiting 5 Seconds for Reset to Complete...");
+//    HAL_Delay(5000);  // wait for reset to complete
 
-	res = ESP_SendCommand("AT\r\n", "OK", 2000);
-	if (res != ESP32_OK){
-		DEBUG_LOG("ESP32 Not Responding...");
-		return res;
-	}
+    res = ESP_SendCommand("AT\r\n", "OK", 2000);
+    if (res != ESP32_OK){
+    	DEBUG_LOG("ESP32 Not Responding...");
+    	return res;
+    }
 
-	res = ESP_SendCommand("ATE0\r\n", "OK", 2000); // Disable echo
-	if (res != ESP32_OK){
-		DEBUG_LOG("Disable echo Command Failed...");
-		return res;
-	}
-	USER_LOG("ESP32 Initialized Successfully...");
-	return ESP32_OK;
+    res = ESP_SendCommand("ATE0\r\n", "OK", 2000); // Disable echo
+    if (res != ESP32_OK){
+    	DEBUG_LOG("Disable echo Command Failed...");
+    	return res;
+    }
+    USER_LOG("ESP32 Initialized Successfully...");
+    return ESP32_OK;
 }
 
 ESP32_Status ESP_ConnectWiFi(const char *ssid, const char *password, char *ip_buffer, uint16_t buffer_len)
 {
-	USER_LOG("Setting in Station Mode");
-	// Set in Station Mode
-	char cmd[128];
-	snprintf(cmd, sizeof(cmd), "AT+CWMODE=1\r\n");
+    USER_LOG("Setting in Station Mode");
+    // Set in Station Mode
+    char cmd[128];
+    snprintf(cmd, sizeof(cmd), "AT+CWMODE=1\r\n");
 
-	ESP32_Status result = ESP_SendCommand(cmd, "OK", 2000); // wait up to 2s
-	if (result != ESP32_OK)
-	{
-		USER_LOG("Station Mode Failed.");
-		return result;
-	}
+    ESP32_Status result = ESP_SendCommand(cmd, "OK", 2000); // wait up to 2s
+    if (result != ESP32_OK)
+    {
+    	USER_LOG("Station Mode Failed.");
+        return result;
+    }
 
-	USER_LOG("Connecting to WiFi SSID: %s", ssid);
-	// Send join command
-	snprintf(cmd, sizeof(cmd), "AT+CWJAP=\"%s\",\"%s\"\r\n", ssid, password);
+    USER_LOG("Connecting to WiFi SSID: %s", ssid);
+    // Send join command
+    snprintf(cmd, sizeof(cmd), "AT+CWJAP=\"%s\",\"%s\"\r\n", ssid, password);
 
-	result = ESP_SendCommand(cmd, "WIFI CONNECTED", 10000); // wait up to 10s
-	if (result != ESP32_OK)
-	{
-		USER_LOG("WiFi connection failed.");
-		ESP_ConnState = ESP32_DISCONNECTED;
-		return result;
-	}
+    result = ESP_SendCommand(cmd, "WIFI CONNECTED", 10000); // wait up to 10s
+    if (result != ESP32_OK)
+    {
+    	USER_LOG("WiFi connection failed.");
+        ESP_ConnState = ESP32_DISCONNECTED;
+        return result;
+    }
 
-	USER_LOG("WiFi Connected. Waiting for IP...");
-	ESP_ConnState = ESP32_CONNECTED_NO_IP;
-	// Fetch IP with retries inside ESP_GetIP
-	result = ESP_GetIP(ip_buffer, buffer_len);
-	if (result != ESP32_OK)
-	{
-		USER_LOG("Failed to fetch IP. Status=%d", result);
-		return result;
-	}
+    USER_LOG("WiFi Connected. Waiting for IP...");
+    ESP_ConnState = ESP32_CONNECTED_NO_IP;
+    // Fetch IP with retries inside ESP_GetIP
+    result = ESP_GetIP(ip_buffer, buffer_len);
+    if (result != ESP32_OK)
+    {
+    	USER_LOG("Failed to fetch IP. Status=%d", result);
+        return result;
+    }
 
-	USER_LOG("WiFi + IP ready: %s", ip_buffer);
-	return ESP32_OK;
+    USER_LOG("WiFi + IP ready: %s", ip_buffer);
+    return ESP32_OK;
 }
-
 
 ESP32_ConnectionState ESP_GetConnectionState(void)
 {
-	return ESP_ConnState;
+    return ESP_ConnState;
 }
-
-/* ===================== ThingSpeak IMPLEMENTATION ===================== */
 
 ESP32_Status ESP_SendToThingSpeak(const char *apiKey, float val1, float val2, float val3)
 {
 	char cmd[256];
 	ESP32_Status result;
 
-	USER_LOG("Connecting to ThingSpeak...");
+	USER_LOG("connecting to thingspeak...");
 
-	// 1. Start TCP connection (HTTP port 80)
+	// start TCP connection - port 80
 	snprintf(cmd, sizeof(cmd), "AT+CIPSTART=\"TCP\",\"api.thingspeak.com\",80\r\n");
 	result = ESP_SendCommand(cmd, "CONNECT", 5000);
 	if (result != ESP32_OK)
@@ -113,12 +110,12 @@ ESP32_Status ESP_SendToThingSpeak(const char *apiKey, float val1, float val2, fl
 		return result;
 	}
 
-	// 2. Build HTTP GET request
+	// build HTTP GET request
 	char httpReq[256];
 	snprintf(httpReq, sizeof(httpReq),
 			"GET /update?api_key=%s&field1=%.2f&field2=%.2f&field3=%.2f\r\n", apiKey, val1, val2, val3);
 
-	// 3. Tell ESP how many bytes we will send
+	// tell esp how many bytes we will send
 	snprintf(cmd, sizeof(cmd), "AT+CIPSEND=%d\r\n", (int)strlen(httpReq));
 	result = ESP_SendCommand(cmd, ">", 2000);
 	if (result != ESP32_OK)
@@ -127,39 +124,39 @@ ESP32_Status ESP_SendToThingSpeak(const char *apiKey, float val1, float val2, fl
 		return result;
 	}
 
-	// 4. Send actual request and wait for ThingSpeak response
+	// send actual request and wait for ThingSpeak response
 	result = ESP_SendCommand(httpReq, "SEND OK", 5000);
-	if (result != ESP32_OK)
-	{
-		USER_LOG("Failed to send HTTP request.");
-		return result;
-	}
+    if (result != ESP32_OK)
+    {
+        USER_LOG("Failed to send HTTP request.");
+        return result;
+    }
 
-	// 5. Parse ThingSpeak reply in esp_rx_buffer
-	char *ipd = strstr(esp_rx_buffer, "+IPD,");
-	if (ipd)
-	{
-		char *colon = strchr(ipd, ':');
-		if (colon)
-		{
-			int entryId = atoi(colon + 1);  // convert server reply to int
-			USER_LOG("ThingSpeak entry ID: %d", entryId);
+    // parse ThingSpeak reply in esp_rx_buffer
+    char *ipd = strstr(esp_rx_buffer, "+IPD,");
+    if (ipd)
+    {
+    	char *colon = strchr(ipd, ':');
+    	if (colon)
+    	{
+    		int entryId = atoi(colon + 1); // convert server reply to int
+    		USER_LOG("thingspeak entry ID: %d", entryId);
 
-			if (entryId > 0)
-			{
-				USER_LOG("Update successful!");
-				return ESP32_OK;
-			}
-			else
-			{
-				USER_LOG("ThingSpeak returned invalid entry ID.");
-				return ESP32_ERROR;
-			}
-		}
-	}
+    		if (entryId > 0)
+    		{
+    			USER_LOG("update successful");
+    			return ESP32_OK;
+    		}
+    		else
+    		{
+    			USER_LOG("ThingSpeak returned invalid entry ID.");
+    			return ESP32_ERROR;
+    		}
+    	}
+    }
 
-	USER_LOG("No valid ThingSpeak response found.");
-	return ESP32_ERROR;
+    USER_LOG("no valid thingspeak response found");
+    return ESP32_ERROR;
 }
 
 ESP32_Status ESP_TestSimpleAPI(void)
@@ -189,8 +186,7 @@ ESP32_Status ESP_TestSimpleAPI(void)
 	return result;
 }
 
-/* ===================== MQTT IMPLEMENTATION ===================== */
-
+/***************** MQTT implementation ****************************/
 ESP32_Status ESP_MQTT_Connect(const char *broker, uint16_t port, const char *clientID,
 		const char *username, const char *password, uint16_t keepalive)
 {
@@ -328,7 +324,7 @@ ESP32_Status ESP_CheckTCPConnection(void)
 	return ESP_SendCommand("AT+CIPSTATUS\r\n", "STATUS:3", 2000);
 }
 
-/* ===================== Static Functions ===================== */
+/***************** static functions ****************************/
 
 static ESP32_Status ESP_GetIP(char *ip_buffer, uint16_t buffer_len)
 {
@@ -389,60 +385,60 @@ static ESP32_Status ESP_GetIP(char *ip_buffer, uint16_t buffer_len)
 	return ESP32_ERROR;
 }
 
-static ESP32_Status ESP_SendCommand(char *cmd, const char *ack, uint32_t timeout)
+static ESP32_Status ESP_SendCommand(const char *cmd, const char *ack, uint32_t timeout)
 {
-	uint8_t ch;
-	uint16_t idx = 0;
-	uint32_t tickstart;
-	int found = 0;
+    uint8_t ch;
+    uint16_t idx = 0;
+    uint32_t tickstart;
+    int found = 0;
 
-	memset(esp_rx_buffer, 0, sizeof(esp_rx_buffer));
-	tickstart = HAL_GetTick();
+    memset(esp_rx_buffer, 0, sizeof(esp_rx_buffer));
+    tickstart = HAL_GetTick();
 
-	if (strlen(cmd) > 0)
-	{
-		DEBUG_LOG("Sending: %s", cmd);
-		if (HAL_UART_Transmit(&ESP_UART, (uint8_t*)cmd, strlen(cmd), HAL_MAX_DELAY) != HAL_OK)
-			return ESP32_ERROR;
-	}
+    if (strlen(cmd) > 0)
+    {
+        DEBUG_LOG("Sending: %s", cmd);
+        if (HAL_UART_Transmit(&ESP_UART, (uint8_t*)cmd, strlen(cmd), HAL_MAX_DELAY) != HAL_OK)
+            return ESP32_ERROR;
+    }
 
-	while ((HAL_GetTick() - tickstart) < timeout && idx < sizeof(esp_rx_buffer) - 1)
-	{
-		if (HAL_UART_Receive(&ESP_UART, &ch, 1, 10) == HAL_OK)
-		{
-			esp_rx_buffer[idx++] = ch;
-			esp_rx_buffer[idx]   = '\0';
+    while ((HAL_GetTick() - tickstart) < timeout && idx < sizeof(esp_rx_buffer) - 1)
+    {
+        if (HAL_UART_Receive(&ESP_UART, &ch, 1, 10) == HAL_OK)
+        {
+            esp_rx_buffer[idx++] = ch;
+            esp_rx_buffer[idx]   = '\0';
 
-			// check for ACK
-			if (!found && strstr(esp_rx_buffer, ack))
-			{
-				DEBUG_LOG("Matched ACK: %s", ack);
-				found = 1; // mark as found but keep reading
-			}
+            // check for ACK
+            if (!found && strstr(esp_rx_buffer, ack))
+            {
+                DEBUG_LOG("Matched ACK: %s", ack);
+                found = 1; // mark as found but keep reading
+            }
 
-			// handle busy response
-			if (strstr(esp_rx_buffer, "busy"))
-			{
-				DEBUG_LOG("ESP is busy... delaying before retry");
-				HAL_Delay(1500);
-				idx = 0;
-				memset(esp_rx_buffer, 0, sizeof(esp_rx_buffer));
-				continue;
-			}
-		}
-	}
+            // handle busy response
+            if (strstr(esp_rx_buffer, "busy"))
+            {
+                DEBUG_LOG("ESP is busy... delaying before retry");
+                HAL_Delay(1500);
+                idx = 0;
+                memset(esp_rx_buffer, 0, sizeof(esp_rx_buffer));
+                continue;
+            }
+        }
+    }
 
-	if (found)
-	{
-		DEBUG_LOG("Full buffer: %s", esp_rx_buffer);
-		return ESP32_OK;
-	}
+    if (found)
+    {
+        DEBUG_LOG("Full buffer: %s", esp_rx_buffer);
+        return ESP32_OK;
+    }
 
-	if (idx == 0)
-		return ESP32_NO_RESPONSE;
+    if (idx == 0)
+        return ESP32_NO_RESPONSE;
 
-	DEBUG_LOG("Timeout or no ACK. Buffer: %s", esp_rx_buffer);
-	return ESP32_TIMEOUT;
+    DEBUG_LOG("Timeout or no ACK. Buffer: %s", esp_rx_buffer);
+    return ESP32_TIMEOUT;
 }
 
 static ESP32_Status ESP_SendBinary(uint8_t *bin, size_t len, const char *ack, uint32_t timeout)
@@ -457,7 +453,7 @@ static ESP32_Status ESP_SendBinary(uint8_t *bin, size_t len, const char *ack, ui
 
 	if (len > 0)
 	{
-		DEBUG_LOG("Sending Binary Packet");
+		DEBUG_LOG("sending binary packet");
 		if (HAL_UART_Transmit(&ESP_UART, bin, len, HAL_MAX_DELAY) != HAL_OK)
 		{
 			return ESP32_ERROR;
@@ -478,10 +474,10 @@ static ESP32_Status ESP_SendBinary(uint8_t *bin, size_t len, const char *ack, ui
 				found = 1; // mark as found but keep reading
 			}
 
-			// handle Link Not valid ERROR
+			// handle link not valid ERROR
 			if (strstr(esp_rx_buffer, "ERROR"))
 			{
-				DEBUG_LOG("ESP Disconnected");
+				DEBUG_LOG("ESP disconnected");
 				return ESP32_ERROR;
 			}
 		}
@@ -489,11 +485,11 @@ static ESP32_Status ESP_SendBinary(uint8_t *bin, size_t len, const char *ack, ui
 
 	if (found)
 	{
-		DEBUG_LOG("Full buffer: %s", esp_rx_buffer);
+		DEBUG_LOG("full buffer: %s", esp_rx_buffer);
 		return ESP32_OK;
 	}
 
-	DEBUG_LOG("Timeout or no ACK. Buffer: %s", esp_rx_buffer);
+	DEBUG_LOG("timeout or no ACK. buffer: %s", esp_rx_buffer);
 	return ESP32_TIMEOUT;
 }
 
