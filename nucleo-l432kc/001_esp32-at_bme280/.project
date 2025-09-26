@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projectDescription>
-	<name>001_esp32-at_bme280</name>
+	<name>001_esp32-at_bme280_dma</name>
 	<comment></comment>
 	<projects>
 	</projects>
