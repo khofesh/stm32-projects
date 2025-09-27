@@ -1,0 +1,2 @@
+- https://archive.is/Mk9wj
+- https://web.archive.org/web/20250827015819/https://wiki.keyestudio.com/KS0487_Keyestudio_37_in_1_Sensor_Kit_upgrade_v3.0
