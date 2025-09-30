@@ -18,6 +18,19 @@ static ESP32_Status ESP_SendBinary(uint8_t *bin, size_t len, const char *ack, ui
 static int MQTT_BuildConnect(uint8_t *packet, const char *clientID, const char *username,
 		const char *password, uint16_t keepalive);
 
+ESP32_Status ESP_DisableEcho(void)
+{
+	ESP32_Status res;
+	USER_LOG("disabling Echo...");
+
+	res = ESP_SendCommand("ATE0\r\n", "OK", 4000);
+	if (res != ESP32_OK) {
+		DEBUG_LOG("Failed disabling echo.");
+		return res;
+	}
+
+	return ESP32_OK;
+}
 
 ESP32_Status ESP_Init(void)
 {
@@ -40,11 +53,11 @@ ESP32_Status ESP_Init(void)
     	return res;
     }
 
-    res = ESP_SendCommand("ATE0\r\n", "OK", 2000); // Disable echo
-    if (res != ESP32_OK){
-    	DEBUG_LOG("Disable echo Command Failed...");
-    	return res;
-    }
+//    res = ESP_SendCommand("ATE0\r\n", "OK", 2000); // Disable echo
+//    if (res != ESP32_OK){
+//    	DEBUG_LOG("Disable echo Command Failed...");
+//    	return res;
+//    }
     USER_LOG("ESP32 Initialized Successfully...");
     return ESP32_OK;
 }

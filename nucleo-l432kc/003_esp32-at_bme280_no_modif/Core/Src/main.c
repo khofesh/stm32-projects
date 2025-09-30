@@ -154,6 +154,12 @@ int main(void)
 
   printf("BME280 initialized!\r\n");
 
+  if (ESP_DisableEcho() != ESP32_OK)
+  {
+	  USER_LOG("Failed to disable echo... Check Debug logs");
+	  Error_Handler();
+  }
+
   if (ESP_Init() != ESP32_OK)
   {
 	  USER_LOG("Failed to initialize... Check Debug logs");
