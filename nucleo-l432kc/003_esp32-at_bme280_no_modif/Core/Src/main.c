@@ -118,7 +118,7 @@ int main(void)
 
   /* USER CODE BEGIN Init */
 
-  HAL_Delay(2000);  // give ESP32 time to stabilize before STM32 starts communicating
+  HAL_Delay(20000);  // give ESP32 time to stabilize before STM32 starts communicating
 
   /* USER CODE END Init */
 
@@ -141,8 +141,6 @@ int main(void)
   RingBuffer_Init(&txBuf);
   RingBuffer_Init(&rxBuf);
 
-//  HAL_Delay(500);   // additional delay for I2C bus stabilization
-
   // init bme280
   int8_t rslt = bme280_init_sensor(&dev);
 
@@ -154,10 +152,17 @@ int main(void)
 
   printf("BME280 initialized!\r\n");
 
+  HAL_Delay(10000);
+
   if (ESP_DisableEcho() != ESP32_OK)
   {
-	  USER_LOG("Failed to disable echo... Check Debug logs");
-	  Error_Handler();
+	  USER_LOG("Failed to disable echo... retrying after 10 seconds");
+	  HAL_Delay(10000);
+	  if (ESP_DisableEcho() != ESP32_OK)
+	  {
+		  USER_LOG("Failed to disable echo... Check Debug logs");
+		  Error_Handler();
+	  }
   }
 
   if (ESP_Init() != ESP32_OK)
@@ -166,11 +171,13 @@ int main(void)
 	  Error_Handler();
   }
 
+
   if (ESP_ConnectWiFi(WIFI_SSID, WIFI_PASSWORD, ip_buf, sizeof(ip_buf)) != ESP32_OK)
   {
 	  USER_LOG("Failed to connect to wifi... Check Debug logs");
 	  Error_Handler();
   }
+
 
   if (ESP_MQTT_Connect(MQTT_BROKER, 1883, MQTT_CLIENTID, NULL, NULL, 60) != ESP32_OK)
   {

@@ -54,6 +54,7 @@ ESP32_Status ESP_ConnectWiFi(const char *ssid, const char *password, char *ip_bu
 ESP32_ConnectionState ESP_GetConnectionState(void);
 ESP32_Status ESP_CheckTCPConnection(void);
 ESP32_Status ESP_DisableEcho(void);
+ESP32_Status ESP_CheckAPConnection(void);
 
 ESP32_Status ESP_SendToThingSpeak(const char *apiKey, float val1, float val2, float val3);
 // check whether esp32 supports https or not

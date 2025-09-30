@@ -20,16 +20,30 @@ static int MQTT_BuildConnect(uint8_t *packet, const char *clientID, const char *
 
 ESP32_Status ESP_DisableEcho(void)
 {
-	ESP32_Status res;
-	USER_LOG("disabling Echo...");
+	return ESP_SendCommand("ATE0\r\n", "OK", 4000);
+}
 
-	res = ESP_SendCommand("ATE0\r\n", "OK", 4000);
-	if (res != ESP32_OK) {
-		DEBUG_LOG("Failed disabling echo.");
-		return res;
+ESP32_Status ESP_CheckAPConnection(void)
+{
+	ESP32_Status res = ESP_SendCommand("AT+CIPSTATUS\r\n", "OK", 2000);
+
+	if (res == ESP32_OK)
+	{
+		/*
+		 * https://esp32.com/viewtopic.php?t=6799
+		 * 	‣ 2: The ESP32 Station is connected to an AP and its IP is obtained.
+			‣ 3: The ESP32 Station has created a TCP or UDP transmission.
+			‣ 4: The TCP or UDP transmission of ESP32 Station is disconnected.
+			‣ 5: The ESP32 Station does NOT connect to an AP.
+		 */
+		// if we get STATUS:5, we're not connected to any AP
+		if (strstr(esp_rx_buffer, "STATUS:5") == NULL)
+		{
+			return ESP32_OK;
+		}
+		return ESP32_ERROR;
 	}
-
-	return ESP32_OK;
+	return ESP32_ERROR;
 }
 
 ESP32_Status ESP_Init(void)
