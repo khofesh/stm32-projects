@@ -34,3 +34,7 @@ Voltage
            Falling Edge          Rising Edge
          (Knock detected)      (Back to normal)
 ```
+
+drop the sensor, it will turn on the LED on the board.
+
+the LED will be turned off after 5 seconds
