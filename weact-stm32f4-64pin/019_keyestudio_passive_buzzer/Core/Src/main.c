@@ -55,7 +55,8 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
-
+void set_buzzer_frequency(uint32_t freq);
+void play_cricket_sound();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -94,7 +95,7 @@ int main(void)
   MX_GPIO_Init();
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
-
+  set_buzzer_frequency(CRICKET_FREQ);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -104,6 +105,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  play_cricket_sound();
   }
   /* USER CODE END 3 */
 }
@@ -228,7 +230,58 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void set_buzzer_frequency(uint32_t freq)
+{
+	// get timer clock (16MHz with HSI
+	uint32_t timer_clock = HAL_RCC_GetPCLK1Freq();
+	uint32_t prescaler = 0;
+	uint32_t period = 0;
 
+	// calculate prescaler and period for desired frequency
+	// PWM_freq = timer_clock / ((prescaler + 1) * (period + 1))
+
+	if (freq > 0)
+	{
+		prescaler = 0; // no prescaler for higher frequencies
+		period = (timer_clock / freq) - 1;
+
+		// adjust if period is too large
+		if (period > 65535)
+		{
+			prescaler = (timer_clock / (freq * 65536)) + 1;
+			period = (timer_clock / ((prescaler + 1) * freq)) - 1;
+		}
+	}
+	else
+	{
+		period = 0;
+	}
+
+	__HAL_TIM_SET_PRESCALER(&htim3, prescaler);
+	__HAL_TIM_SET_AUTORELOAD(&htim3, period);
+	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, period / 2); // 50% duty cycle
+}
+
+void play_cricket_sound()
+{
+	// set cricket chirp frequency
+	set_buzzer_frequency(CRICKET_FREQ);
+
+	// play a burst of chirps
+	for (int burst = 0; burst < CHIRP_BURST; burst++)
+	{
+		// start PWM (chirp ON)
+		HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+		HAL_Delay(CHIRP_DURATION);
+
+		// stop PWM (chirp OFF)
+		HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
+		HAL_Delay(CHIRP_PAUSE);
+	}
+
+	// pause between bursts
+	HAL_Delay(BURST_PAUSE);
+}
 /* USER CODE END 4 */
 
 /**
