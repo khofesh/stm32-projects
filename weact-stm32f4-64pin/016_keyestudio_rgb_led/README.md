@@ -6,7 +6,13 @@
 - V pin - 3.3V
 
 ioc file
+
 ![alt text](image.png)
 
 TIM3 configs
+
 ![alt text](image-1.png)
+
+result
+
+![the rgb led](./6267002170368527249.jpg)
