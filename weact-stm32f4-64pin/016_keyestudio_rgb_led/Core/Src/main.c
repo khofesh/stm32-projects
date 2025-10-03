@@ -54,7 +54,8 @@ static void MX_GPIO_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+void set_rgb_color(uint8_t red, uint8_t green, uint8_t blue);
+void rgb_fade_effect();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -94,6 +95,10 @@ int main(void)
   MX_TIM3_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  // start PWM on all three channels
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);  // red
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);  // green
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);  // blue
 
   /* USER CODE END 2 */
 
@@ -104,6 +109,29 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  rgb_fade_effect();
+
+	  // Pure colors
+	  set_rgb_color(255, 0, 0);     // Red
+	  HAL_Delay(1000);
+	  set_rgb_color(0, 255, 0);     // Green
+	  HAL_Delay(1000);
+	  set_rgb_color(0, 0, 255);     // Blue
+	  HAL_Delay(1000);
+
+	  // Mixed colors
+	  set_rgb_color(255, 255, 0);   // Yellow
+	  HAL_Delay(1000);
+	  set_rgb_color(255, 0, 255);   // Magenta
+	  HAL_Delay(1000);
+	  set_rgb_color(0, 255, 255);   // Cyan
+	  HAL_Delay(1000);
+
+	  // White and off
+	  set_rgb_color(255, 255, 255); // White
+	  HAL_Delay(1000);
+	  set_rgb_color(0, 0, 0);       // Off
+	  HAL_Delay(1000);
   }
   /* USER CODE END 3 */
 }
@@ -171,7 +199,7 @@ static void MX_TIM3_Init(void)
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 0;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 65535;
+  htim3.Init.Period = 255;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
@@ -183,7 +211,7 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_TIM_OC_Init(&htim3) != HAL_OK)
+  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
   {
     Error_Handler();
   }
@@ -193,19 +221,19 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_TIMING;
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
   sConfigOC.Pulse = 0;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
   {
     Error_Handler();
   }
@@ -288,7 +316,33 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void set_rgb_color(uint8_t red, uint8_t green, uint8_t blue)
+{
+	// convert 8-bit values (0-255) to timer compare values
+	// assuming timer period is 255 (8-bit resolution)
+	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, red);
+	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, green);
+	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, blue);
 
+}
+void rgb_fade_effect()
+{
+	uint8_t val;
+
+	// fade from 255 to 0
+	for (val = 255; val > 0; val--)
+	{
+		set_rgb_color(val, 255 - val, 128-val);
+		HAL_Delay(10);
+	}
+
+	// fade from 0 to 255
+	for (val = 0; val < 255; val++)
+	{
+		set_rgb_color(val, 255 - val, 128 - val);
+		HAL_Delay(10);
+	}
+}
 /* USER CODE END 4 */
 
 /**
