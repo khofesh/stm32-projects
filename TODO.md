@@ -48,3 +48,30 @@
 - [ ] keyestudio modules
 - [ ] MSC (Mass Storage Class)
 - [ ] using stm32f3disc, simulate the accelerometer and gyroscope in host computer. https://www.instructables.com/MPU-6050-Teapot-Project/
+- [ ] Digital Tilt Sensor
+  - digital, reading pin input
+- [ ] Capacitive Touch
+  - digital, reading pin input
+- [ ] Flame Alarm
+  - digital, reading pin input
+- [ ] Reed Switch
+  - digital, reading pin input
+- [ ] PIR Motion Sensing
+- [ ] Analog Temperature
+- [ ] Analog Rotation
+- [ ] Photocell
+- [ ] Analog Sound
+- [ ] Water Level
+- [ ] Soil Moisture
+- [ ] Steam Moisture
+- [ ] Analog Ceramic Vibration
+- [ ] Voltage Detection
+- [ ] Digital IR Receiver
+- [ ] Digital IR Transmitter
+- [ ] Pulse Rate Monitor
+- [ ] Joystick
+- [ ] Rotary Encoder
+- [ ] Single Relay
+- [ ] Linear Temperature
+- [ ] Ultrasonic Ranger
+- [ ] 4-digit LED Display
