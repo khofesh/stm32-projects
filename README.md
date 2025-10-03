@@ -18,6 +18,7 @@ Move all stm32 projects into one place
 - **ST Microelectronics online training** - https://www.st.com/content/st_com/en/support/learning/stm32-education/stm32-online-training/stm32wb-online-training.html
 - A button blinky for stm32 which doesn't use RAM and fits under 50 bytes. https://github.com/rvl13/stm32-button-blinky-no-ram
   - https://hackaday.com/2025/08/16/2025-one-hertz-challenge-stm32-blinks-in-under-50-bytes/
+- important calculator: https://deepbluembedded.com/electrical-electronics-calculators/
 
 ## bluetooth
 
