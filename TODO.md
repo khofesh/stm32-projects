@@ -56,8 +56,8 @@
   - digital, reading pin input
 - [ ] Reed Switch
   - digital, reading pin input
-- [ ] PIR Motion Sensing
-- [ ] Analog Temperature
+- [x] PIR Motion Sensing
+- [x] Analog Temperature
 - [ ] Analog Rotation
 - [ ] Photocell
 - [ ] Analog Sound
