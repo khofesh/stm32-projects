@@ -40,10 +40,6 @@
 #include <stdio.h>
 
 extern UART_HandleTypeDef huart1;
-extern TIM_HandleTypeDef htim2;
-
-volatile uint64_t micros_counter = 0;
-
 
 /**
  * @brief     interface timestamp read
@@ -55,8 +51,29 @@ volatile uint64_t micros_counter = 0;
  */
 uint8_t ir_remote_interface_timestamp_read(ir_remote_time_t *t)
 {
-    uint32_t timer_value = __HAL_TIM_GET_COUNTER(&htim2);
-    uint64_t total_us = micros_counter + timer_value;
+    static uint32_t last_cycles = 0;
+    static uint64_t total_us = 0;
+
+    // Get current cycle count
+    uint32_t current_cycles = DWT->CYCCNT;
+
+    // Calculate cycles elapsed (handles overflow)
+    uint32_t cycles_elapsed;
+    if (current_cycles >= last_cycles)
+    {
+        cycles_elapsed = current_cycles - last_cycles;
+    }
+    else
+    {
+        cycles_elapsed = (0xFFFFFFFF - last_cycles) + current_cycles + 1;
+    }
+
+    // Convert cycles to microseconds (assuming 16 MHz HSI clock)
+    // cycles / (cycles_per_second / 1000000) = microseconds
+    uint32_t us_elapsed = cycles_elapsed / 16;  // 16 MHz = 16 cycles per microsecond
+
+    total_us += us_elapsed;
+    last_cycles = current_cycles;
 
     t->s = total_us / 1000000;
     t->us = total_us % 1000000;
@@ -138,14 +155,6 @@ void ir_remote_interface_receive_callback(ir_remote_t *data)
 
             break;
         }
-    }
-}
-
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-    if (htim->Instance == TIM2)
-    {
-        micros_counter += 65536;
     }
 }
 
