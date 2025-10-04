@@ -193,6 +193,17 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN Private defines */
 
+/* MXCHIP EMW3080B GPIO definitions */
+#define MXCHIP_RESET_Pin         WRLS_WKUP_W_Pin
+#define MXCHIP_RESET_GPIO_Port   WRLS_WKUP_W_GPIO_Port
+
+/* UART handle declarations */
+extern UART_HandleTypeDef huart4;
+extern UART_HandleTypeDef huart1;
+
+/* MXCHIP UART alias */
+#define MXCHIP_UART              huart4
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
