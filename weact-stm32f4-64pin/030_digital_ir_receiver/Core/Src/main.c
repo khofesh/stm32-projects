@@ -120,23 +120,16 @@ int main(void)
   MX_USART1_UART_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
-  HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(USART1_IRQn);
-
   RingBuffer_Init(&txBuf);
   RingBuffer_Init(&rxBuf);
 
+  if (HAL_TIM_Base_Start_IT(&htim2) != HAL_OK)
+  {
+      Error_Handler();
+  }
+
   printf(WELCOME_MSG);
 
-  extern volatile uint64_t micros_counter;
-  uint64_t test1 = micros_counter;
-  HAL_Delay(100);
-  uint64_t test2 = micros_counter;
-  printf("Timer test: %lu -> %lu (diff: %lu)\r\n", (uint32_t)test1, (uint32_t)test2, (uint32_t)(test2-test1));
-
-  if (test2 == test1) {
-      printf("WARNING: Timer not incrementing!\r\n");
-  }
 
   // init IR remote
   DRIVER_IR_REMOTE_LINK_INIT(&ir_handle, ir_remote_handle_t);
@@ -230,9 +223,9 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 0;
+  htim2.Init.Prescaler = 15;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 15;
+  htim2.Init.Period = 65535;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)

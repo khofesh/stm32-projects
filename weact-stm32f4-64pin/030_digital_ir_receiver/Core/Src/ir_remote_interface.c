@@ -145,7 +145,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance == TIM2)
     {
-        micros_counter += 16;  // Add period (15+1 = 16 microseconds)
+        micros_counter += 65536;
     }
 }
 
