@@ -181,7 +181,8 @@ void Error_Handler(void);
 #define WRLS_WKUP_W_GPIO_Port GPIOF
 
 /* USER CODE BEGIN Private defines */
-
+#define MXCHIP_RESET_Pin         WRLS_WKUP_W_Pin
+#define MXCHIP_RESET_GPIO_Port   WRLS_WKUP_W_GPIO_Port
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
