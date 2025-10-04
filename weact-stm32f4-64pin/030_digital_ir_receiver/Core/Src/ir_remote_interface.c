@@ -40,6 +40,7 @@
 #include <stdio.h>
 
 extern UART_HandleTypeDef huart1;
+extern TIM_HandleTypeDef htim2;
 
 /**
  * @brief     interface timestamp read
@@ -51,29 +52,24 @@ extern UART_HandleTypeDef huart1;
  */
 uint8_t ir_remote_interface_timestamp_read(ir_remote_time_t *t)
 {
-    static uint32_t last_cycles = 0;
+    static uint32_t last_ticks = 0;
     static uint64_t total_us = 0;
 
-    // Get current cycle count
-    uint32_t current_cycles = DWT->CYCCNT;
+    uint32_t current_ticks = __HAL_TIM_GET_COUNTER(&htim2);
 
-    // Calculate cycles elapsed (handles overflow)
-    uint32_t cycles_elapsed;
-    if (current_cycles >= last_cycles)
+    // Calculate elapsed ticks (handles overflow)
+    uint32_t ticks_elapsed;
+    if (current_ticks >= last_ticks)
     {
-        cycles_elapsed = current_cycles - last_cycles;
+        ticks_elapsed = current_ticks - last_ticks;
     }
     else
     {
-        cycles_elapsed = (0xFFFFFFFF - last_cycles) + current_cycles + 1;
+        ticks_elapsed = (0xFFFFFFFF - last_ticks) + current_ticks + 1;
     }
 
-    // Convert cycles to microseconds (assuming 16 MHz HSI clock)
-    // cycles / (cycles_per_second / 1000000) = microseconds
-    uint32_t us_elapsed = cycles_elapsed / 16;  // 16 MHz = 16 cycles per microsecond
-
-    total_us += us_elapsed;
-    last_cycles = current_cycles;
+    total_us += ticks_elapsed;
+    last_ticks = current_ticks;
 
     t->s = total_us / 1000000;
     t->us = total_us % 1000000;
