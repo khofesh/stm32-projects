@@ -22,8 +22,11 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "ringbuffer.h"
+#include "ir_remote.h"
+#include "ir_remote_interface.h"
 #include <stdio.h>
 #include <string.h>
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -34,6 +37,8 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define WELCOME_MSG "Welcome to the Nucleo management console\r\n"
+#define IR_READY_MSG "IR Remote Receiver Ready\r\n"
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -43,9 +48,13 @@ uint8_t txData;
 __IO ITStatus UartReady = SET;
 __IO ITStatus UartTxComplete = SET;
 RingBuffer txBuf, rxBuf;
+
+ir_remote_handle_t ir_handle;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+TIM_HandleTypeDef htim2;
+
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
@@ -56,6 +65,7 @@ UART_HandleTypeDef huart1;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 int _write(int file, char *ptr, int len)
 {
@@ -108,6 +118,7 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART1_UART_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(USART1_IRQn);
@@ -115,9 +126,27 @@ int main(void)
   RingBuffer_Init(&txBuf);
   RingBuffer_Init(&rxBuf);
 
-  UART_Transmit(&huart1, (uint8_t*)WELCOME_MSG, strlen(WELCOME_MSG));
+  printf(WELCOME_MSG);
 
-  HAL_Delay(100);
+  // init IR remote
+  DRIVER_IR_REMOTE_LINK_INIT(&ir_handle, ir_remote_handle_t);
+  DRIVER_IR_REMOTE_LINK_TIMESTAMP_READ(&ir_handle, ir_remote_interface_timestamp_read);
+  DRIVER_IR_REMOTE_LINK_DELAY_MS(&ir_handle, ir_remote_interface_delay_ms);
+  DRIVER_IR_REMOTE_LINK_DEBUG_PRINT(&ir_handle, ir_remote_interface_debug_print);
+  DRIVER_IR_REMOTE_LINK_RECEIVE_CALLBACK(&ir_handle, ir_remote_interface_receive_callback);
+
+  if (ir_remote_init(&ir_handle) != 0)
+  {
+	  printf("IR Remote initialization failed!\r\n");
+  }
+  else
+  {
+	  printf(IR_READY_MSG);
+	  printf("Point your IR remote at the receiver and press buttons...\r\n");
+  }
+
+  HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI4_IRQn);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -170,6 +199,51 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 0;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 15;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+
 }
 
 /**
@@ -237,6 +311,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(USER_LED_GPIO_Port, &GPIO_InitStruct);
 
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI4_IRQn);
+
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
   /* USER CODE END MX_GPIO_Init_2 */
@@ -274,6 +352,18 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
       UartTxComplete = SET; // Mark transmission as complete when buffer is empty
     }
   }
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_pin)
+{
+	if (GPIO_pin == GPIO_PIN_4)
+	{
+	    // IR receiver interrupt - call the ir_remote handler
+	    ir_remote_irq_handler(&ir_handle);
+
+	    // Toggle LED to show activity
+	    HAL_GPIO_TogglePin(USER_LED_GPIO_Port, USER_LED_Pin);
+	}
 }
 /* USER CODE END 4 */
 

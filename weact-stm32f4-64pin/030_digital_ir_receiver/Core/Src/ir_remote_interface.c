@@ -35,6 +35,15 @@
  */
 
 #include "ir_remote_interface.h"
+#include "main.h"
+#include <stdarg.h>
+#include <stdio.h>
+
+extern UART_HandleTypeDef huart1;
+extern TIM_HandleTypeDef htim2;
+
+static volatile uint64_t micros_counter = 0;
+
 
 /**
  * @brief     interface timestamp read
@@ -46,6 +55,12 @@
  */
 uint8_t ir_remote_interface_timestamp_read(ir_remote_time_t *t)
 {
+    uint32_t timer_value = __HAL_TIM_GET_COUNTER(&htim2);
+    uint64_t total_us = micros_counter + timer_value;
+
+    t->s = total_us / 1000000;
+    t->us = total_us % 1000000;
+
     return 0;
 }
 
@@ -56,7 +71,7 @@ uint8_t ir_remote_interface_timestamp_read(ir_remote_time_t *t)
  */
 void ir_remote_interface_delay_ms(uint32_t ms)
 {
-
+	HAL_Delay(ms);
 }
 
 /**
@@ -66,7 +81,14 @@ void ir_remote_interface_delay_ms(uint32_t ms)
  */
 void ir_remote_interface_debug_print(const char *const fmt, ...)
 {
+	char buf[256];
+	va_list args;
 
+	va_start(args, fmt);
+	vsnprintf(buf, sizeof(buf), fmt, args);
+	va_end(args);
+
+	UART_Transmit(&huart1, (uint8_t*)buf, strlen(buf));
 }
 
 /**
@@ -118,3 +140,12 @@ void ir_remote_interface_receive_callback(ir_remote_t *data)
         }
     }
 }
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if (htim->Instance == TIM2)
+    {
+        micros_counter += 16;  // Add period (15+1 = 16 microseconds)
+    }
+}
+
