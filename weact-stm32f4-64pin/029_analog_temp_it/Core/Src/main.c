@@ -45,7 +45,6 @@ __IO ITStatus UartReady = SET;
 __IO ITStatus UartTxComplete = SET;
 RingBuffer txBuf, rxBuf;
 volatile uint32_t adcValue = 0;
-volatile uint8_t adcConversionComplete = 0;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -143,6 +142,14 @@ int main(void)
   HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(USART1_IRQn);
 
+  // Enable ADC interrupt
+  HAL_NVIC_SetPriority(ADC_IRQn, 1, 0);
+  HAL_NVIC_EnableIRQ(ADC_IRQn);
+
+  // Enable Timer interrupt
+  HAL_NVIC_SetPriority(TIM2_IRQn, 2, 0);
+  HAL_NVIC_EnableIRQ(TIM2_IRQn);
+
   RingBuffer_Init(&txBuf);
   RingBuffer_Init(&rxBuf);
 
@@ -150,9 +157,8 @@ int main(void)
 
   HAL_Delay(100);
 
+  // start the timer to trigger ADC conversions every 100ms
   HAL_TIM_Base_Start_IT(&htim2);
-
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -279,9 +285,9 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 255;
+  htim2.Init.Prescaler = 31;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 62499;
+  htim2.Init.Period = 49999;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -405,23 +411,25 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	if (htim == &htim2)
-	{
-		HAL_ADC_Start_IT(&hadc1);
-	}
+  if (htim == &htim2)
+  {
+    // start ADC conversion
+    HAL_ADC_Start_IT(&hadc1);
+  }
 }
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
 {
-	if (hadc == &hadc1)
-	{
-		// get converted value
-		adcValue = HAL_ADC_GetValue(&hadc1);
+  if (hadc == &hadc1)
+  {
+    // get the converted value
+    adcValue = HAL_ADC_GetValue(&hadc1);
 
-		float temp = adc_to_temperature(adcValue);
-		printf("ADC: %lu, Temp: %.2f°C\r\n", adcValue, temp);
-	}
+    float temp = adc_to_temperature(adcValue);
+    printf("ADC: %lu, Temp: %.2f°C\r\n", adcValue, temp);
+  }
 }
+
 /* USER CODE END 4 */
 
 /**
