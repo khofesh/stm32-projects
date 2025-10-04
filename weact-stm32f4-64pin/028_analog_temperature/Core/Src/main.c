@@ -21,7 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "ringbuffer.h"
+#include <stdio.h>
+#include <string.h>
+#include <math.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,16 +34,23 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define WELCOME_MSG "Welcome to the Nucleo management console\r\n"
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+char readBuf[1];
+uint8_t txData;
+__IO ITStatus UartReady = SET;
+__IO ITStatus UartTxComplete = SET;
+RingBuffer txBuf, rxBuf;
+volatile uint32_t adcValue = 0;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
+
+UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 
@@ -50,8 +60,31 @@ ADC_HandleTypeDef hadc1;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
+static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
+int _write(int file, char *ptr, int len)
+{
+  if (UART_Transmit(&huart1, (uint8_t *)ptr, len))
+  {
+    // Wait for transmission to complete to ensure log integrity
+    while (UartTxComplete == RESET || RingBuffer_GetDataLength(&txBuf) > 0)
+    {
+      // Allow other interrupts to process
+      __NOP();
+    }
+    return len;
+  }
+  return 0; // Return 0 on failure
+}
 
+float adc_to_temperature(uint32_t adcValue)
+{
+	float voltage = (adcValue * 3.3) / 4095.0;
+
+	float temperature = voltage * 100.0;
+
+	return temperature;
+}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -89,14 +122,36 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_ADC1_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(USART1_IRQn);
 
+  RingBuffer_Init(&txBuf);
+  RingBuffer_Init(&rxBuf);
+
+  UART_Transmit(&huart1, (uint8_t*)WELCOME_MSG, strlen(WELCOME_MSG));
+
+  HAL_Delay(100);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  HAL_ADC_Start(&hadc1);
+
+	  if (HAL_ADC_PollForConversion(&hadc1, 100) == HAL_OK)
+	  {
+		  adcValue = HAL_ADC_GetValue(&hadc1);
+		  float temp = adc_to_temperature(adcValue);
+
+		  printf("ADC: %lu, Temp: %.2f°C\r\n", adcValue, temp);
+	  }
+
+	  HAL_ADC_Stop(&hadc1);
+
+	  HAL_Delay(100);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -198,6 +253,39 @@ static void MX_ADC1_Init(void)
 }
 
 /**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -229,6 +317,39 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
+{
+  UartTxComplete = RESET; // Mark transmission as in progress
+  if (HAL_UART_Transmit_IT(huart, pData, len) != HAL_OK)
+  {
+    if (RingBuffer_Write(&txBuf, pData, len) != RING_BUFFER_OK)
+      return 0;
+  }
+  return 1;
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle)
+{
+  /* Set transmission flag: transfer complete*/
+  UartReady = SET;
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart == &huart1)
+  {
+    if (RingBuffer_GetDataLength(&txBuf) > 0)
+    {
+      RingBuffer_Read(&txBuf, &txData, 1);
+      HAL_UART_Transmit_IT(huart, &txData, 1);
+    }
+    else
+    {
+      UartTxComplete = SET; // Mark transmission as complete when buffer is empty
+    }
+  }
+}
+
 
 /* USER CODE END 4 */
 

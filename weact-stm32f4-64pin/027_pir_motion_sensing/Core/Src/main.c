@@ -94,9 +94,9 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  GPIO_PinState blackLine = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4);
+	  GPIO_PinState motion = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4);
 
-	  if (blackLine == GPIO_PIN_SET)
+	  if (motion == GPIO_PIN_SET)
 	  {
 		  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);
 	  }
