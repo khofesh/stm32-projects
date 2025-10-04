@@ -194,14 +194,16 @@ void Error_Handler(void);
 /* USER CODE BEGIN Private defines */
 
 /* MXCHIP EMW3080B GPIO definitions */
-#define MXCHIP_RESET_Pin         WRLS_WKUP_W_Pin
-#define MXCHIP_RESET_GPIO_Port   WRLS_WKUP_W_GPIO_Port
-#define MXCHIP_FLOW_Pin          WRLS_FLOW_Pin
-#define MXCHIP_FLOW_GPIO_Port    WRLS_FLOW_GPIO_Port
-#define MXCHIP_NSS_Pin           WRLS_SPI2_NSS_Pin
-#define MXCHIP_NSS_GPIO_Port     WRLS_SPI2_NSS_GPIO_Port
-#define MXCHIP_NOTIFY_Pin        WRLS_NOTIFY_Pin
-#define MXCHIP_NOTIFY_GPIO_Port  WRLS_NOTIFY_GPIO_Port
+#define MXCHIP_FLOW_Pin         GPIO_PIN_15
+#define MXCHIP_FLOW_GPIO_Port   GPIOG
+#define MXCHIP_FLOW_EXTI_IRQn   EXTI15_IRQn
+#define MXCHIP_RESET_Pin        GPIO_PIN_15
+#define MXCHIP_RESET_GPIO_Port  GPIOF
+#define MXCHIP_NSS_Pin          GPIO_PIN_12
+#define MXCHIP_NSS_GPIO_Port    GPIOB
+#define MXCHIP_NOTIFY_Pin       GPIO_PIN_14
+#define MXCHIP_NOTIFY_GPIO_Port GPIOD
+#define MXCHIP_NOTIFY_EXTI_IRQn EXTI14_IRQn
 
 /* SPI and UART handle declarations */
 extern SPI_HandleTypeDef hspi2;
