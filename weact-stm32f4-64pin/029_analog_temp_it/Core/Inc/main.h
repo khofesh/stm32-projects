@@ -57,6 +57,8 @@ uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define USER_LED_Pin GPIO_PIN_2
+#define USER_LED_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

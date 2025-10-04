@@ -21,7 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "ringbuffer.h"
+#include <stdio.h>
+#include <string.h>
+#include <math.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,12 +34,17 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define WELCOME_MSG "Welcome to the Nucleo management console\r\n"
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+char readBuf[1];
+uint8_t txData;
+__IO ITStatus UartReady = SET;
+__IO ITStatus UartTxComplete = SET;
+RingBuffer txBuf, rxBuf;
+volatile uint32_t adcValue = 0;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -54,7 +62,40 @@ static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
+int _write(int file, char *ptr, int len)
+{
+  if (UART_Transmit(&huart1, (uint8_t *)ptr, len))
+  {
+    // Wait for transmission to complete to ensure log integrity
+    while (UartTxComplete == RESET || RingBuffer_GetDataLength(&txBuf) > 0)
+    {
+      // Allow other interrupts to process
+      __NOP();
+    }
+    return len;
+  }
+  return 0; // Return 0 on failure
+}
 
+float adc_to_temperature(uint32_t adcValue)
+{
+	// STM32 uses 3.3V reference and 12-bit ADC (0-4095)
+	// Keyestudio sensor has 4.7kΩ pull-up resistor and NTC 10kΩ thermistor
+
+	// Convert ADC value to voltage (0-3.3V)
+	double voltage = ((double)adcValue / 4095.0) * 3.3;
+
+	// Calculate thermistor resistance using voltage divider formula
+	// R_thermistor = R_pullup * (Vcc - V_measured) / V_measured
+	double resistance = 4700.0 * (3.3 - voltage) / voltage;
+
+	// Steinhart-Hart equation (simplified beta formula)
+	// T = 1 / (ln(R/R0)/B + 1/T0) - 273.15
+	// Where: R0 = 10kΩ at T0 = 25°C (298.15K), B = 3950
+	double temperature = 1.0 / (log(resistance / 10000.0) / 3950.0 + 1.0 / 298.15) - 273.15;
+
+	return (float)temperature;
+}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -94,13 +135,34 @@ int main(void)
   MX_ADC1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(USART1_IRQn);
 
+  RingBuffer_Init(&txBuf);
+  RingBuffer_Init(&rxBuf);
+
+  UART_Transmit(&huart1, (uint8_t*)WELCOME_MSG, strlen(WELCOME_MSG));
+
+  HAL_Delay(100);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  HAL_ADC_Start(&hadc1);
+
+	  if (HAL_ADC_PollForConversion(&hadc1, 100) == HAL_OK)
+	  {
+		  adcValue = HAL_ADC_GetValue(&hadc1);
+		  float temp = adc_to_temperature(adcValue);
+
+		  printf("ADC: %lu, Temp: %.2f°C\r\n", adcValue, temp);
+	  }
+
+	  HAL_ADC_Stop(&hadc1);
+
+	  HAL_Delay(100);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -251,14 +313,14 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(USER_LED_GPIO_Port, USER_LED_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : PB2 */
-  GPIO_InitStruct.Pin = GPIO_PIN_2;
+  /*Configure GPIO pin : USER_LED_Pin */
+  GPIO_InitStruct.Pin = USER_LED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  HAL_GPIO_Init(USER_LED_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -266,6 +328,39 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
+{
+  UartTxComplete = RESET; // Mark transmission as in progress
+  if (HAL_UART_Transmit_IT(huart, pData, len) != HAL_OK)
+  {
+    if (RingBuffer_Write(&txBuf, pData, len) != RING_BUFFER_OK)
+      return 0;
+  }
+  return 1;
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle)
+{
+  /* Set transmission flag: transfer complete*/
+  UartReady = SET;
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart == &huart1)
+  {
+    if (RingBuffer_GetDataLength(&txBuf) > 0)
+    {
+      RingBuffer_Read(&txBuf, &txData, 1);
+      HAL_UART_Transmit_IT(huart, &txData, 1);
+    }
+    else
+    {
+      UartTxComplete = SET; // Mark transmission as complete when buffer is empty
+    }
+  }
+}
+
 
 /* USER CODE END 4 */
 
