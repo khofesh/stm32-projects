@@ -45,6 +45,7 @@ __IO ITStatus UartReady = SET;
 __IO ITStatus UartTxComplete = SET;
 RingBuffer txBuf, rxBuf;
 volatile uint32_t adcValue = 0;
+volatile uint8_t adcDataReady = 0;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -165,7 +166,13 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  if (adcDataReady)
+	  {
+		  adcDataReady = 0;
 
+		  float temp = adc_to_temperature(adcValue);
+		  printf("ADC: %lu, Temp: %.2f°C\r\n", adcValue, temp);
+	  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -425,8 +432,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
     // get the converted value
     adcValue = HAL_ADC_GetValue(&hadc1);
 
-    float temp = adc_to_temperature(adcValue);
-    printf("ADC: %lu, Temp: %.2f°C\r\n", adcValue, temp);
+    adcDataReady = 1;
   }
 }
 

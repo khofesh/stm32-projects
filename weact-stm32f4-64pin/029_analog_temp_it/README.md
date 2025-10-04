@@ -14,3 +14,9 @@
 ```
 
 UART (priority 0) > ADC (priority 2) > Timer (priority 3)
+
+1. Timer Interrupt -> Triggers ADC every 100ms
+2. ADC Interrupt -> Reads value, sets `adcDataReady = 1` flag
+3. Main Loop -> Checks flag, processes data, and prints
+
+> Main loop does heavy work: Float calculations and printf happen outside interrupt context
