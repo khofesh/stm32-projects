@@ -22,6 +22,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "mx_wifi_io.h"
+#include "io_pattern/mx_wifi_io.h"
+#include "mx_wifi_conf.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -57,6 +59,9 @@ UART_HandleTypeDef huart1;
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 /* USER CODE BEGIN PV */
+/* Access point credentials declaration */
+static char SSID[MX_WIFI_MAX_SSID_NAME_SIZE];
+static char PassWord[MX_WIFI_MAX_PSWD_NAME_SIZE];
 
 /* USER CODE END PV */
 

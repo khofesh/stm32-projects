@@ -66,7 +66,7 @@
 - [ ] Steam Moisture
 - [ ] Analog Ceramic Vibration
 - [ ] Voltage Detection
-- [ ] Digital IR Receiver
+- [x] Digital IR Receiver
 - [ ] Digital IR Transmitter
 - [ ] Pulse Rate Monitor
 - [ ] Joystick
