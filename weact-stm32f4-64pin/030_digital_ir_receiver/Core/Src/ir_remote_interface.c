@@ -42,7 +42,7 @@
 extern UART_HandleTypeDef huart1;
 extern TIM_HandleTypeDef htim2;
 
-static volatile uint64_t micros_counter = 0;
+volatile uint64_t micros_counter = 0;
 
 
 /**

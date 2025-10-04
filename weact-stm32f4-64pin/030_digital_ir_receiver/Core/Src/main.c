@@ -128,6 +128,16 @@ int main(void)
 
   printf(WELCOME_MSG);
 
+  extern volatile uint64_t micros_counter;
+  uint64_t test1 = micros_counter;
+  HAL_Delay(100);
+  uint64_t test2 = micros_counter;
+  printf("Timer test: %lu -> %lu (diff: %lu)\r\n", (uint32_t)test1, (uint32_t)test2, (uint32_t)(test2-test1));
+
+  if (test2 == test1) {
+      printf("WARNING: Timer not incrementing!\r\n");
+  }
+
   // init IR remote
   DRIVER_IR_REMOTE_LINK_INIT(&ir_handle, ir_remote_handle_t);
   DRIVER_IR_REMOTE_LINK_TIMESTAMP_READ(&ir_handle, ir_remote_interface_timestamp_read);
@@ -145,8 +155,8 @@ int main(void)
 	  printf("Point your IR remote at the receiver and press buttons...\r\n");
   }
 
-  HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI4_IRQn);
+  printf("Setup complete. Waiting for IR signals...\r\n");
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -312,7 +322,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(USER_LED_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI4_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI4_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -356,14 +366,15 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_pin)
 {
-	if (GPIO_pin == GPIO_PIN_4)
-	{
-	    // IR receiver interrupt - call the ir_remote handler
-	    ir_remote_irq_handler(&ir_handle);
+    if (GPIO_pin == GPIO_PIN_4)
+    {
 
-	    // Toggle LED to show activity
-	    HAL_GPIO_TogglePin(USER_LED_GPIO_Port, USER_LED_Pin);
-	}
+        // IR receiver interrupt - call the ir_remote handler
+        ir_remote_irq_handler(&ir_handle);
+
+        // Toggle LED to show activity
+        HAL_GPIO_TogglePin(USER_LED_GPIO_Port, USER_LED_Pin);
+    }
 }
 /* USER CODE END 4 */
 
