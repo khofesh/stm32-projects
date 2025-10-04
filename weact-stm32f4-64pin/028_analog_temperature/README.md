@@ -4,6 +4,7 @@
 
 pin
 
-- V -> 5V
+- V -> 3.3V
+  - The sensor VCC should match your ADC reference voltage (3.3V)
 - G -> GND
 - S -> PA0 ADC

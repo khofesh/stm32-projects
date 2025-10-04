@@ -79,11 +79,22 @@ int _write(int file, char *ptr, int len)
 
 float adc_to_temperature(uint32_t adcValue)
 {
-	float voltage = (adcValue * 3.3) / 4095.0;
+	// STM32 uses 3.3V reference and 12-bit ADC (0-4095)
+	// Keyestudio sensor has 4.7kΩ pull-up resistor and NTC 10kΩ thermistor
 
-	float temperature = voltage * 100.0;
+	// Convert ADC value to voltage (0-3.3V)
+	double voltage = ((double)adcValue / 4095.0) * 3.3;
 
-	return temperature;
+	// Calculate thermistor resistance using voltage divider formula
+	// R_thermistor = R_pullup * (Vcc - V_measured) / V_measured
+	double resistance = 4700.0 * (3.3 - voltage) / voltage;
+
+	// Steinhart-Hart equation (simplified beta formula)
+	// T = 1 / (ln(R/R0)/B + 1/T0) - 273.15
+	// Where: R0 = 10kΩ at T0 = 25°C (298.15K), B = 3950
+	double temperature = 1.0 / (log(resistance / 10000.0) / 3950.0 + 1.0 / 298.15) - 273.15;
+
+	return (float)temperature;
 }
 /* USER CODE END PFP */
 
