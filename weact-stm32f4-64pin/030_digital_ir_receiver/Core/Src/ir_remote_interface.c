@@ -98,10 +98,10 @@ void ir_remote_interface_debug_print(const char *const fmt, ...)
 	va_list args;
 
 	va_start(args, fmt);
-	vsnprintf(buf, sizeof(buf), fmt, args);
+	int len = vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 
-	UART_Transmit(&huart1, (uint8_t*)buf, strlen(buf));
+	HAL_UART_Transmit(&huart1, (uint8_t*)buf, len, HAL_MAX_DELAY);
 }
 
 /**
@@ -115,40 +115,34 @@ void ir_remote_interface_receive_callback(ir_remote_t *data)
     {
         case IR_REMOTE_STATUS_OK :
         {
-            ir_remote_interface_debug_print("ir_remote: irq ok.\n");
-            ir_remote_interface_debug_print("ir_remote: add is 0x%02X and cmd is 0x%02X.\n", data->address, data->command);
-
+            ir_remote_interface_debug_print("IR OK: addr=0x%02X, cmd=0x%02X\n",
+                data->address, data->command);
             break;
         }
         case IR_REMOTE_STATUS_REPEAT :
         {
-            ir_remote_interface_debug_print("ir_remote: irq repeat.\n");
-            ir_remote_interface_debug_print("ir_remote: add is 0x%02X and cmd is 0x%02X.\n", data->address, data->command);
-
+            ir_remote_interface_debug_print("IR REPEAT: addr=0x%02X, cmd=0x%02X\n",
+                data->address, data->command);
             break;
         }
         case IR_REMOTE_STATUS_ADDR_ERR :
         {
-            ir_remote_interface_debug_print("ir_remote: irq addr error.\n");
-
+            ir_remote_interface_debug_print("IR ERROR: address error\n");
             break;
         }
         case IR_REMOTE_STATUS_CMD_ERR :
         {
-            ir_remote_interface_debug_print("ir_remote: irq cmd error.\n");
-
+            ir_remote_interface_debug_print("IR ERROR: command error\n");
             break;
         }
         case IR_REMOTE_STATUS_FRAME_INVALID :
         {
-            ir_remote_interface_debug_print("ir_remote: irq frame invalid.\n");
-
+            ir_remote_interface_debug_print("IR ERROR: frame invalid\n");
             break;
         }
         default :
         {
-            ir_remote_interface_debug_print("ir_remote: irq unknown status.\n");
-
+            ir_remote_interface_debug_print("IR ERROR: unknown status\n");
             break;
         }
     }
