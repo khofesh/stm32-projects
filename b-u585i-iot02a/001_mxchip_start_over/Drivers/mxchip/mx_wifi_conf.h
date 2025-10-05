@@ -30,7 +30,7 @@ extern "C" {
 
 
 #ifndef MX_WIFI_USE_SPI
-#define MX_WIFI_USE_SPI                             (0)
+#define MX_WIFI_USE_SPI                             (1)
 #endif /* MX_WIFI_USE_SPI */
 
 /* SPI DMA usage, default on */
