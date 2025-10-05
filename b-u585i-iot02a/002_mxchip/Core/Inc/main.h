@@ -203,10 +203,7 @@ extern SPI_HandleTypeDef hspi2;
 #define MXCHIP_NSS_Pin                              WRLS_NSS_Pin
 #define MXCHIP_NSS_GPIO_Port                        WRLS_NSS_GPIO_Port
 
-/* Ensure WRLS_WKUP_W_GPIO_Port is defined */
-#ifndef WRLS_WKUP_W_GPIO_Port
-#define WRLS_WKUP_W_GPIO_Port                       GPIOF
-#endif
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

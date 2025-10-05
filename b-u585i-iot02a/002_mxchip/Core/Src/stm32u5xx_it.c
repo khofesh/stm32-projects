@@ -263,28 +263,5 @@ void USART1_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
-/**
-  * @brief EXTI line detection callbacks.
-  * @param GPIO_Pin: Specifies the pins connected EXTI line
-  * @retval None
-  */
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-{
-  /* USER CODE BEGIN HAL_GPIO_EXTI_Callback 0 */
 
-  /* USER CODE END HAL_GPIO_EXTI_Callback 0 */
-
-  if (GPIO_Pin == WRLS_FLOW_Pin) {
-    /* MXCHIP FLOW pin interrupt - call WiFi driver ISR */
-    mxchip_WIFI_ISR(WRLS_FLOW_Pin);
-  }
-  else if (GPIO_Pin == WRLS_NOTIFY_Pin) {
-    /* MXCHIP NOTIFY pin interrupt - call WiFi driver ISR */
-    mxchip_WIFI_ISR(WRLS_NOTIFY_Pin);
-  }
-
-  /* USER CODE BEGIN HAL_GPIO_EXTI_Callback 1 */
-
-  /* USER CODE END HAL_GPIO_EXTI_Callback 1 */
-}
 /* USER CODE END 1 */

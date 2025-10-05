@@ -37,6 +37,7 @@ extern "C" {
 #include "nxd_dns.h"
 #include "mx_wifi.h"
 #include "nx_driver_emw3080.h"
+#include "msg.h"
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -53,6 +54,17 @@ extern "C" {
 
 #define MAIN_THREAD_STACK_SIZE               (3 * DEFAULT_MEMORY_SIZE)
 #define MAIN_THREAD_PRIORITY                 (NETX_IP_THREAD_PRIORITY + 3)
+
+#define MAIN2_THREAD_STACK_SIZE              (2 * DEFAULT_MEMORY_SIZE)
+#define MAIN2_THREAD_PRIORITY                (NETX_IP_THREAD_PRIORITY + 3)
+
+
+#define BSD_COMPAT_LAYER_THREAD_STACK_SIZE   (2 * DEFAULT_MEMORY_SIZE)
+#define BSD_COMPAT_LAYER_THREAD_PRIORITY     (NETX_IP_THREAD_PRIORITY + 2)
+
+#define NETWORK_BASICS_THREAD_STACK_SIZE     (6 * DEFAULT_MEMORY_SIZE)
+#define NETWORK_BASICS_THREAD_PRIORITY       (NETX_IP_THREAD_PRIORITY + 2)
+
 
 #define NULL_ADDRESS                         ((void*)0)
 /* USER CODE END EC */
@@ -84,6 +96,14 @@ UINT MX_NetXDuo_Init(VOID *memory_ptr);
 /* USER CODE BEGIN 1 */
 extern TX_BYTE_POOL *AppBytePool;
 extern NX_IP IpInstance;
+
+int32_t http_download_cmd(int32_t argc, char *argv[]);
+
+int32_t ping_cmd(int32_t argc, char *argv[]);
+
+int32_t scan_cmd(int32_t argc, char *argv[]);
+
+int32_t test_echo_server(int32_t argc, char *argv[]);
 /* USER CODE END 1 */
 
 #ifdef __cplusplus
