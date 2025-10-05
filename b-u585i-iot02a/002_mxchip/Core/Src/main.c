@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -141,6 +141,63 @@ int main(void)
   MX_USB_OTG_FS_PCD_Init();
   MX_UCPD1_Init();
   /* USER CODE BEGIN 2 */
+  
+  printf("\r\n=== MXCHIP SPI Connection Test ===\r\n");
+  
+  /* Test 1: Check pin states */
+  printf("Pin states:\r\n");
+  printf("- WRLS_FLOW: %s\r\n", HAL_GPIO_ReadPin(WRLS_FLOW_GPIO_Port, WRLS_FLOW_Pin) ? "HIGH" : "LOW");
+  printf("- WRLS_NOTIFY: %s\r\n", HAL_GPIO_ReadPin(WRLS_NOTIFY_GPIO_Port, WRLS_NOTIFY_Pin) ? "HIGH" : "LOW");
+  printf("- WRLS_NSS: %s\r\n", HAL_GPIO_ReadPin(WRLS_NSS_GPIO_Port, WRLS_NSS_Pin) ? "HIGH" : "LOW");
+  printf("- WRLS_WKUP_W: %s\r\n", HAL_GPIO_ReadPin(WRLS_WKUP_W_GPIO_Port, WRLS_WKUP_W_Pin) ? "HIGH" : "LOW");
+  printf("- WRLS_WKUP_B: %s\r\n", HAL_GPIO_ReadPin(WRLS_WKUP_B_GPIO_Port, WRLS_WKUP_B_Pin) ? "HIGH" : "LOW");
+  
+  /* Test 2: Enable MXCHIP power */
+  printf("\r\nEnabling MXCHIP power...\r\n");
+  HAL_GPIO_WritePin(WRLS_WKUP_B_GPIO_Port, WRLS_WKUP_B_Pin, GPIO_PIN_SET);
+  HAL_Delay(100);
+  
+  /* Test 3: Reset MXCHIP module */
+  printf("Resetting MXCHIP module...\r\n");
+  HAL_GPIO_WritePin(WRLS_WKUP_W_GPIO_Port, WRLS_WKUP_W_Pin, GPIO_PIN_RESET);
+  HAL_Delay(100);
+  HAL_GPIO_WritePin(WRLS_WKUP_W_GPIO_Port, WRLS_WKUP_W_Pin, GPIO_PIN_SET);
+  HAL_Delay(2000); // Wait for module boot
+  
+  /* Test 4: Check pin states after reset */
+  printf("Pin states after reset:\r\n");
+  printf("- WRLS_FLOW: %s\r\n", HAL_GPIO_ReadPin(WRLS_FLOW_GPIO_Port, WRLS_FLOW_Pin) ? "HIGH" : "LOW");
+  printf("- WRLS_NOTIFY: %s\r\n", HAL_GPIO_ReadPin(WRLS_NOTIFY_GPIO_Port, WRLS_NOTIFY_Pin) ? "HIGH" : "LOW");
+  
+  /* Test 5: SPI Communication Test */
+  printf("\r\nTesting SPI communication...\r\n");
+  
+  // Select device (NSS low)
+  HAL_GPIO_WritePin(WRLS_NSS_GPIO_Port, WRLS_NSS_Pin, GPIO_PIN_RESET);
+  HAL_Delay(1);
+  
+  // Send test data
+  uint8_t tx_data[4] = {0x00, 0xFF, 0xAA, 0x55};
+  uint8_t rx_data[4] = {0x00, 0x00, 0x00, 0x00};
+  HAL_StatusTypeDef spi_status = HAL_SPI_TransmitReceive(&hspi2, tx_data, rx_data, 4, 1000);
+  
+  // Deselect device (NSS high)
+  HAL_GPIO_WritePin(WRLS_NSS_GPIO_Port, WRLS_NSS_Pin, GPIO_PIN_SET);
+  
+  printf("SPI Test Result: %s\r\n", (spi_status == HAL_OK) ? "OK" : "FAILED");
+  printf("TX: [0x%02X, 0x%02X, 0x%02X, 0x%02X]\r\n", tx_data[0], tx_data[1], tx_data[2], tx_data[3]);
+  printf("RX: [0x%02X, 0x%02X, 0x%02X, 0x%02X]\r\n", rx_data[0], rx_data[1], rx_data[2], rx_data[3]);
+  printf("SPI ErrorCode: 0x%08lX\r\n", hspi2.ErrorCode);
+  
+  if (spi_status == HAL_OK) {
+    printf("SPI communication is working!\r\n");
+    HAL_GPIO_WritePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin, GPIO_PIN_SET);
+  } else {
+    printf("SPI communication failed!\r\n");
+    HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, GPIO_PIN_SET);
+  }
+  
+  printf("\r\n=== Test Complete ===\r\n");
 
   /* USER CODE END 2 */
 
@@ -939,7 +996,6 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-/* USER CODE END 4 */
 
 /**
   * @brief  This function is executed in case of error occurrence.
