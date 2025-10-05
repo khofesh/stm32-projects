@@ -28,3 +28,12 @@ Move all stm32 projects into one place
 ## TIMER
 
 calculator: https://deepbluembedded.com/stm32-timer-calculator/
+
+## NETXDUO
+
+- https://wiki.st.com/stm32mcu/wiki/Introduction_to_NETXDUO
+- youtube: https://www.youtube.com/playlist?list=PLnMKNibPkDnGxMITHhhRqbT0-2egHq0D0
+
+## usb
+
+- https://wiki.st.com/stm32mcu/wiki/Introduction_to_USB_with_STM32
