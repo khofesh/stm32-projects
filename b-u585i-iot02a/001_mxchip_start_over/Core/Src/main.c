@@ -70,6 +70,17 @@ static void MX_USART1_UART_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+/**
+ * @brief Redirect printf to UART1
+ * @param ch: Character to send
+ * @retval int: Character sent
+ */
+int __io_putchar(int ch)
+{
+  HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+  return ch;
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -111,10 +122,22 @@ int main(void)
   /* USER CODE BEGIN 2 */
   
   printf("\r\n=== MXCHIP WiFi Network Scanner Demo ===\r\n");
-  printf("Initializing MXCHIP WiFi module...\r\n");
   
   /* Initialize MXCHIP WiFi module */
-
+  MX_WIFI_STATUS_T status = MXCHIP_Init(&wifi_obj);
+  
+  if (status != MX_WIFI_STATUS_OK) {
+    printf("❌ Failed to initialize MXCHIP WiFi module. Halting.\r\n");
+    while(1) {
+      HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
+      HAL_Delay(500);
+    }
+  }
+  
+  /* Turn on green LED to indicate successful initialization */
+  HAL_GPIO_WritePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin, GPIO_PIN_SET);
+  
+  printf("🚀 Starting WiFi scanning demo...\r\n\r\n");
 
   /* USER CODE END 2 */
 
@@ -125,6 +148,55 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    
+    MXCHIP_ScanResults_t scan_results;
+    
+    printf("🔄 === WiFi Scan Cycle ===\r\n");
+    
+    /* Perform WiFi network scan */
+    status = MXCHIP_ScanNetworks(&wifi_obj, &scan_results);
+    
+    if (status == MX_WIFI_STATUS_OK) {
+      /* Display scan results */
+      MXCHIP_PrintScanResults(&scan_results);
+      
+      if (scan_results.count > 0) {
+        /* Show strongest network */
+        MXCHIP_PrintStrongestNetwork(&scan_results);
+        
+        /* Show network statistics */
+        MXCHIP_PrintNetworkStatistics(&scan_results);
+        
+        /* Blink green LED to indicate successful scan */
+        for (int i = 0; i < 3; i++) {
+          HAL_GPIO_TogglePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin);
+          HAL_Delay(200);
+        }
+        HAL_GPIO_WritePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin, GPIO_PIN_SET);
+      } else {
+        printf("⚠️  No networks found in this scan.\r\n");
+        /* Blink red LED to indicate no networks found */
+        for (int i = 0; i < 2; i++) {
+          HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
+          HAL_Delay(300);
+        }
+        HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, GPIO_PIN_RESET);
+      }
+    } else {
+      printf("❌ WiFi scan failed with error: %d\r\n", status);
+      /* Blink red LED rapidly to indicate scan error */
+      for (int i = 0; i < 5; i++) {
+        HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
+        HAL_Delay(100);
+      }
+      HAL_GPIO_WritePin(LED_RED_GPIO_Port, LED_RED_Pin, GPIO_PIN_RESET);
+    }
+    
+    printf("⏰ Waiting 10 seconds before next scan...\r\n");
+    printf("========================================\r\n\r\n");
+    
+    /* Wait 10 seconds before next scan */
+    HAL_Delay(10000);
     
   }
   /* USER CODE END 3 */
