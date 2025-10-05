@@ -193,6 +193,26 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN Private defines */
 
+/* Hardware-specific definitions for B-U585I-IOT02A board */
+
+/* SPI interface definitions */
+extern SPI_HandleTypeDef hspi2;
+#define MXCHIP_SPI                                  hspi2
+
+/* GPIO pin definitions for MXCHIP control signals */
+#define MXCHIP_FLOW_Pin                             WRLS_FLOW_Pin
+#define MXCHIP_FLOW_GPIO_Port                       WRLS_FLOW_GPIO_Port
+#define MXCHIP_FLOW_EXTI_IRQn                       EXTI15_IRQn
+
+#define MXCHIP_NOTIFY_Pin                           WRLS_NOTIFY_Pin
+#define MXCHIP_NOTIFY_GPIO_Port                     WRLS_NOTIFY_GPIO_Port
+#define MXCHIP_NOTIFY_EXTI_IRQn                     EXTI14_IRQn
+
+#define MXCHIP_RESET_Pin                            WRLS_WKUP_W_Pin
+#define MXCHIP_RESET_GPIO_Port                      WRLS_WKUP_W_GPIO_Port
+
+#define MXCHIP_NSS_Pin       WRLS_NSS_Pin
+#define MXCHIP_NSS_GPIO_Port      WRLS_NSS_GPIO_Port
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
