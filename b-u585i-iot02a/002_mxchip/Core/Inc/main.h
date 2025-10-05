@@ -178,8 +178,8 @@ void Error_Handler(void);
 #define USB_VBUS_SENSE_GPIO_Port GPIOF
 #define OCTOSPI_R_NCS_Pin GPIO_PIN_11
 #define OCTOSPI_R_NCS_GPIO_Port GPIOB
-#define WRLS_SPI2_NSS_Pin GPIO_PIN_12
-#define WRLS_SPI2_NSS_GPIO_Port GPIOB
+#define WRLS_NSS_Pin GPIO_PIN_12
+#define WRLS_NSS_GPIO_Port GPIOB
 #define USB_UCPD_CC2_Pin GPIO_PIN_15
 #define USB_UCPD_CC2_GPIO_Port GPIOB
 #define Mems_STSAFE_RESET_Pin GPIO_PIN_11
