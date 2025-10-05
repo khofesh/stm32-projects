@@ -31,7 +31,12 @@ extern "C" {
 /* Private includes ----------------------------------------------------------*/
 
 /* USER CODE BEGIN Includes */
-
+#include <inttypes.h>
+#include "main.h"
+#include "nx_ip.h"
+#include "nxd_dns.h"
+#include "mx_wifi.h"
+#include "nx_driver_emw3080.h"
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -41,12 +46,27 @@ extern "C" {
 
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
+#define PAYLOAD_SIZE                         NX_DRIVER_PACKET_SIZE
+#define NX_PACKET_POOL_SIZE                  ((PAYLOAD_SIZE + sizeof(NX_PACKET)) * 20)
 
+#define ARP_MEMORY_SIZE                      DEFAULT_MEMORY_SIZE
+
+#define MAIN_THREAD_STACK_SIZE               (3 * DEFAULT_MEMORY_SIZE)
+#define MAIN_THREAD_PRIORITY                 (NETX_IP_THREAD_PRIORITY + 3)
+
+#define NULL_ADDRESS                         ((void*)0)
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/
 /* USER CODE BEGIN EM */
-
+#define PRINT_IP_ADDRESS(addr)                                    \
+  do {                                                            \
+    printf("%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32 "\n", \
+            ((uint32_t)(addr) >> 24) & 0xff,                      \
+            ((uint32_t)(addr) >> 16) & 0xff,                      \
+            ((uint32_t)(addr) >> 8) & 0xff,                       \
+            ((uint32_t)(addr) & 0xff));                           \
+  } while(0)
 /* USER CODE END EM */
 
 /* Exported functions prototypes ---------------------------------------------*/
@@ -62,7 +82,8 @@ UINT MX_NetXDuo_Init(VOID *memory_ptr);
 /* USER CODE END PD */
 
 /* USER CODE BEGIN 1 */
-
+extern TX_BYTE_POOL *AppBytePool;
+extern NX_IP IpInstance;
 /* USER CODE END 1 */
 
 #ifdef __cplusplus
