@@ -267,6 +267,9 @@
 
 /* USER CODE BEGIN 2 */
 
+/* Define the user extension field of the thread control block.*/
+#define TX_THREAD_USER_EXTENSION                INT bsd_errno;
+
 /* USER CODE END 2 */
 
 #endif

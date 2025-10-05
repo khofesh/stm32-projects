@@ -29,18 +29,6 @@ extern "C" {
 /* Includes ------------------------------------------------------------------*/
 #include "stm32u5xx_hal.h"
 
-#include "stm32u5xx_ll_ucpd.h"
-#include "stm32u5xx_ll_bus.h"
-#include "stm32u5xx_ll_cortex.h"
-#include "stm32u5xx_ll_rcc.h"
-#include "stm32u5xx_ll_system.h"
-#include "stm32u5xx_ll_utils.h"
-#include "stm32u5xx_ll_pwr.h"
-#include "stm32u5xx_ll_gpio.h"
-#include "stm32u5xx_ll_dma.h"
-
-#include "stm32u5xx_ll_exti.h"
-
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
@@ -74,8 +62,6 @@ void Error_Handler(void);
 #define WRLS_FLOW_EXTI_IRQn EXTI15_IRQn
 #define WRLS_UART4_RX_Pin GPIO_PIN_11
 #define WRLS_UART4_RX_GPIO_Port GPIOC
-#define USB_UCPD_CC1_Pin GPIO_PIN_15
-#define USB_UCPD_CC1_GPIO_Port GPIOA
 #define OCTOSPI_F_NCS_Pin GPIO_PIN_5
 #define OCTOSPI_F_NCS_GPIO_Port GPIOI
 #define OCTOSPI_R_IO5_Pin GPIO_PIN_0
