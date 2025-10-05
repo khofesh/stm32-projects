@@ -19,3 +19,11 @@ components: https://github.com/STMicroelectronics/STM32CubeU5/tree/main/Drivers/
   - https://github.com/STMicroelectronics/STM32CubeU5/tree/main/Drivers/BSP/Components/veml6030
   - https://github.com/STMicroelectronics/stm32-veml3235/
 - STM32-WB-AT -> https://github.com/STMicroelectronics/stm32-wb-at
+
+## update firmware
+
+follow the guidance in `b-u585i-iot02a/docs/um2839-discovery-kit-for-iot-node-with-stm32u5-series-stmicroelectronics.pdf`
+
+download the firmware: https://www.st.com/en/development-tools/x-wifi-emw3080b.html?ecmp=tt9470_gl_link_feb2019&rt=um&id=UM2839#st-get-software
+
+![update firmware](./Screenshot_2025-10-05_12-00-47_mxchip%20flash%20update%20success.png)
