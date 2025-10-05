@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include "mx_wifi_stm32.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -59,7 +60,7 @@ UART_HandleTypeDef huart1;
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 /* USER CODE BEGIN PV */
-
+MX_WIFIObject_t wifi_obj;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -198,6 +199,23 @@ int main(void)
   }
   
   printf("\r\n=== Test Complete ===\r\n");
+
+  printf("\r\n=== MXCHIP WiFi Network Scanner Demo ===\r\n");
+
+  MX_WIFI_STATUS_T status = MXCHIP_Init(&wifi_obj);
+
+  if (status != MX_WIFI_STATUS_OK) {
+    printf("Failed to initialize MXCHIP WiFi module. Halting.\r\n");
+    while(1) {
+      HAL_GPIO_TogglePin(LED_RED_GPIO_Port, LED_RED_Pin);
+      HAL_Delay(500);
+    }
+  }
+
+  /* Turn on green LED to indicate successful initialization */
+  HAL_GPIO_WritePin(LED_GREEN_GPIO_Port, LED_GREEN_Pin, GPIO_PIN_SET);
+
+  printf("Starting WiFi scanning demo...\r\n\r\n");
 
   /* USER CODE END 2 */
 
@@ -989,6 +1007,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF6_MDF1;
   HAL_GPIO_Init(MIC_SDIN0_GPIO_Port, &GPIO_InitStruct);
 
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI14_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI14_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI15_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_IRQn);
+
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
   /* USER CODE END MX_GPIO_Init_2 */
@@ -996,6 +1021,7 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+/* USER CODE END 4 */
 
 /**
   * @brief  This function is executed in case of error occurrence.

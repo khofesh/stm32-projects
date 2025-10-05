@@ -22,6 +22,7 @@
 #include "stm32u5xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "mx_wifi_io.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -201,6 +202,34 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /**
+  * @brief This function handles EXTI Line14 interrupt.
+  */
+void EXTI14_IRQHandler(void)
+{
+  /* USER CODE BEGIN EXTI14_IRQn 0 */
+
+  /* USER CODE END EXTI14_IRQn 0 */
+  HAL_GPIO_EXTI_IRQHandler(WRLS_NOTIFY_Pin);
+  /* USER CODE BEGIN EXTI14_IRQn 1 */
+
+  /* USER CODE END EXTI14_IRQn 1 */
+}
+
+/**
+  * @brief This function handles EXTI Line15 interrupt.
+  */
+void EXTI15_IRQHandler(void)
+{
+  /* USER CODE BEGIN EXTI15_IRQn 0 */
+
+  /* USER CODE END EXTI15_IRQn 0 */
+  HAL_GPIO_EXTI_IRQHandler(WRLS_FLOW_Pin);
+  /* USER CODE BEGIN EXTI15_IRQn 1 */
+
+  /* USER CODE END EXTI15_IRQn 1 */
+}
+
+/**
   * @brief This function handles GPDMA1 Channel 4 global interrupt.
   */
 void GPDMA1_Channel4_IRQHandler(void)
@@ -243,5 +272,28 @@ void SPI2_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+/**
+  * @brief EXTI line detection callbacks.
+  * @param GPIO_Pin: Specifies the pins connected EXTI line
+  * @retval None
+  */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  /* USER CODE BEGIN HAL_GPIO_EXTI_Callback 0 */
 
+  /* USER CODE END HAL_GPIO_EXTI_Callback 0 */
+
+  if (GPIO_Pin == WRLS_FLOW_Pin) {
+    /* MXCHIP FLOW pin interrupt - call WiFi driver ISR */
+    mxchip_WIFI_ISR(WRLS_FLOW_Pin);
+  }
+  else if (GPIO_Pin == WRLS_NOTIFY_Pin) {
+    /* MXCHIP NOTIFY pin interrupt - call WiFi driver ISR */
+    mxchip_WIFI_ISR(WRLS_NOTIFY_Pin);
+  }
+
+  /* USER CODE BEGIN HAL_GPIO_EXTI_Callback 1 */
+
+  /* USER CODE END HAL_GPIO_EXTI_Callback 1 */
+}
 /* USER CODE END 1 */

@@ -70,6 +70,7 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define WRLS_FLOW_Pin GPIO_PIN_15
 #define WRLS_FLOW_GPIO_Port GPIOG
+#define WRLS_FLOW_EXTI_IRQn EXTI15_IRQn
 #define WRLS_UART4_RX_Pin GPIO_PIN_11
 #define WRLS_UART4_RX_GPIO_Port GPIOC
 #define USB_UCPD_CC1_Pin GPIO_PIN_15
@@ -160,6 +161,7 @@ void Error_Handler(void);
 #define Mems_VLX_GPIO_GPIO_Port GPIOG
 #define WRLS_NOTIFY_Pin GPIO_PIN_14
 #define WRLS_NOTIFY_GPIO_Port GPIOD
+#define WRLS_NOTIFY_EXTI_IRQn EXTI14_IRQn
 #define OCTOSPI_R_IO6_Pin GPIO_PIN_3
 #define OCTOSPI_R_IO6_GPIO_Port GPIOC
 #define OCTOSPI_F_DQS_Pin GPIO_PIN_12
