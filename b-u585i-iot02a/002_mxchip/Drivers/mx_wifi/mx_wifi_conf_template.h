@@ -17,7 +17,8 @@
   */
 
 /* Define to prevent recursive inclusion -------------------------------------*/
-#pragma once
+#ifndef MX_WIFI_CONF_TEMPLATE_H
+#define MX_WIFI_CONF_TEMPLATE_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -30,7 +31,7 @@ extern "C" {
 
 
 #ifndef MX_WIFI_USE_SPI
-#define MX_WIFI_USE_SPI                             (1)
+#define MX_WIFI_USE_SPI                             (0)
 #endif /* MX_WIFI_USE_SPI */
 
 /* SPI DMA usage, default on */
@@ -229,4 +230,4 @@ extern mx_stat_t mx_stat;
 }
 #endif /* __cplusplus */
 
-
+#endif /* MX_WIFI_CONF_TEMPLATE_H */
