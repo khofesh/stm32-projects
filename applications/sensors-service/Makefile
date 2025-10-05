@@ -27,6 +27,11 @@ run/cli/collect-data:
 run/cli/sen55-reader:
 	go run ./cmd/cli/sen55-reader 00:80:E1:26:06:2E
 
+## run: run cli/mqtt-client
+.PHONY: run/cli/mqtt-client
+run/cli/mqtt-client:
+	go run ./cmd/cli/mqtt-client
+
 # ==================================================================================== #
 # BUILD
 # ==================================================================================== #
