@@ -10,6 +10,7 @@
 #include "mx_wifi_conf.h"
 
 
+
 #ifndef NX_DRIVER_DEFERRED_PROCESSING
 #error The symbol NX_DRIVER_DEFERRED_PROCESSING should be defined
 #endif /* NX_DRIVER_DEFERRED_PROCESSING */
@@ -22,7 +23,7 @@
 #error The symbol WIFI_PASSWORD should be defined
 #endif /* WIFI_PASSWORD  */
 
-#define NX_DRIVER_ENABLE_DEFERRED
+//#define NX_DRIVER_ENABLE_DEFERRED
 
 /* Indicate that driver source is being compiled. */
 #define NX_DRIVER_SOURCE

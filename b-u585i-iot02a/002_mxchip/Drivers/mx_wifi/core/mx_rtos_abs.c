@@ -18,7 +18,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "mx_wifi_conf.h"
-
+#include "mx_rtos_abs.h"
 
 #if (MX_WIFI_USE_CMSIS_OS == 1)
 osThreadId thread_new(const char *name, void (*thread)(void const *), void *arg, int stacksize, int prio)

@@ -46,8 +46,8 @@ extern "C" {
 
 /* Edit the defines below to suit the WiFi connection. */
 /* Access point connection parameters */
-#define WIFI_SSID                                   "living room"
-#define WIFI_PASSWORD                               "ZMHANzpjc7nsSJbNYKbQcsV7R"
+#define WIFI_SSID                                   "___"
+#define WIFI_PASSWORD                               "___"
 
 /* DEBUG LOG */
 /* #define MX_WIFI_API_DEBUG  */

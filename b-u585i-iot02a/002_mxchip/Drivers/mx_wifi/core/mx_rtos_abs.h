@@ -30,9 +30,26 @@ extern "C" {
 
 
 #if MX_WIFI_USE_CMSIS_OS
-
+  // existing CMSIS-OS stuff
 #else
+  /* No-OS queue structure */
+  typedef struct noos_queue_s
+  {
+    uint16_t len;
+    uint16_t in;
+    uint16_t idx;
+    uint16_t rd;
+    uint16_t wr;
+    void **fifo;
+  } noos_queue_t;
 
+  /* No-OS function declarations */
+  int32_t noos_sem_signal(volatile uint32_t *sem);
+  int32_t noos_sem_wait(__IO uint32_t *sem, uint32_t timeout, void (*idle_func)(uint32_t duration));
+  int32_t noos_fifo_init(noos_queue_t **qret, uint16_t len);
+  void noos_fifo_deinit(noos_queue_t *q);
+  int32_t noos_fifo_push(noos_queue_t *queue, void *p, uint32_t timeout, void (*idle_func)(uint32_t duration));
+  void *noos_fifo_pop(noos_queue_t *queue, uint32_t timeout, void (*idle_func)(uint32_t duration));
 
 #endif /* MX_WIFI_USE_CMSIS_OS */
 

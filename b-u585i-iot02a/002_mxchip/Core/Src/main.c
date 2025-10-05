@@ -23,6 +23,17 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <inttypes.h>
+#if defined(__ICCARM__)
+#include <LowLevelIOInterface.h>
+#endif /* (__ICCARM__) */
+
+#include "nx_driver_emw3080.h"
+
+#include "io_pattern/mx_wifi_io.h"
 
 /* USER CODE END Includes */
 
@@ -63,7 +74,11 @@ UART_HandleTypeDef huart1;
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 /* USER CODE BEGIN PV */
+#define CONSOLE_UART        huart1
 
+#define UART_BUFFER_SIZE    (uint32_t)60
+static char uart_buffer[UART_BUFFER_SIZE];
+static __IO uint32_t uart_write_idx = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -88,16 +103,7 @@ static void MX_RNG_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-/**
- * @brief Redirect printf to UART1
- * @param ch: Character to send
- * @retval int: Character sent
- */
-int __io_putchar(int ch)
-{
-  HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
-  return ch;
-}
+
 /* USER CODE END 0 */
 
 /**
@@ -204,7 +210,66 @@ int main(void)
   printf("\r\n=== Test Complete ===\r\n");
 
 
+  {
+    {
+      char welcome[] = "Welcome\n";
+      uint16_t welcome_size = (uint16_t)strlen(welcome);
+      HAL_UART_Transmit(&CONSOLE_UART, (uint8_t*)welcome, welcome_size, 0xFFFF);
+    }
+  }
 
+  /* Force no buffer for the printf() usage. */
+  setbuf(stdout, NULL);
+
+  {
+    char the_compiler[100] = {0};
+
+#if defined(__GNUC__)
+    strcat(the_compiler, " __GNUC__");
+#endif /* __GNUC__ */
+#if defined(__clang__)
+    strcat(the_compiler, " __clang__");
+#endif /* __clang__ */
+#if defined(__ICCARM__)
+    strcat(the_compiler, " __ICCARM__");
+#endif /* __ICCARM__ */
+#if defined(__ARMCC_VERSION)
+    strcat(the_compiler, " __ARMCC_VERSION ");
+    sprintf(&the_compiler[strlen(the_compiler)], "(%d)", __ARMCC_VERSION);
+#endif /* __ARMCC_VERSION */
+#if defined(__MICROLIB)
+    strcat(the_compiler, " __MICROLIB");
+#endif /* __MICROLIB */
+
+    {
+      const uint32_t start_counting = HAL_GetTick();
+      static __IO uint32_t count = 0;
+      for (__IO uint32_t i = 0; i < 1600000; i++)
+      {
+        count++;
+      }
+      {
+        const uint32_t end_counting = HAL_GetTick();
+        printf("\n[%" PRIu32 "] main(): %s %s  (%s)   : %" PRIu32 " ms for %" PRIu32 " loops\n\n",
+               end_counting, __DATE__, __TIME__, the_compiler, end_counting - start_counting, count);
+      }
+    }
+  }
+
+  {
+    int random_number = hardware_rand();
+
+    /* Initialize the seed of the stdlib rand() software implementation. */
+    srand((unsigned)random_number);
+    printf("rand() seeded by %" PRId32 " returned %" PRId32 "\n\n", (int32_t)random_number, (int32_t)rand());
+  }
+
+
+  /* Start getchar under interrupt. */
+  HAL_UART_Receive_IT(&CONSOLE_UART, (uint8_t *)&uart_buffer[0], 1);
+
+  /* Force no buffer for the getc() usage. */
+  setbuf(stdin, NULL);
   /* USER CODE END 2 */
 
   MX_ThreadX_Init();
@@ -244,16 +309,16 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSI48State = RCC_HSI48_ON;
   RCC_OscInitStruct.MSIState = RCC_MSI_ON;
   RCC_OscInitStruct.MSICalibrationValue = RCC_MSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_4;
+  RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_0;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_MSI;
-  RCC_OscInitStruct.PLL.PLLMBOOST = RCC_PLLMBOOST_DIV1;
-  RCC_OscInitStruct.PLL.PLLM = 1;
-  RCC_OscInitStruct.PLL.PLLN = 80;
+  RCC_OscInitStruct.PLL.PLLMBOOST = RCC_PLLMBOOST_DIV4;
+  RCC_OscInitStruct.PLL.PLLM = 3;
+  RCC_OscInitStruct.PLL.PLLN = 10;
   RCC_OscInitStruct.PLL.PLLP = 2;
   RCC_OscInitStruct.PLL.PLLQ = 2;
-  RCC_OscInitStruct.PLL.PLLR = 2;
-  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLLVCIRANGE_0;
+  RCC_OscInitStruct.PLL.PLLR = 1;
+  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLLVCIRANGE_1;
   RCC_OscInitStruct.PLL.PLLFRACN = 0;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -1005,7 +1070,184 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+#if (defined(__GNUC__) && !defined(__ARMCC_VERSION))
+/**
+  * With GCC,
+  * small printf (option LD Linker->Libraries->Small printf set to 'Yes')
+  * calls __io_putchar()
+  */
+#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
 
+#elif defined(__ICCARM__)
+int iar_fputc(int ch);
+#define PUTCHAR_PROTOTYPE int iar_fputc(int ch)
+
+#elif defined(__ARMCC_VERSION)
+#ifdef __MICROLIB
+#define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
+#else
+int stdout_putchar(int ch);
+#define PUTCHAR_PROTOTYPE int stdout_putchar(int ch)
+int stderr_putchar(int ch) { return stdout_putchar(ch); }
+void ttywrch(int ch) { stdout_putchar(ch); }
+#endif /* __MICROLIB */
+#endif /* __GNUC__ */
+
+
+/**
+  * @brief  Retargets the C library printf function to the USART.
+  * @param  None
+  * @retval None
+  */
+int __io_putchar(int ch)
+{
+  HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+  return ch;
+}
+
+#if defined(__ICCARM__)
+size_t __write(int file, unsigned char const *ptr, size_t len)
+{
+  size_t idx;
+  unsigned char const *pdata = ptr;
+
+  for (idx = 0; idx < len; idx++)
+  {
+    iar_fputc((int)*pdata);
+    pdata++;
+  }
+  return len;
+}
+#endif /* __ICCARM__ */
+
+
+#if (defined(__GNUC__) && !defined(__ARMCC_VERSION))
+#define GETCHAR_PROTOTYPE int __io_getchar(void)
+
+#elif defined(__ICCARM__)
+#define GETCHAR_PROTOTYPE int fgetc(FILE *f)
+
+#elif defined(__ARMCC_VERSION)
+#ifdef __MICROLIB
+#define GETCHAR_PROTOTYPE int fgetc(FILE *f)
+#else
+int stdin_getchar(void);
+#define GETCHAR_PROTOTYPE int stdin_getchar(void)
+#endif /* __MICROLIB */
+#endif /* __GNUC__ */
+
+/**
+  * @brief  Retargets the C library scanf function to the USART.
+  * @param  None
+  * @retval None
+  */
+GETCHAR_PROTOTYPE
+{
+  static uint32_t uart_read_idx = 0;
+  char ch;
+
+  while (uart_write_idx == uart_read_idx);
+
+  ch = uart_buffer[uart_read_idx++];
+  if (uart_read_idx == UART_BUFFER_SIZE)
+  {
+    uart_read_idx = 0;
+  }
+  return ch;
+}
+
+
+
+/**
+  * @brief Rx Transfer completed callback.
+  * @param  hspi: pointer to a SPI_HandleTypeDef structure that contains
+  *               the configuration information for the SPI module.
+  * @retval None
+  */
+void HAL_SPI_RxCpltCallback(SPI_HandleTypeDef *hspi)
+{
+  if (hspi == &MXCHIP_SPI)
+  {
+    HAL_SPI_TransferCallback(hspi);
+  }
+}
+
+/**
+  * @brief Tx Transfer completed callback.
+  * @param  hspi: pointer to a SPI_HandleTypeDef structure that contains
+  *               the configuration information for the SPI module.
+  * @retval None
+  */
+void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi)
+{
+  if (hspi == &MXCHIP_SPI)
+  {
+    HAL_SPI_TransferCallback(hspi);
+  }
+}
+
+/**
+  * @brief Tx and Rx Transfer completed callback.
+  * @param  hspi: pointer to a SPI_HandleTypeDef structure that contains
+  *               the configuration information for the SPI module.
+  * @retval None
+  */
+void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
+{
+  if (hspi == &MXCHIP_SPI)
+  {
+    HAL_SPI_TransferCallback(hspi);
+  }
+}
+
+/**
+  * @brief  EXTI line rising detection callback.
+  * @param  GPIO_Pin: Specifies the port pin connected to corresponding EXTI line.
+  * @retval None
+  */
+void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin)
+{
+  switch (GPIO_Pin)
+  {
+    case (MXCHIP_FLOW_Pin):
+      mxchip_WIFI_ISR(MXCHIP_FLOW_Pin);
+      nx_driver_emw3080_interrupt();
+      break;
+
+    case (MXCHIP_NOTIFY_Pin):
+      mxchip_WIFI_ISR(MXCHIP_NOTIFY_Pin);
+      nx_driver_emw3080_interrupt();
+      break;
+    default:
+      break;
+  }
+}
+
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart == &CONSOLE_UART)
+  {
+    uart_write_idx++;
+    if (uart_write_idx == UART_BUFFER_SIZE)
+    {
+      uart_write_idx = 0;
+    }
+    HAL_UART_Receive_IT(huart, (uint8_t *)&uart_buffer[uart_write_idx], 1);
+  }
+}
+
+
+/* Alternative to HAL_RNG_GenerateRandomNumber(). */
+/* MX_RNG_Init() MUST be called before usage of this function. */
+int hardware_rand(void)
+{
+  /* Wait for data ready. */
+  while ((hrng.Instance->SR & RNG_SR_DRDY) == 0);
+
+  /* Return the random number. */
+  return ((int)hrng.Instance->DR);
+}
 /* USER CODE END 4 */
 
 /**
@@ -1038,6 +1280,7 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
+	printf("\n\nError_Handler()>\n");
   __disable_irq();
   while (1)
   {
