@@ -2,9 +2,8 @@
 
 ## enter into DFU mode (linux issue)
 
-- push both NR and BO button
+- hold down BO button
 - connect to PC
-- release NR
 - release BO
 
 if done right, you could see `lsusb`
