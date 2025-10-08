@@ -10,5 +10,9 @@
   "collection_duration_seconds": 120,
   "web_server": {
     "port": 8080
+  },
+  "mqtt": {
+    "username": "",
+    "password": ""
   }
 }
