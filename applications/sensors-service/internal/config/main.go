@@ -21,12 +21,18 @@ type Config struct {
 	BLEAddress                string          `json:"ble_address"`
 	Database                  DatabaseConfig  `json:"database"`
 	CollectionDurationSeconds int             `json:"collection_duration_seconds"`
-	WebServer                 WebServerConfig `json:"web_server,omitempty"`
+	WebServer                 WebServerConfig `json:"web_server"`
+	MQTT                      MQTTConfig      `json:"mqtt"`
 }
 
 // WebServerConfig holds web server specific configuration
 type WebServerConfig struct {
 	Port int `json:"port"`
+}
+
+type MQTTConfig struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 // GetCollectionDuration returns the collection duration as time.Duration
