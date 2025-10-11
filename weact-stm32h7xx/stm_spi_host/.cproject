@@ -247,18 +247,15 @@
 	</storageModule>
 	<storageModule moduleId="org.eclipse.cdt.core.LanguageSettingsProviders"/>
 	<storageModule moduleId="org.eclipse.cdt.make.core.buildtargets"/>
+	<storageModule moduleId="scannerConfiguration">
+		<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+		<scannerConfigBuildInfo instanceId="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.649301486;com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.649301486.;com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.2137454678;com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c.660852560">
+			<autodiscovery enabled="false" problemReportingEnabled="true" selectedProfileId=""/>
+		</scannerConfigBuildInfo>
+	</storageModule>
 	<storageModule moduleId="refreshScope" versionNumber="2">
 		<configuration configurationName="Debug">
 			<resource resourceType="PROJECT" workspacePath="/stm_spi_host"/>
 		</configuration>
-	</storageModule>
-	<storageModule moduleId="scannerConfiguration">
-		<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
-		<scannerConfigBuildInfo instanceId="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.583832501;com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.583832501.;com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.829496364;com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c.1923745525">
-			<autodiscovery enabled="false" problemReportingEnabled="true" selectedProfileId=""/>
-		</scannerConfigBuildInfo>
-		<scannerConfigBuildInfo instanceId="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.3702353;com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.release.3702353.;com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.229847640;com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c.1253799485">
-			<autodiscovery enabled="false" problemReportingEnabled="true" selectedProfileId=""/>
-		</scannerConfigBuildInfo>
 	</storageModule>
 </cproject>
