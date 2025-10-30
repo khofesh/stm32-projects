@@ -149,7 +149,7 @@ int main(void)
     {
     	tick = tick_now + 500;
 
-    	uint8_t text[30];
+    	uint8_t text[40];
     	static uint8_t Seconds_o;
     	int text_lenth;
 
@@ -165,8 +165,11 @@ int main(void)
     		if(led_blink_en)
     			HAL_GPIO_WritePin(GPIOE,GPIO_PIN_4,GPIO_PIN_SET);
 
-    		text_lenth = sprintf((char *) &text,"20%02d.%02d.%02d %02d:%02d %02d ,%d\r\n",sdatestructureget.Year,sdatestructureget.Month,sdatestructureget.Date, \
-    				stimestructureget.Hours,stimestructureget.Minutes,stimestructureget.Seconds,adc_inp);
+    		text_lenth = snprintf((char *) text, sizeof(text),
+    		    "20%02d.%02d.%02d %02d:%02d %02d ,%d\r\n",
+    		    sdatestructureget.Year, sdatestructureget.Month, sdatestructureget.Date,
+    		    stimestructureget.Hours, stimestructureget.Minutes, stimestructureget.Seconds,
+    		    adc_inp);
 
     		CDC_Transmit_FS(text,text_lenth);
 
