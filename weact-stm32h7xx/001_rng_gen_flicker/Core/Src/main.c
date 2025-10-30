@@ -45,6 +45,7 @@ RNG_HandleTypeDef hrng;
 
 /* USER CODE BEGIN PV */
 uint32_t rng;
+volatile uint8_t rng_ready = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -96,6 +97,13 @@ int main(void)
   MX_RNG_Init();
   /* USER CODE BEGIN 2 */
 
+  // enable RNG interrupt
+  HAL_NVIC_SetPriority(RNG_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(RNG_IRQn);
+
+  // trigger first random number generation
+  HAL_RNG_GenerateRandomNumber_IT(&hrng);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -105,10 +113,25 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  HAL_RNG_GenerateRandomNumber(&hrng, &rng);
+	  /* polling begin */
+//	  HAL_RNG_GenerateRandomNumber(&hrng, &rng);
+//
+//	  HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_3);
+//	  HAL_Delay(rng % 600);
+	  /* polling end */
 
-	  HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_3);
-	  HAL_Delay(rng % 600);
+	  /* interrupt begin */
+	  if (rng_ready)
+	  {
+		  rng_ready = 0;
+
+		  HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_3);
+		  HAL_Delay(rng % 600);
+
+		  // request next random number
+		  HAL_RNG_GenerateRandomNumber_IT(&hrng);
+	  }
+	  /* interrupt end */
   }
   /* USER CODE END 3 */
 }
@@ -222,7 +245,11 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+void HAL_RNG_ReadyDataCallback(RNG_HandleTypeDef *hrng, uint32_t random32bit)
+{
+	rng = random32bit;
+	rng_ready = 1;
+}
 /* USER CODE END 4 */
 
  /* MPU Configuration */
