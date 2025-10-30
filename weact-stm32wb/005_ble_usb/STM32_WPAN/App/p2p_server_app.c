@@ -53,7 +53,8 @@
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN PFP */
-
+uint8_t led_blink_en = 1;
+uint8_t Notification_Status = 0;
 /* USER CODE END PFP */
 
 /* Functions Definition ------------------------------------------------------*/
@@ -70,19 +71,20 @@ void P2PS_STM_App_Notification(P2PS_STM_App_Notification_evt_t *pNotification)
 
     case P2PS_STM__NOTIFY_ENABLED_EVT:
 /* USER CODE BEGIN P2PS_STM__NOTIFY_ENABLED_EVT */
-
+    	Notification_Status = 1;
 /* USER CODE END P2PS_STM__NOTIFY_ENABLED_EVT */
       break;
 
     case P2PS_STM_NOTIFY_DISABLED_EVT:
 /* USER CODE BEGIN P2PS_STM_NOTIFY_DISABLED_EVT */
-
+    	Notification_Status = 0;
 /* USER CODE END P2PS_STM_NOTIFY_DISABLED_EVT */
       break;
 
     case P2PS_STM_WRITE_EVT:
 /* USER CODE BEGIN P2PS_STM_WRITE_EVT */
-
+    	led_blink_en = pNotification->DataTransfered.pPayload[0];
+    	APP_DBG_MSG("0x%x%x\r\n",pNotification->DataTransfered.pPayload[0],pNotification->DataTransfered.pPayload[1]);
 /* USER CODE END P2PS_STM_WRITE_EVT */
       break;
 

@@ -22,7 +22,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "usbd_cdc_if.h"
+#include "ble.h"
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -72,7 +74,9 @@ static void MX_RF_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+uint16_t adc_inp;
+RTC_DateTypeDef sdatestructureget;
+RTC_TimeTypeDef stimestructureget;
 /* USER CODE END 0 */
 
 /**
@@ -83,7 +87,8 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+	uint32_t tick,tick_now = 0;
+	tick = 0;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -119,7 +124,13 @@ int main(void)
   MX_USB_Device_Init();
   MX_RF_Init();
   /* USER CODE BEGIN 2 */
+  LL_HSEM_1StepLock( HSEM, 5 );
 
+  HAL_ADCEx_Calibration_Start(&hadc1,ADC_SINGLE_ENDED);
+  HAL_ADC_Start_DMA(&hadc1,(uint32_t *)&adc_inp,1);
+
+  extern uint8_t led_blink_en;
+  extern uint8_t Notification_Status;
   /* USER CODE END 2 */
 
   /* Init code for STM32_WPAN */
@@ -133,6 +144,40 @@ int main(void)
     MX_APPE_Process();
 
     /* USER CODE BEGIN 3 */
+    tick_now = HAL_GetTick();
+    if(tick_now >= tick)
+    {
+    	tick = tick_now + 500;
+
+    	uint8_t text[30];
+    	static uint8_t Seconds_o;
+    	int text_lenth;
+
+    	/* Get the RTC current Time */
+    	HAL_RTC_GetTime(&hrtc, &stimestructureget, RTC_FORMAT_BIN);
+    	/* Get the RTC current Date */
+    	HAL_RTC_GetDate(&hrtc, &sdatestructureget, RTC_FORMAT_BIN);
+
+    	if(Seconds_o != stimestructureget.Seconds)
+    	{
+    		Seconds_o = stimestructureget.Seconds;
+
+    		if(led_blink_en)
+    			HAL_GPIO_WritePin(GPIOE,GPIO_PIN_4,GPIO_PIN_SET);
+
+    		text_lenth = sprintf((char *) &text,"20%02d.%02d.%02d %02d:%02d %02d ,%d\r\n",sdatestructureget.Year,sdatestructureget.Month,sdatestructureget.Date, \
+    				stimestructureget.Hours,stimestructureget.Minutes,stimestructureget.Seconds,adc_inp);
+
+    		CDC_Transmit_FS(text,text_lenth);
+
+    		if(Notification_Status)
+    			P2PS_STM_App_Update_Char(P2P_NOTIFY_CHAR_UUID, text);
+    	}
+    	else
+    	{
+    		HAL_GPIO_WritePin(GPIOE,GPIO_PIN_4,GPIO_PIN_RESET);
+    	}
+    }
   }
   /* USER CODE END 3 */
 }
@@ -263,7 +308,7 @@ static void MX_ADC1_Init(void)
   */
   sConfig.Channel = ADC_CHANNEL_5;
   sConfig.Rank = ADC_REGULAR_RANK_1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_2CYCLES_5;
+  sConfig.SamplingTime = ADC_SAMPLETIME_640CYCLES_5;
   sConfig.SingleDiff = ADC_SINGLE_ENDED;
   sConfig.OffsetNumber = ADC_OFFSET_NONE;
   sConfig.Offset = 0;
