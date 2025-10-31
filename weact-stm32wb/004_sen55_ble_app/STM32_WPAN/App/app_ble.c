@@ -1178,11 +1178,17 @@ void APP_BLE_SEN55_Action()
 }
 
 // called periodically (e.g., every 5 seconds)
+// static void APP_BLE_SEN55_Timer_Callback(void)
+// {
+//     if (APP_BLE_Get_Server_Connection_Status() == APP_BLE_CONNECTED_SERVER) {
+//         APP_BLE_SEN55_Action();
+//     }
+// }
+// Runs ALWAYS - independent of BLE connection status
 static void APP_BLE_SEN55_Timer_Callback(void)
 {
-    if (APP_BLE_Get_Server_Connection_Status() == APP_BLE_CONNECTED_SERVER) {
-        APP_BLE_SEN55_Action();
-    }
+    // Always call - sensor reading and USB CDC work without BLE
+    APP_BLE_SEN55_Action();
 }
 /* USER CODE END FD_SPECIFIC_FUNCTIONS */
 /*************************************************************

@@ -247,57 +247,64 @@ void Custom_Sen55_c_Send_Notification(void) /* Property Notification */
 
   /* USER CODE BEGIN Sen55_c_NS_1*/
   static sen55_data_t sensor_data;
-  static uint32_t last_usb_send_time = 0;
+  static uint32_t last_i2c_read_time = 0;
+  static uint8_t data_valid = 0;
 
-  if (SEN55_ReadAllData(&sensor_data) == HAL_OK)
+  uint32_t current_time = HAL_GetTick();
+
+  // Read I2C sensor ONLY once every 5 seconds (rate limiting)
+  if ((current_time - last_i2c_read_time) >= 5000)
   {
-	  uint32_t current_time = HAL_GetTick();
+    if (SEN55_ReadAllData(&sensor_data) == HAL_OK)
+    {
+      data_valid = 1;
+      last_i2c_read_time = current_time;
 
-	  // send to usb cdc every 5 seconds (5000ms)
-	  if ((current_time - last_usb_send_time) >= 5000)
-	  {
-		  Send_SEN55_Data_To_USB(&sensor_data);
-		  last_usb_send_time = current_time;
-	  }
+      // Send to USB CDC immediately after reading
+      Send_SEN55_Data_To_USB(&sensor_data);
 
-	  // send to BLE only if notification enabled
-	  if (Custom_App_Context.Sen55_c_Notification_Status)
-	  {
-		  updateflag = 1;
-
-		  // pack sensor data into notification buffer
-		  // format: [PM1.0(2)] [PM2.5(2)] [PM4.0(2)] [PM10(2)] [Temp(2)] [Hum(2)] [VOC(2)] [NOx(2)]
-		  NotifyCharData[0] = (uint8_t)(sensor_data.pm1_0 & 0xFF);
-		  NotifyCharData[1] = (uint8_t)(sensor_data.pm1_0 >> 8);
-		  NotifyCharData[2] = (uint8_t)(sensor_data.pm2_5 & 0xFF);
-		  NotifyCharData[3] = (uint8_t)(sensor_data.pm2_5 >> 8);
-		  NotifyCharData[4] = (uint8_t)(sensor_data.pm4_0 & 0xFF);
-		  NotifyCharData[5] = (uint8_t)(sensor_data.pm4_0 >> 8);
-		  NotifyCharData[6] = (uint8_t)(sensor_data.pm10 & 0xFF);
-		  NotifyCharData[7] = (uint8_t)(sensor_data.pm10 >> 8);
-		  NotifyCharData[8] = (uint8_t)(sensor_data.temperature & 0xFF);
-		  NotifyCharData[9] = (uint8_t)(sensor_data.temperature >> 8);
-		  NotifyCharData[10] = (uint8_t)(sensor_data.humidity & 0xFF);
-		  NotifyCharData[11] = (uint8_t)(sensor_data.humidity >> 8);
-		  NotifyCharData[12] = (uint8_t)(sensor_data.voc_index & 0xFF);
-		  NotifyCharData[13] = (uint8_t)(sensor_data.voc_index >> 8);
-		  NotifyCharData[14] = (uint8_t)(sensor_data.nox_index & 0xFF);
-		  NotifyCharData[15] = (uint8_t)(sensor_data.nox_index >> 8);
-
-		  APP_DBG_MSG("-- CUSTOM APPLICATION SERVER : SENDING SEN55 DATA\n");
-		  APP_DBG_MSG("PM1.0: %.1f µg/m³, PM2.5: %.1f µg/m³\n",
-				  sensor_data.pm1_0 / 10.0f, sensor_data.pm2_5 / 10.0f);
-		  APP_DBG_MSG("Temperature: %.1f °C, Humidity: %.1f %%RH\n",
-				  sensor_data.temperature / 200.0f, sensor_data.humidity / 100.0f);
-	  }
-	  else
-	  {
-		  APP_DBG_MSG("-- CUSTOM APPLICATION : CAN'T INFORM CLIENT - NOTIFICATION DISABLED\n");
-	  }
+      APP_DBG_MSG("-- SEN55: I2C READ SUCCESS (cached for BLE)\n");
+    }
+    else
+    {
+      data_valid = 0;
+      APP_DBG_MSG("-- SEN55: I2C READ ERROR\n");
+    }
   }
-  else
+
+  // send to BLE using cached data (no I2C read)
+  if (Custom_App_Context.Sen55_c_Notification_Status && data_valid)
   {
-	  APP_DBG_MSG("-- CUSTOM APPLICATION : ERROR READING SEN55 DATA\n");
+    updateflag = 1;
+
+    // pack cached sensor data into notification buffer
+    // format: [PM1.0(2)] [PM2.5(2)] [PM4.0(2)] [PM10(2)] [Temp(2)] [Hum(2)] [VOC(2)] [NOx(2)]
+    NotifyCharData[0] = (uint8_t)(sensor_data.pm1_0 & 0xFF);
+    NotifyCharData[1] = (uint8_t)(sensor_data.pm1_0 >> 8);
+    NotifyCharData[2] = (uint8_t)(sensor_data.pm2_5 & 0xFF);
+    NotifyCharData[3] = (uint8_t)(sensor_data.pm2_5 >> 8);
+    NotifyCharData[4] = (uint8_t)(sensor_data.pm4_0 & 0xFF);
+    NotifyCharData[5] = (uint8_t)(sensor_data.pm4_0 >> 8);
+    NotifyCharData[6] = (uint8_t)(sensor_data.pm10 & 0xFF);
+    NotifyCharData[7] = (uint8_t)(sensor_data.pm10 >> 8);
+    NotifyCharData[8] = (uint8_t)(sensor_data.temperature & 0xFF);
+    NotifyCharData[9] = (uint8_t)(sensor_data.temperature >> 8);
+    NotifyCharData[10] = (uint8_t)(sensor_data.humidity & 0xFF);
+    NotifyCharData[11] = (uint8_t)(sensor_data.humidity >> 8);
+    NotifyCharData[12] = (uint8_t)(sensor_data.voc_index & 0xFF);
+    NotifyCharData[13] = (uint8_t)(sensor_data.voc_index >> 8);
+    NotifyCharData[14] = (uint8_t)(sensor_data.nox_index & 0xFF);
+    NotifyCharData[15] = (uint8_t)(sensor_data.nox_index >> 8);
+
+    APP_DBG_MSG("-- BLE: SENDING CACHED DATA\n");
+    APP_DBG_MSG("PM1.0: %.1f µg/m³, PM2.5: %.1f µg/m³\n",
+                sensor_data.pm1_0 / 10.0f, sensor_data.pm2_5 / 10.0f);
+    APP_DBG_MSG("Temperature: %.1f °C, Humidity: %.1f %%RH\n",
+                sensor_data.temperature / 200.0f, sensor_data.humidity / 100.0f);
+  }
+  else if (!data_valid)
+  {
+    APP_DBG_MSG("-- BLE: NO VALID DATA TO SEND\n");
   }
 
   /* USER CODE END Sen55_c_NS_1*/
