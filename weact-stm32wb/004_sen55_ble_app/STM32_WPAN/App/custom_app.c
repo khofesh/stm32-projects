@@ -246,52 +246,60 @@ void Custom_Sen55_c_Send_Notification(void) /* Property Notification */
   uint8_t updateflag = 0;
 
   /* USER CODE BEGIN Sen55_c_NS_1*/
-  if (Custom_App_Context.Sen55_c_Notification_Status)
+  static sen55_data_t sensor_data;
+  static uint32_t last_usb_send_time = 0;
+
+  if (SEN55_ReadAllData(&sensor_data) == HAL_OK)
   {
-    sen55_data_t sensor_data;
+	  uint32_t current_time = HAL_GetTick();
 
-    // read sensor data
-    if (SEN55_ReadAllData(&sensor_data) == HAL_OK)
-    {
-      updateflag = 1;
+	  // send to usb cdc every 5 seconds (5000ms)
+	  if ((current_time - last_usb_send_time) >= 5000)
+	  {
+		  Send_SEN55_Data_To_USB(&sensor_data);
+		  last_usb_send_time = current_time;
+	  }
 
-      // pack sensor data into notification buffer
-      // format: [PM1.0(2)] [PM2.5(2)] [PM4.0(2)] [PM10(2)] [Temp(2)] [Hum(2)] [VOC(2)] [NOx(2)]
-      NotifyCharData[0] = (uint8_t)(sensor_data.pm1_0 & 0xFF);
-      NotifyCharData[1] = (uint8_t)(sensor_data.pm1_0 >> 8);
-      NotifyCharData[2] = (uint8_t)(sensor_data.pm2_5 & 0xFF);
-      NotifyCharData[3] = (uint8_t)(sensor_data.pm2_5 >> 8);
-      NotifyCharData[4] = (uint8_t)(sensor_data.pm4_0 & 0xFF);
-      NotifyCharData[5] = (uint8_t)(sensor_data.pm4_0 >> 8);
-      NotifyCharData[6] = (uint8_t)(sensor_data.pm10 & 0xFF);
-      NotifyCharData[7] = (uint8_t)(sensor_data.pm10 >> 8);
-      NotifyCharData[8] = (uint8_t)(sensor_data.temperature & 0xFF);
-      NotifyCharData[9] = (uint8_t)(sensor_data.temperature >> 8);
-      NotifyCharData[10] = (uint8_t)(sensor_data.humidity & 0xFF);
-      NotifyCharData[11] = (uint8_t)(sensor_data.humidity >> 8);
-      NotifyCharData[12] = (uint8_t)(sensor_data.voc_index & 0xFF);
-      NotifyCharData[13] = (uint8_t)(sensor_data.voc_index >> 8);
-      NotifyCharData[14] = (uint8_t)(sensor_data.nox_index & 0xFF);
-      NotifyCharData[15] = (uint8_t)(sensor_data.nox_index >> 8);
+	  // send to BLE only if notification enabled
+	  if (Custom_App_Context.Sen55_c_Notification_Status)
+	  {
+		  updateflag = 1;
 
-      APP_DBG_MSG("-- CUSTOM APPLICATION SERVER : SENDING SEN55 DATA\n");
-      APP_DBG_MSG("PM1.0: %.1f µg/m³, PM2.5: %.1f µg/m³\n",
-                  sensor_data.pm1_0 / 10.0f, sensor_data.pm2_5 / 10.0f);
-      APP_DBG_MSG("Temperature: %.1f °C, Humidity: %.1f %%RH\n",
-                  sensor_data.temperature / 200.0f, sensor_data.humidity / 100.0f);
-      
-      // Send data to USB CDC
-      Send_SEN55_Data_To_USB(&sensor_data);
-    }
-    else
-    {
-      APP_DBG_MSG("-- CUSTOM APPLICATION : ERROR READING SEN55 DATA\n");
-    }
+		  // pack sensor data into notification buffer
+		  // format: [PM1.0(2)] [PM2.5(2)] [PM4.0(2)] [PM10(2)] [Temp(2)] [Hum(2)] [VOC(2)] [NOx(2)]
+		  NotifyCharData[0] = (uint8_t)(sensor_data.pm1_0 & 0xFF);
+		  NotifyCharData[1] = (uint8_t)(sensor_data.pm1_0 >> 8);
+		  NotifyCharData[2] = (uint8_t)(sensor_data.pm2_5 & 0xFF);
+		  NotifyCharData[3] = (uint8_t)(sensor_data.pm2_5 >> 8);
+		  NotifyCharData[4] = (uint8_t)(sensor_data.pm4_0 & 0xFF);
+		  NotifyCharData[5] = (uint8_t)(sensor_data.pm4_0 >> 8);
+		  NotifyCharData[6] = (uint8_t)(sensor_data.pm10 & 0xFF);
+		  NotifyCharData[7] = (uint8_t)(sensor_data.pm10 >> 8);
+		  NotifyCharData[8] = (uint8_t)(sensor_data.temperature & 0xFF);
+		  NotifyCharData[9] = (uint8_t)(sensor_data.temperature >> 8);
+		  NotifyCharData[10] = (uint8_t)(sensor_data.humidity & 0xFF);
+		  NotifyCharData[11] = (uint8_t)(sensor_data.humidity >> 8);
+		  NotifyCharData[12] = (uint8_t)(sensor_data.voc_index & 0xFF);
+		  NotifyCharData[13] = (uint8_t)(sensor_data.voc_index >> 8);
+		  NotifyCharData[14] = (uint8_t)(sensor_data.nox_index & 0xFF);
+		  NotifyCharData[15] = (uint8_t)(sensor_data.nox_index >> 8);
+
+		  APP_DBG_MSG("-- CUSTOM APPLICATION SERVER : SENDING SEN55 DATA\n");
+		  APP_DBG_MSG("PM1.0: %.1f µg/m³, PM2.5: %.1f µg/m³\n",
+				  sensor_data.pm1_0 / 10.0f, sensor_data.pm2_5 / 10.0f);
+		  APP_DBG_MSG("Temperature: %.1f °C, Humidity: %.1f %%RH\n",
+				  sensor_data.temperature / 200.0f, sensor_data.humidity / 100.0f);
+	  }
+	  else
+	  {
+		  APP_DBG_MSG("-- CUSTOM APPLICATION : CAN'T INFORM CLIENT - NOTIFICATION DISABLED\n");
+	  }
   }
   else
   {
-    APP_DBG_MSG("-- CUSTOM APPLICATION : CAN'T INFORM CLIENT -  NOTIFICATION DISABLED\n");
+	  APP_DBG_MSG("-- CUSTOM APPLICATION : ERROR READING SEN55 DATA\n");
   }
+
   /* USER CODE END Sen55_c_NS_1*/
 
   if (updateflag != 0)
@@ -316,18 +324,10 @@ static void Send_SEN55_Data_To_USB(sen55_data_t *sensor_data)
   char usb_buffer[256];
   int len;
   
-  // Format sensor data as human-readable text
+  // Format sensor data as JSON
   len = snprintf(usb_buffer, sizeof(usb_buffer),
-                 "\r\n=== SEN55 Sensor Data ===\r\n"
-                 "PM1.0:  %.1f µg/m³\r\n"
-                 "PM2.5:  %.1f µg/m³\r\n"
-                 "PM4.0:  %.1f µg/m³\r\n"
-                 "PM10:   %.1f µg/m³\r\n"
-                 "Temp:   %.2f °C\r\n"
-                 "Hum:    %.1f %%RH\r\n"
-                 "VOC:    %d\r\n"
-                 "NOx:    %d\r\n"
-                 "========================\r\n",
+                 "{\"pm1_0\":%.1f,\"pm2_5\":%.1f,\"pm4_0\":%.1f,\"pm10\":%.1f,"
+                 "\"temperature\":%.2f,\"humidity\":%.1f,\"voc_index\":%d,\"nox_index\":%d}\r\n",
                  sensor_data->pm1_0 / 10.0f,
                  sensor_data->pm2_5 / 10.0f,
                  sensor_data->pm4_0 / 10.0f,
