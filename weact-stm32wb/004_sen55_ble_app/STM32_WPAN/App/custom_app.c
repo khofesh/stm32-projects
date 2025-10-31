@@ -31,6 +31,9 @@
 /* USER CODE BEGIN Includes */
 #include "sensirion_i2c_hal.h"
 #include "sen5x_i2c.h"
+#include "usbd_cdc_if.h"
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -83,7 +86,7 @@ static void Custom_Sen55_c_Update_Char(void);
 static void Custom_Sen55_c_Send_Notification(void);
 
 /* USER CODE BEGIN PFP */
-
+static void Send_SEN55_Data_To_USB(sen55_data_t *sensor_data);
 /* USER CODE END PFP */
 
 /* Functions Definition ------------------------------------------------------*/
@@ -276,6 +279,9 @@ void Custom_Sen55_c_Send_Notification(void) /* Property Notification */
                   sensor_data.pm1_0 / 10.0f, sensor_data.pm2_5 / 10.0f);
       APP_DBG_MSG("Temperature: %.1f °C, Humidity: %.1f %%RH\n",
                   sensor_data.temperature / 200.0f, sensor_data.humidity / 100.0f);
+      
+      // Send data to USB CDC
+      Send_SEN55_Data_To_USB(&sensor_data);
     }
     else
     {
@@ -301,6 +307,43 @@ void Custom_Sen55_c_Send_Notification(void) /* Property Notification */
 }
 
 /* USER CODE BEGIN FD_LOCAL_FUNCTIONS*/
+/**
+ * @brief Send SEN55 sensor data to USB CDC
+ * @param sensor_data Pointer to sen55_data_t structure
+ */
+static void Send_SEN55_Data_To_USB(sen55_data_t *sensor_data)
+{
+  char usb_buffer[256];
+  int len;
+  
+  // Format sensor data as human-readable text
+  len = snprintf(usb_buffer, sizeof(usb_buffer),
+                 "\r\n=== SEN55 Sensor Data ===\r\n"
+                 "PM1.0:  %.1f µg/m³\r\n"
+                 "PM2.5:  %.1f µg/m³\r\n"
+                 "PM4.0:  %.1f µg/m³\r\n"
+                 "PM10:   %.1f µg/m³\r\n"
+                 "Temp:   %.2f °C\r\n"
+                 "Hum:    %.1f %%RH\r\n"
+                 "VOC:    %d\r\n"
+                 "NOx:    %d\r\n"
+                 "========================\r\n",
+                 sensor_data->pm1_0 / 10.0f,
+                 sensor_data->pm2_5 / 10.0f,
+                 sensor_data->pm4_0 / 10.0f,
+                 sensor_data->pm10 / 10.0f,
+                 sensor_data->temperature / 200.0f,
+                 sensor_data->humidity / 100.0f,
+                 sensor_data->voc_index,
+                 sensor_data->nox_index);
+  
+  // Send to USB CDC
+  if (len > 0 && len < sizeof(usb_buffer))
+  {
+    CDC_Transmit_FS((uint8_t*)usb_buffer, len);
+  }
+}
+
 void P2PS_APP_SEN55_Action(void)
 {
   UTIL_SEQ_SetTask(1 << CFG_TASK_SEN55_I2C_EVT_ID, CFG_SCH_PRIO_0);
