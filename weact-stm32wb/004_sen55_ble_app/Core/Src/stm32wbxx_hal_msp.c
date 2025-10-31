@@ -69,6 +69,7 @@ void HAL_MspInit(void)
   /* USER CODE END MspInit 0 */
 
   __HAL_RCC_HSEM_CLK_ENABLE();
+  HAL_PWREx_EnableVddUSB();
 
   /* System interrupt init*/
 

@@ -37,12 +37,12 @@
 typedef struct
 {
   /* Sen55_P2P_Server */
-  uint8_t Sen55_c_Notification_Status;
+  uint8_t               Sen55_c_Notification_Status;
   /* USER CODE BEGIN CUSTOM_APP_Context_t */
   uint8_t SEN55_Status;
   /* USER CODE END CUSTOM_APP_Context_t */
 
-  uint16_t ConnectionHandle;
+  uint16_t              ConnectionHandle;
 } Custom_App_Context_t;
 
 /* USER CODE BEGIN PTD */
@@ -94,19 +94,19 @@ void Custom_STM_App_Notification(Custom_STM_App_Notification_evt_t *pNotificatio
   /* USER CODE END CUSTOM_STM_App_Notification_1 */
   switch (pNotification->Custom_Evt_Opcode)
   {
-  /* USER CODE BEGIN CUSTOM_STM_App_Notification_Custom_Evt_Opcode */
+    /* USER CODE BEGIN CUSTOM_STM_App_Notification_Custom_Evt_Opcode */
 
-  /* USER CODE END CUSTOM_STM_App_Notification_Custom_Evt_Opcode */
+    /* USER CODE END CUSTOM_STM_App_Notification_Custom_Evt_Opcode */
 
-  /* Sen55_P2P_Server */
-  case CUSTOM_STM_LED_C_READ_EVT:
-    /* USER CODE BEGIN CUSTOM_STM_LED_C_READ_EVT */
+    /* Sen55_P2P_Server */
+    case CUSTOM_STM_LED_C_READ_EVT:
+      /* USER CODE BEGIN CUSTOM_STM_LED_C_READ_EVT */
 
-    /* USER CODE END CUSTOM_STM_LED_C_READ_EVT */
-    break;
+      /* USER CODE END CUSTOM_STM_LED_C_READ_EVT */
+      break;
 
-  case CUSTOM_STM_LED_C_WRITE_NO_RESP_EVT:
-    /* USER CODE BEGIN CUSTOM_STM_LED_C_WRITE_NO_RESP_EVT */
+    case CUSTOM_STM_LED_C_WRITE_NO_RESP_EVT:
+      /* USER CODE BEGIN CUSTOM_STM_LED_C_WRITE_NO_RESP_EVT */
     APP_DBG_MSG("\r\n\r** CUSTOM_STM_LED_C_WRITE_NO_RESP_EVT \n");
     APP_DBG_MSG("\r\n\r** Write Data: 0x%02X %02X \n", pNotification->DataTransfered.pPayload[0], pNotification->DataTransfered.pPayload[1]);
     if (pNotification->DataTransfered.pPayload[1] == 0x01)
@@ -117,42 +117,42 @@ void Custom_STM_App_Notification(Custom_STM_App_Notification_evt_t *pNotificatio
     {
       HAL_GPIO_WritePin(GPIOE, BOARD_LED_Pin, GPIO_PIN_RESET);
     }
-    /* USER CODE END CUSTOM_STM_LED_C_WRITE_NO_RESP_EVT */
-    break;
+      /* USER CODE END CUSTOM_STM_LED_C_WRITE_NO_RESP_EVT */
+      break;
 
-  case CUSTOM_STM_SEN55_C_READ_EVT:
-    /* USER CODE BEGIN CUSTOM_STM_SEN55_C_READ_EVT */
+    case CUSTOM_STM_SEN55_C_READ_EVT:
+      /* USER CODE BEGIN CUSTOM_STM_SEN55_C_READ_EVT */
 
-    /* USER CODE END CUSTOM_STM_SEN55_C_READ_EVT */
-    break;
+      /* USER CODE END CUSTOM_STM_SEN55_C_READ_EVT */
+      break;
 
-  case CUSTOM_STM_SEN55_C_NOTIFY_ENABLED_EVT:
-    /* USER CODE BEGIN CUSTOM_STM_SEN55_C_NOTIFY_ENABLED_EVT */
+    case CUSTOM_STM_SEN55_C_NOTIFY_ENABLED_EVT:
+      /* USER CODE BEGIN CUSTOM_STM_SEN55_C_NOTIFY_ENABLED_EVT */
     APP_DBG_MSG("\r\n\r** CUSTOM_STM_SEN55_C_NOTIFY_ENABLED_EVT \n");
 
     Custom_App_Context.Sen55_c_Notification_Status = 1;
-    /* USER CODE END CUSTOM_STM_SEN55_C_NOTIFY_ENABLED_EVT */
-    break;
+      /* USER CODE END CUSTOM_STM_SEN55_C_NOTIFY_ENABLED_EVT */
+      break;
 
-  case CUSTOM_STM_SEN55_C_NOTIFY_DISABLED_EVT:
-    /* USER CODE BEGIN CUSTOM_STM_SEN55_C_NOTIFY_DISABLED_EVT */
+    case CUSTOM_STM_SEN55_C_NOTIFY_DISABLED_EVT:
+      /* USER CODE BEGIN CUSTOM_STM_SEN55_C_NOTIFY_DISABLED_EVT */
     APP_DBG_MSG("\r\n\r** CUSTOM_STM_SEN55_C_NOTIFY_DISABLED_EVT \n");
 
     Custom_App_Context.Sen55_c_Notification_Status = 0;
-    /* USER CODE END CUSTOM_STM_SEN55_C_NOTIFY_DISABLED_EVT */
-    break;
+      /* USER CODE END CUSTOM_STM_SEN55_C_NOTIFY_DISABLED_EVT */
+      break;
 
-  case CUSTOM_STM_NOTIFICATION_COMPLETE_EVT:
-    /* USER CODE BEGIN CUSTOM_STM_NOTIFICATION_COMPLETE_EVT */
+    case CUSTOM_STM_NOTIFICATION_COMPLETE_EVT:
+      /* USER CODE BEGIN CUSTOM_STM_NOTIFICATION_COMPLETE_EVT */
 
-    /* USER CODE END CUSTOM_STM_NOTIFICATION_COMPLETE_EVT */
-    break;
+      /* USER CODE END CUSTOM_STM_NOTIFICATION_COMPLETE_EVT */
+      break;
 
-  default:
-    /* USER CODE BEGIN CUSTOM_STM_App_Notification_default */
+    default:
+      /* USER CODE BEGIN CUSTOM_STM_App_Notification_default */
 
-    /* USER CODE END CUSTOM_STM_App_Notification_default */
-    break;
+      /* USER CODE END CUSTOM_STM_App_Notification_default */
+      break;
   }
   /* USER CODE BEGIN CUSTOM_STM_App_Notification_2 */
 
@@ -168,26 +168,26 @@ void Custom_APP_Notification(Custom_App_ConnHandle_Not_evt_t *pNotification)
 
   switch (pNotification->Custom_Evt_Opcode)
   {
-  /* USER CODE BEGIN CUSTOM_APP_Notification_Custom_Evt_Opcode */
+    /* USER CODE BEGIN CUSTOM_APP_Notification_Custom_Evt_Opcode */
 
-  /* USER CODE END P2PS_CUSTOM_Notification_Custom_Evt_Opcode */
-  case CUSTOM_CONN_HANDLE_EVT:
-    /* USER CODE BEGIN CUSTOM_CONN_HANDLE_EVT */
+    /* USER CODE END P2PS_CUSTOM_Notification_Custom_Evt_Opcode */
+    case CUSTOM_CONN_HANDLE_EVT :
+      /* USER CODE BEGIN CUSTOM_CONN_HANDLE_EVT */
 
-    /* USER CODE END CUSTOM_CONN_HANDLE_EVT */
-    break;
+      /* USER CODE END CUSTOM_CONN_HANDLE_EVT */
+      break;
 
-  case CUSTOM_DISCON_HANDLE_EVT:
-    /* USER CODE BEGIN CUSTOM_DISCON_HANDLE_EVT */
+    case CUSTOM_DISCON_HANDLE_EVT :
+      /* USER CODE BEGIN CUSTOM_DISCON_HANDLE_EVT */
 
-    /* USER CODE END CUSTOM_DISCON_HANDLE_EVT */
-    break;
+      /* USER CODE END CUSTOM_DISCON_HANDLE_EVT */
+      break;
 
-  default:
-    /* USER CODE BEGIN CUSTOM_APP_Notification_default */
+    default:
+      /* USER CODE BEGIN CUSTOM_APP_Notification_default */
 
-    /* USER CODE END CUSTOM_APP_Notification_default */
-    break;
+      /* USER CODE END CUSTOM_APP_Notification_default */
+      break;
   }
 
   /* USER CODE BEGIN CUSTOM_APP_Notification_2 */
