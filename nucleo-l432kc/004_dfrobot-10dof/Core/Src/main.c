@@ -25,6 +25,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "itg3200.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -53,6 +54,7 @@ uint8_t txData;
 __IO ITStatus UartReady = SET;
 __IO ITStatus UartTxComplete = SET;
 RingBuffer txBuf, rxBuf;
+itg3200_t gyro;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -117,14 +119,33 @@ int main(void)
   /* USER CODE BEGIN 2 */
   RingBuffer_Init(&txBuf);
   RingBuffer_Init(&rxBuf);
+
+  itg3200_init_default(&gyro, &hi2c1, ITG3200_ADDR_AD0_LOW);
+  itg3200_zero_calibrate(&gyro, 50, 10);
+
+  float gyro_x, gyro_y, gyro_z;
+  char gyro_data_text[255];
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  UART_Transmit(&huart2, (uint8_t*)WELCOME_MSG, strlen(WELCOME_MSG));
-	  HAL_Delay(100);
+	  itg3200_read_gyro(&gyro, &gyro_x, &gyro_y, &gyro_z);
+
+	  snprintf(gyro_data_text, sizeof(gyro_data_text),
+			  "{"
+			  "\"gyro_x\":%.2f,"
+			  "\"gyro_y\":%.2f,"
+			  "\"gyro_z\":%.2f"
+			  "}\r\n",
+			  gyro_x,
+			  gyro_y,
+			  gyro_z);
+
+	  UART_Transmit(&huart2, (uint8_t*)gyro_data_text, strlen(gyro_data_text));
+
+	  HAL_Delay(1000);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
