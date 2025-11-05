@@ -97,7 +97,7 @@ int main(void)
 
   /* USER CODE BEGIN 1 */
 	vcm5883l_vector_t data;
-	const char* direction;
+//	const char* direction;
 
   /* USER CODE END 1 */
 
@@ -139,8 +139,15 @@ int main(void)
   vcm5883l_set_measurement_mode(&mag_sensor, VCM5883L_CONTINOUS);
   vcm5883l_set_data_rate(&mag_sensor, VCM5883L_DATARATE_200HZ);
   // set location's declination angle
-  float declination_angle = 0.16 * M_PI / 180.0;  // example for Jakarta
-  vcm5883l_set_declination_angle(&mag_sensor, declination_angle);
+  // You can find your declination on: http://magnetic-declination.com/
+  // (+) Positive or (-) for negative
+  // For Bytom / Poland declination angle is 4'26E (positive)
+
+  // Formula: (deg + (min / 60.0)) / (180 / PI);
+  // Bekasi: Magnetic Declination +0° 40' (0.667°) East
+  float declination_degrees = 0.0 + (40.0 / 60.0);  // 0.667 degrees
+  float declination_radians = declination_degrees * M_PI / 180.0;
+  vcm5883l_set_declination_angle(&mag_sensor, declination_radians);
 
   float gyro_x, gyro_y, gyro_z;
   char gyro_data_text[256];
