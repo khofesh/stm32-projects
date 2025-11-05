@@ -80,4 +80,9 @@ USB development:
 
 - [ ] stm32f3disc/008_sensors_usb
 - [ ] weact stm32h5 plantower data via usb cdc
-- [ ] weact stm32wb55 send sen55 data via usb cdc
+- [x] weact stm32wb55 send sen55 data via usb cdc
+
+STM32 features:
+
+- [ ] CORDIC
+- [ ] FMAC

@@ -5,5 +5,6 @@
     "*.css": "css",
     "cstdint": "c",
     "main.h": "c"
-  }
+  },
+  "cmake.sourceDirectory": "/media/wdhome/github/khofesh/stm32-projects/freertos/FreeRTOS-KernelV11.2.0"
 }
