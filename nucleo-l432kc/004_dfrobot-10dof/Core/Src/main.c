@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "itg3200.h"
+#include "vcm5883l.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -55,6 +56,8 @@ __IO ITStatus UartReady = SET;
 __IO ITStatus UartTxComplete = SET;
 RingBuffer txBuf, rxBuf;
 itg3200_t gyro;
+vcm5883l_handle_t mag_sensor;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -93,6 +96,8 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+	vcm5883l_vector_t data;
+	const char* direction;
 
   /* USER CODE END 1 */
 
@@ -123,8 +128,22 @@ int main(void)
   itg3200_init_default(&gyro, &hi2c1, ITG3200_ADDR_AD0_LOW);
   itg3200_zero_calibrate(&gyro, 50, 10);
 
+  printf("itg3200 initialized\r\n");
+
+  if (!vcm5883l_init(&mag_sensor, &hi2c1))
+  {
+	  Error_Handler();
+  }
+
+  // configure for continuous mode
+  vcm5883l_set_measurement_mode(&mag_sensor, VCM5883L_CONTINOUS);
+  vcm5883l_set_data_rate(&mag_sensor, VCM5883L_DATARATE_200HZ);
+  // set location's declination angle
+  float declination_angle = 0.16 * M_PI / 180.0;  // example for Jakarta
+  vcm5883l_set_declination_angle(&mag_sensor, declination_angle);
+
   float gyro_x, gyro_y, gyro_z;
-  char gyro_data_text[255];
+  char gyro_data_text[256];
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -145,7 +164,16 @@ int main(void)
 
 	  UART_Transmit(&huart2, (uint8_t*)gyro_data_text, strlen(gyro_data_text));
 
-	  HAL_Delay(1000);
+	  HAL_Delay(200);
+
+	  // read magnetometer
+	  data = vcm5883l_read_raw(&mag_sensor);
+	  vcm5883l_get_heading_degrees(&mag_sensor);
+	  printf("X: %d, Y: %d, Z: %d | Heading: %.2f°\r\n",
+	                 data.x_axis, data.y_axis, data.z_axis,
+	                 mag_sensor.vector.heading_degrees);
+
+	  HAL_Delay(200);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -372,6 +400,7 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
+  HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
   while (1)
   {
   }
