@@ -142,8 +142,8 @@ int main(void)
   // You can find your declination on: http://magnetic-declination.com/
   // (+) Positive or (-) for negative
   // For Bytom / Poland declination angle is 4'26E (positive)
-
   // Formula: (deg + (min / 60.0)) / (180 / PI);
+
   // Bekasi: Magnetic Declination +0° 40' (0.667°) East
   float declination_degrees = 0.0 + (40.0 / 60.0);  // 0.667 degrees
   float declination_radians = declination_degrees * M_PI / 180.0;

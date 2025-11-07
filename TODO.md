@@ -86,3 +86,5 @@ STM32 features:
 
 - [ ] CORDIC
 - [ ] FMAC
+- [ ] zigbee
+

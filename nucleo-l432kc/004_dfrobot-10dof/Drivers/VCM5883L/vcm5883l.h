@@ -20,6 +20,19 @@ extern "C" {
 #define VCM5883L_ADDRESS             (0x0C << 1)  // Left shifted for HAL
 
 /* register addresses */
+#define QMC5883_REG_OUT_X_M          (0x01)
+#define QMC5883_REG_OUT_X_L          (0x00)
+#define QMC5883_REG_OUT_Z_M          (0x05)
+#define QMC5883_REG_OUT_Z_L          (0x04)
+#define QMC5883_REG_OUT_Y_M          (0x03)
+#define QMC5883_REG_OUT_Y_L          (0x02)
+#define QMC5883_REG_STATUS           (0x06)
+#define QMC5883_REG_CONFIG_1         (0x09)
+#define QMC5883_REG_CONFIG_2         (0x0A)
+#define QMC5883_REG_IDENT_B          (0x0B)
+#define QMC5883_REG_IDENT_C          (0x20)
+#define QMC5883_REG_IDENT_D          (0x21)
+
 #define VCM5883L_REG_OUT_X_L          0x00
 #define VCM5883L_REG_OUT_X_H          0x01
 #define VCM5883L_REG_OUT_Y_L          0x02

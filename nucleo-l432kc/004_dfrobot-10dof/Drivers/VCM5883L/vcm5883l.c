@@ -142,10 +142,10 @@ void vcm5883l_set_samples(vcm5883l_handle_t *handle, vcm5883l_samples_t samples)
     // Note: Original code uses QMC5883_REG_CONFIG_1 for VCM5883L samples
     // This might be incorrect in the original Arduino code
     // Using CTR_REG1 here as it's the VCM5883L equivalent
-    if (vcm5883l_read_register(handle, VCM5883L_CTR_REG1, &value)) {
+    if (vcm5883l_read_register(handle, QMC5883_REG_CONFIG_1, &value)) {
         value &= 0x3F;  // Clear bits 6-7
         value |= (samples << 6);  // Set sample bits
-        vcm5883l_write_register(handle, VCM5883L_CTR_REG1, value);
+        vcm5883l_write_register(handle, QMC5883_REG_CONFIG_1, value);
     }
 }
 
@@ -156,7 +156,7 @@ vcm5883l_samples_t vcm5883l_get_samples(vcm5883l_handle_t *handle)
 {
     uint8_t value = 0;
 
-    if (vcm5883l_read_register(handle, VCM5883L_CTR_REG1, &value)) {
+    if (vcm5883l_read_register(handle, QMC5883_REG_CONFIG_1, &value)) {
         value &= 0xC0;  // Isolate bits 6-7
         value >>= 6;     // Shift to LSB position
     }
