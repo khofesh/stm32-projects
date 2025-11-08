@@ -82,7 +82,9 @@ uint8_t adxl345_interface_iic_read(uint8_t addr, uint8_t reg, uint8_t *buf, uint
 {
 	uint8_t device_addr = addr << 1;
 
-	if (HAL_I2C_Master_Receive(&hi2c1, device_addr, buf, len, 1000) != HAL_OK)
+	// Use HAL_I2C_Mem_Read for register-based I2C read
+	// This automatically writes the register address then reads the data
+	if (HAL_I2C_Mem_Read(&hi2c1, device_addr, reg, I2C_MEMADD_SIZE_8BIT, buf, len, 1000) != HAL_OK)
 	{
 		return 1;
 	}
@@ -105,7 +107,9 @@ uint8_t adxl345_interface_iic_write(uint8_t addr, uint8_t reg, uint8_t *buf, uin
 {
 	uint8_t device_addr = addr << 1;
 
-	if (HAL_I2C_Master_Receive(&hi2c1, device_addr, buf, len, 1000) != HAL_OK)
+	// Use HAL_I2C_Mem_Write for register-based I2C write
+	// This automatically writes the register address then writes the data
+	if (HAL_I2C_Mem_Write(&hi2c1, device_addr, reg, I2C_MEMADD_SIZE_8BIT, buf, len, 1000) != HAL_OK)
 	{
 		return 1;
 	}

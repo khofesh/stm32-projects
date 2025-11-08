@@ -174,34 +174,62 @@ int main(void)
 
   float gyro_x, gyro_y, gyro_z;
   char gyro_data_text[256];
+  char sensor_data_text[512];
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  // read gyroscope
 	  itg3200_read_gyro(&gyro, &gyro_x, &gyro_y, &gyro_z);
 
-	  snprintf(gyro_data_text, sizeof(gyro_data_text),
-			  "{"
-			  "\"gyro_x\":%.2f,"
-			  "\"gyro_y\":%.2f,"
-			  "\"gyro_z\":%.2f"
-			  "}\r\n",
-			  gyro_x,
-			  gyro_y,
-			  gyro_z);
+	  // read accelerometer
+	  uint16_t accel_len = 1;
+	  if (adxl345_read(&adxl345_handle, (int16_t (*)[3])gs_raw_test, (float (*)[3])gs_test, (uint16_t *)&accel_len) == 0)
+	  {
+		  // read magnetometer
+		  data = vcm5883l_read_raw(&mag_sensor);
+		  vcm5883l_get_heading_degrees(&mag_sensor);
 
-	  UART_Transmit(&huart2, (uint8_t*)gyro_data_text, strlen(gyro_data_text));
+		  // format all sensor data as JSON
+		  snprintf(sensor_data_text, sizeof(sensor_data_text),
+				  "{"
+				  "\"gyro\":{\"x\":%.2f,\"y\":%.2f,\"z\":%.2f},"
+				  "\"accel\":{\"x\":%.3f,\"y\":%.3f,\"z\":%.3f},"
+				  "\"mag\":{\"x\":%d,\"y\":%d,\"z\":%d,\"heading\":%.2f}"
+				  "}\r\n",
+				  gyro_x, gyro_y, gyro_z,
+				  gs_test[0][0], gs_test[0][1], gs_test[0][2],
+				  data.x_axis, data.y_axis, data.z_axis,
+				  mag_sensor.vector.heading_degrees);
 
-	  HAL_Delay(200);
+		  UART_Transmit(&huart2, (uint8_t*)sensor_data_text, strlen(sensor_data_text));
+	  }
+	  else
+	  {
+		  // Fallback: print gyro and mag only if accelerometer read fails
+		  snprintf(gyro_data_text, sizeof(gyro_data_text),
+				  "{"
+				  "\"gyro_x\":%.2f,"
+				  "\"gyro_y\":%.2f,"
+				  "\"gyro_z\":%.2f"
+				  "}\r\n",
+				  gyro_x,
+				  gyro_y,
+				  gyro_z);
 
-	  // read magnetometer
-	  data = vcm5883l_read_raw(&mag_sensor);
-	  vcm5883l_get_heading_degrees(&mag_sensor);
-	  printf("X: %d, Y: %d, Z: %d | Heading: %.2f°\r\n",
-	                 data.x_axis, data.y_axis, data.z_axis,
-	                 mag_sensor.vector.heading_degrees);
+		  UART_Transmit(&huart2, (uint8_t*)gyro_data_text, strlen(gyro_data_text));
+
+		  HAL_Delay(200);
+
+		  // read magnetometer
+		  data = vcm5883l_read_raw(&mag_sensor);
+		  vcm5883l_get_heading_degrees(&mag_sensor);
+		  printf("X: %d, Y: %d, Z: %d | Heading: %.2f°\r\n",
+					 data.x_axis, data.y_axis, data.z_axis,
+					 mag_sensor.vector.heading_degrees);
+	  }
 
 	  HAL_Delay(200);
     /* USER CODE END WHILE */
@@ -408,9 +436,29 @@ uint8_t adxl345_basic_init(void)
     DRIVER_ADXL345_LINK_IIC_DEINIT(&adxl345_handle, adxl345_interface_iic_deinit);
     DRIVER_ADXL345_LINK_IIC_READ(&adxl345_handle, adxl345_interface_iic_read);
     DRIVER_ADXL345_LINK_IIC_WRITE(&adxl345_handle, adxl345_interface_iic_write);
+    DRIVER_ADXL345_LINK_SPI_INIT(&adxl345_handle, adxl345_interface_spi_init);
+    DRIVER_ADXL345_LINK_SPI_DEINIT(&adxl345_handle, adxl345_interface_spi_deinit);
+    DRIVER_ADXL345_LINK_SPI_READ(&adxl345_handle, adxl345_interface_spi_read);
+    DRIVER_ADXL345_LINK_SPI_WRITE(&adxl345_handle, adxl345_interface_spi_write);
     DRIVER_ADXL345_LINK_DELAY_MS(&adxl345_handle, adxl345_interface_delay_ms);
     DRIVER_ADXL345_LINK_DEBUG_PRINT(&adxl345_handle, adxl345_interface_debug_print);
     DRIVER_ADXL345_LINK_RECEIVE_CALLBACK(&adxl345_handle, adxl345_interface_receive_callback);
+
+    /* set interface to I2C */
+    res = adxl345_set_interface(&adxl345_handle, ADXL345_INTERFACE_IIC);
+    if (res != 0)
+    {
+    	adxl345_interface_debug_print("adxl345: set interface failed.\r\n");
+    	return 1;
+    }
+
+    /* set I2C address */
+    res = adxl345_set_addr_pin(&adxl345_handle, 0x53);
+    if (res != 0)
+    {
+    	adxl345_interface_debug_print("adxl345: set addr pin failed.\r\n");
+    	return 1;
+    }
 
     /* init adxl345 */
     res = adxl345_init(&adxl345_handle);
@@ -420,21 +468,54 @@ uint8_t adxl345_basic_init(void)
     	return 1;
     }
 
+    /* set measurement range to ±16g */
+    res = adxl345_set_range(&adxl345_handle, ADXL345_RANGE_16G);
+    if (res != 0)
+    {
+    	adxl345_interface_debug_print("adxl345: set range failed.\r\n");
+    	(void)adxl345_deinit(&adxl345_handle);
+    	return 1;
+    }
+
+    /* set full resolution mode */
+    res = adxl345_set_full_resolution(&adxl345_handle, ADXL345_BOOL_TRUE);
+    if (res != 0)
+    {
+    	adxl345_interface_debug_print("adxl345: set full resolution failed.\r\n");
+    	(void)adxl345_deinit(&adxl345_handle);
+    	return 1;
+    }
+
+    /* set data rate to 100Hz */
+    res = adxl345_set_rate(&adxl345_handle, ADXL345_RATE_100);
+    if (res != 0)
+    {
+    	adxl345_interface_debug_print("adxl345: set rate failed.\r\n");
+    	(void)adxl345_deinit(&adxl345_handle);
+    	return 1;
+    }
+
+    /* set FIFO mode to bypass */
+    res = adxl345_set_mode(&adxl345_handle, ADXL345_MODE_BYPASS);
+    if (res != 0)
+    {
+    	adxl345_interface_debug_print("adxl345: set mode failed.\r\n");
+    	(void)adxl345_deinit(&adxl345_handle);
+    	return 1;
+    }
+
+    /* start measure */
+    res = adxl345_set_measure(&adxl345_handle, ADXL345_BOOL_TRUE);
+    if (res != 0)
+    {
+    	adxl345_interface_debug_print("adxl345: enable measurement failed.\r\n");
+    	(void)adxl345_deinit(&adxl345_handle);
+    	return 1;
+    }
+
+    adxl345_interface_debug_print("adxl345: configuration complete.\r\n");
+
     return 0;
-}
-
-// uint8_t adxl345_read(adxl345_handle_t *handle, int16_t (*raw)[3], float (*g)[3], uint16_t *len)
-uint8_t adxl345_basic_read()
-{
-	uint16_t len = 1;
-
-	if (adxl345_read(&adxl345_handle, (int16_t (*)[3])gs_raw_test, (float (*)[3])gs_test, (uint16_t *)&len) != 0)
-	{
-		adxl345_interface_debug_print("adxl345: read failed.\r\n");
-		return 1;
-	}
-
-	return 0;
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle)
