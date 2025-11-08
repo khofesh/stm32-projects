@@ -29,6 +29,8 @@
 #include "vcm5883l.h"
 #include "driver_adxl345.h"
 #include "driver_adxl345_interface.h"
+#include "driver_bmp280.h"
+#include "driver_bmp280_interface.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -58,11 +60,18 @@ __IO ITStatus UartReady = SET;
 __IO ITStatus UartTxComplete = SET;
 RingBuffer txBuf, rxBuf;
 
-// handles
+// 0 = read all
+// 1 = read adxl345
+// 2 = read itg3200
+// 3 = read vcm5883l
+// 4 = read bmp280
+int default_read = 0;
+
+// handlers
 itg3200_t gyro;
 vcm5883l_handle_t mag_sensor;
 adxl345_handle_t adxl345_handle;
-
+bmp280_handle_t bmp280_handle;
 // data
 int16_t gs_raw_test[20][3];
 float gs_test[20][3];
@@ -90,6 +99,7 @@ int _write(int file, char *ptr, int len)
 }
 
 uint8_t adxl345_basic_init(void);
+uint8_t bmp280_basic_init(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -158,6 +168,15 @@ int main(void)
 
   printf("adxl345 initialized\r\n");
 
+  /* init bmp280 */
+  if (bmp280_basic_init() != 0)
+  {
+	  printf("bmp280 initialization failed!\r\n");
+	  Error_Handler();
+  }
+
+  printf("bmp280 initialized\r\n");
+
   // configure for continuous mode
   vcm5883l_set_measurement_mode(&mag_sensor, VCM5883L_CONTINOUS);
   vcm5883l_set_data_rate(&mag_sensor, VCM5883L_DATARATE_200HZ);
@@ -175,6 +194,10 @@ int main(void)
   float gyro_x, gyro_y, gyro_z;
   char gyro_data_text[256];
   char sensor_data_text[512];
+  uint32_t temperature_raw;
+  uint32_t pressure_raw;
+  float temperature_c;
+  float pressure_pa;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -186,8 +209,19 @@ int main(void)
 
 	  // read accelerometer
 	  uint16_t accel_len = 1;
-	  if (adxl345_read(&adxl345_handle, (int16_t (*)[3])gs_raw_test, (float (*)[3])gs_test, (uint16_t *)&accel_len) == 0)
+	  if (default_read == 0) // read all
 	  {
+		  if (adxl345_read(&adxl345_handle, (int16_t (*)[3])gs_raw_test, (float (*)[3])gs_test, (uint16_t *)&accel_len) != 0)
+		  {
+			  goto jump_error;
+		  }
+
+		  if (bmp280_read_temperature_pressure(&bmp280_handle, &temperature_raw, &temperature_c,
+                  &pressure_raw, &pressure_pa) != 0)
+		  {
+			  goto jump_error;
+		  }
+
 		  // read magnetometer
 		  data = vcm5883l_read_raw(&mag_sensor);
 		  vcm5883l_get_heading_degrees(&mag_sensor);
@@ -197,12 +231,14 @@ int main(void)
 				  "{"
 				  "\"gyro\":{\"x\":%.2f,\"y\":%.2f,\"z\":%.2f},"
 				  "\"accel\":{\"x\":%.3f,\"y\":%.3f,\"z\":%.3f},"
-				  "\"mag\":{\"x\":%d,\"y\":%d,\"z\":%d,\"heading\":%.2f}"
+				  "\"mag\":{\"x\":%d,\"y\":%d,\"z\":%d,\"heading\":%.2f},"
+				  "\"bmp280\":{\"temperature_c\":%.2f,\"pressure_pa\":%.2f}"
 				  "}\r\n",
 				  gyro_x, gyro_y, gyro_z,
 				  gs_test[0][0], gs_test[0][1], gs_test[0][2],
 				  data.x_axis, data.y_axis, data.z_axis,
-				  mag_sensor.vector.heading_degrees);
+				  mag_sensor.vector.heading_degrees,
+				  temperature_c, pressure_pa);
 
 		  UART_Transmit(&huart2, (uint8_t*)sensor_data_text, strlen(sensor_data_text));
 	  }
@@ -236,6 +272,8 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
   }
+jump_error:
+	Error_Handler();
   /* USER CODE END 3 */
 }
 
@@ -514,6 +552,80 @@ uint8_t adxl345_basic_init(void)
     }
 
     adxl345_interface_debug_print("adxl345: configuration complete.\r\n");
+
+    return 0;
+}
+
+uint8_t bmp280_basic_init(void)
+{
+	uint8_t res;
+	bmp280_info_t info;
+
+    DRIVER_BMP280_LINK_INIT(&bmp280_handle, bmp280_handle_t);
+    DRIVER_BMP280_LINK_IIC_INIT(&bmp280_handle, bmp280_interface_iic_init);
+    DRIVER_BMP280_LINK_IIC_DEINIT(&bmp280_handle, bmp280_interface_iic_deinit);
+    DRIVER_BMP280_LINK_IIC_READ(&bmp280_handle, bmp280_interface_iic_read);
+    DRIVER_BMP280_LINK_IIC_WRITE(&bmp280_handle, bmp280_interface_iic_write);
+    DRIVER_BMP280_LINK_SPI_INIT(&bmp280_handle, bmp280_interface_spi_init);
+    DRIVER_BMP280_LINK_SPI_DEINIT(&bmp280_handle, bmp280_interface_spi_deinit);
+    DRIVER_BMP280_LINK_SPI_READ(&bmp280_handle, bmp280_interface_spi_read);
+    DRIVER_BMP280_LINK_SPI_WRITE(&bmp280_handle, bmp280_interface_spi_write);
+    DRIVER_BMP280_LINK_DELAY_MS(&bmp280_handle, bmp280_interface_delay_ms);
+    DRIVER_BMP280_LINK_DEBUG_PRINT(&bmp280_handle, bmp280_interface_debug_print);
+
+    /* bmp280 info */
+    res = bmp280_info(&info);
+    if (res != 0)
+    {
+        printf("bmp280: get info failed.\n");
+
+        return 1;
+    }
+    else
+    {
+        /* print bmp280 */
+        bmp280_interface_debug_print("bmp280: chip is %s.\r\n", info.chip_name);
+        bmp280_interface_debug_print("bmp280: manufacturer is %s.\r\n", info.manufacturer_name);
+        bmp280_interface_debug_print("bmp280: interface is %s.\r\n", info.interface);
+        bmp280_interface_debug_print("bmp280: driver version is %d.%d.\n", info.driver_version / 1000, (info.driver_version % 1000) / 100);
+        bmp280_interface_debug_print("bmp280: min supply voltage is %0.1fV.\n", info.supply_voltage_min_v);
+        bmp280_interface_debug_print("bmp280: max supply voltage is %0.1fV.\n", info.supply_voltage_max_v);
+        bmp280_interface_debug_print("bmp280: max current is %0.2fmA.\n", info.max_current_ma);
+        bmp280_interface_debug_print("bmp280: max temperature is %0.1fC.\n", info.temperature_max);
+        bmp280_interface_debug_print("bmp280: min temperature is %0.1fC.\n", info.temperature_min);
+    }
+
+    res = bmp280_set_interface(&bmp280_handle, BMP280_INTERFACE_IIC);
+    if (res != 0)
+    {
+        bmp280_interface_debug_print("bmp280: set interface failed.\n");
+
+        return 1;
+    }
+
+    res = bmp280_set_addr_pin(&bmp280_handle, BMP280_ADDRESS_ADO_HIGH);
+    if (res != 0)
+    {
+        bmp280_interface_debug_print("bmp280: set addr pin failed.\n");
+
+        return 1;
+    }
+
+    res = bmp280_init(&bmp280_handle);
+    if (res != 0)
+    {
+        bmp280_interface_debug_print("bmp280: init failed.\n");
+
+        return 1;
+    }
+
+    res = bmp280_set_mode(&bmp280_handle, BMP280_MODE_NORMAL);
+    if (res != 0)
+    {
+        bmp280_interface_debug_print("bmp280: set mode failed.\n");
+
+        return 1;
+    }
 
     return 0;
 }
