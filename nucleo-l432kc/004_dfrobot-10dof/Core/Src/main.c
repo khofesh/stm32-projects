@@ -619,6 +619,43 @@ uint8_t bmp280_basic_init(void)
         return 1;
     }
 
+    // temperature oversampling
+    res = bmp280_set_temperatue_oversampling(&bmp280_handle, BMP280_OVERSAMPLING_x2);
+    if (res != 0)
+    {
+        bmp280_interface_debug_print("bmp280: set temperature oversampling failed.\n");
+
+        return 1;
+    }
+
+    // pressure oversampling
+    res = bmp280_set_pressure_oversampling(&bmp280_handle, BMP280_OVERSAMPLING_x16);
+    if (res != 0)
+    {
+        bmp280_interface_debug_print("bmp280: set pressure oversampling failed.\n");
+
+        return 1;
+    }
+
+    // set standby time to 125ms between measurements
+    res = bmp280_set_standby_time(&bmp280_handle, BMP280_STANDBY_TIME_125_MS);
+    if (res != 0)
+    {
+        bmp280_interface_debug_print("bmp280: set standby time failed.\n");
+
+        return 1;
+    }
+
+    // enable IIR filter (coefficient 4) for smoother readings
+    res = bmp280_set_filter(&bmp280_handle, BMP280_FILTER_COEFF_4);
+    if (res != 0)
+    {
+        bmp280_interface_debug_print("bmp280: set filter failed.\n");
+
+        return 1;
+    }
+
+    // set to normal mode (continuous measurement)
     res = bmp280_set_mode(&bmp280_handle, BMP280_MODE_NORMAL);
     if (res != 0)
     {
@@ -626,6 +663,8 @@ uint8_t bmp280_basic_init(void)
 
         return 1;
     }
+
+    bmp280_interface_debug_print("bmp280: configuration complete.\r\n");
 
     return 0;
 }
