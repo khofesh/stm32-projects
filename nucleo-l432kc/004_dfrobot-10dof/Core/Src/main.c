@@ -27,6 +27,8 @@
 #include <stdlib.h>
 #include "itg3200.h"
 #include "vcm5883l.h"
+#include "driver_adxl345.h"
+#include "driver_adxl345_interface.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -55,9 +57,15 @@ uint8_t txData;
 __IO ITStatus UartReady = SET;
 __IO ITStatus UartTxComplete = SET;
 RingBuffer txBuf, rxBuf;
+
+// handles
 itg3200_t gyro;
 vcm5883l_handle_t mag_sensor;
+adxl345_handle_t adxl345_handle;
 
+// data
+int16_t gs_raw_test[20][3];
+float gs_test[20][3];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -81,6 +89,7 @@ int _write(int file, char *ptr, int len)
   return 0; // Return 0 on failure
 }
 
+uint8_t adxl345_basic_init(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -125,15 +134,29 @@ int main(void)
   RingBuffer_Init(&txBuf);
   RingBuffer_Init(&rxBuf);
 
+  /* init itg3200 */
   itg3200_init_default(&gyro, &hi2c1, ITG3200_ADDR_AD0_LOW);
   itg3200_zero_calibrate(&gyro, 50, 10);
 
   printf("itg3200 initialized\r\n");
 
+  /* init vcm5883l */
   if (!vcm5883l_init(&mag_sensor, &hi2c1))
   {
+	  printf("vcml5883l initialization failed!\r\n");
 	  Error_Handler();
   }
+
+  printf("vcml5883l initialized\r\n");
+
+  /* init adxl345 */
+  if (adxl345_basic_init() != 0)
+  {
+	  printf("adxl345 initialization failed!\r\n");
+	  Error_Handler();
+  }
+
+  printf("adxl345 initialized\r\n");
 
   // configure for continuous mode
   vcm5883l_set_measurement_mode(&mag_sensor, VCM5883L_CONTINOUS);
@@ -373,6 +396,45 @@ uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
       return 0;
   }
   return 1;
+}
+
+uint8_t adxl345_basic_init(void)
+{
+	uint8_t res;
+
+    /* link interface function */
+    DRIVER_ADXL345_LINK_INIT(&adxl345_handle, adxl345_handle_t);
+    DRIVER_ADXL345_LINK_IIC_INIT(&adxl345_handle, adxl345_interface_iic_init);
+    DRIVER_ADXL345_LINK_IIC_DEINIT(&adxl345_handle, adxl345_interface_iic_deinit);
+    DRIVER_ADXL345_LINK_IIC_READ(&adxl345_handle, adxl345_interface_iic_read);
+    DRIVER_ADXL345_LINK_IIC_WRITE(&adxl345_handle, adxl345_interface_iic_write);
+    DRIVER_ADXL345_LINK_DELAY_MS(&adxl345_handle, adxl345_interface_delay_ms);
+    DRIVER_ADXL345_LINK_DEBUG_PRINT(&adxl345_handle, adxl345_interface_debug_print);
+    DRIVER_ADXL345_LINK_RECEIVE_CALLBACK(&adxl345_handle, adxl345_interface_receive_callback);
+
+    /* init adxl345 */
+    res = adxl345_init(&adxl345_handle);
+    if (res != 0)
+    {
+    	adxl345_interface_debug_print("adxl345: init failed.\r\n");
+    	return 1;
+    }
+
+    return 0;
+}
+
+// uint8_t adxl345_read(adxl345_handle_t *handle, int16_t (*raw)[3], float (*g)[3], uint16_t *len)
+uint8_t adxl345_basic_read()
+{
+	uint16_t len = 1;
+
+	if (adxl345_read(&adxl345_handle, (int16_t (*)[3])gs_raw_test, (float (*)[3])gs_test, (uint16_t *)&len) != 0)
+	{
+		adxl345_interface_debug_print("adxl345: read failed.\r\n");
+		return 1;
+	}
+
+	return 0;
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle)

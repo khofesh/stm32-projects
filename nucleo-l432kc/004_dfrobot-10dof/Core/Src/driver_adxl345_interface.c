@@ -36,6 +36,12 @@
  */
 
 #include "driver_adxl345_interface.h"
+#include "main.h"
+#include <stdio.h>
+#include <stdarg.h>
+
+extern I2C_HandleTypeDef hi2c1;
+extern UART_HandleTypeDef huart2;
 
 /**
  * @brief  interface iic bus init
@@ -74,6 +80,13 @@ uint8_t adxl345_interface_iic_deinit(void)
  */
 uint8_t adxl345_interface_iic_read(uint8_t addr, uint8_t reg, uint8_t *buf, uint16_t len)
 {
+	uint8_t device_addr = addr << 1;
+
+	if (HAL_I2C_Master_Receive(&hi2c1, device_addr, buf, len, 1000) != HAL_OK)
+	{
+		return 1;
+	}
+
     return 0;
 }
 
@@ -90,6 +103,13 @@ uint8_t adxl345_interface_iic_read(uint8_t addr, uint8_t reg, uint8_t *buf, uint
  */
 uint8_t adxl345_interface_iic_write(uint8_t addr, uint8_t reg, uint8_t *buf, uint16_t len)
 {
+	uint8_t device_addr = addr << 1;
+
+	if (HAL_I2C_Master_Receive(&hi2c1, device_addr, buf, len, 1000) != HAL_OK)
+	{
+		return 1;
+	}
+
     return 0;
 }
 
@@ -154,7 +174,7 @@ uint8_t adxl345_interface_spi_write(uint8_t reg, uint8_t *buf, uint16_t len)
  */
 void adxl345_interface_delay_ms(uint32_t ms)
 {
-
+	HAL_Delay(ms);
 }
 
 /**
@@ -164,7 +184,17 @@ void adxl345_interface_delay_ms(uint32_t ms)
  */
 void adxl345_interface_debug_print(const char *const fmt, ...)
 {
+    char str[256];
+    uint16_t len;
+    va_list args;
+
+    memset((char*)str, 0, sizeof(char) * 256);
+    va_start(args, fmt);
+    vsnprintf((char*)str, 255, (char const *)fmt, args);
+    va_end(args);
     
+    len = strlen((char *)str);
+    UART_Transmit(&huart2, (uint8_t*)str, len);
 }
 
 /**
