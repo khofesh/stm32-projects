@@ -1,9 +1,6 @@
 {
   "cmake.buildDirectory": "${workspaceFolder}/build",
-  "cmake.configureArgs": [
-    "-DCMAKE_BUILD_TYPE=Debug",
-    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
-  ],
+  "cmake.configureArgs": ["-DCMAKE_BUILD_TYPE=Debug"],
   "cmake.buildArgs": ["--parallel"],
   "cmake.debugConfig": {
     "MIMode": "gdb",
@@ -22,6 +19,12 @@
   "C_Cpp.autocomplete": "default",
   "C_Cpp.loggingLevel": "Information",
   "cmake.configureSettings": {
-    "VCPKG_ROOT": "/home/fahmad/vcpkg"
+    "VCPKG_ROOT": "${env:VCPKG_ROOT}"
+  },
+  "files.associations": {
+    "*.yaml": "yaml",
+    "*.html": "html",
+    "*.css": "css",
+    "stdexcept": "cpp"
   }
 }
