@@ -1,0 +1,17 @@
+{
+  "cmake.buildDirectory": "${workspaceFolder}/build",
+  "cmake.configureArgs": ["-DCMAKE_BUILD_TYPE=Debug"],
+  "cmake.buildArgs": ["--parallel"],
+  "cmake.debugConfig": {
+    "MIMode": "gdb",
+    "miDebuggerPath": "/usr/bin/gdb"
+  },
+  "cmake.defaultVariants": {
+    "buildType": {
+      "default": "debug",
+      "description": "The build type to use"
+    }
+  },
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  "C_Cpp.default.intelliSenseMode": "linux-gcc-x64"
+}
