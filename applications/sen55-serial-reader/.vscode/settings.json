@@ -1,6 +1,9 @@
 {
   "cmake.buildDirectory": "${workspaceFolder}/build",
-  "cmake.configureArgs": ["-DCMAKE_BUILD_TYPE=Debug"],
+  "cmake.configureArgs": [
+    "-DCMAKE_BUILD_TYPE=Debug",
+    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+  ],
   "cmake.buildArgs": ["--parallel"],
   "cmake.debugConfig": {
     "MIMode": "gdb",
@@ -13,5 +16,12 @@
     }
   },
   "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
-  "C_Cpp.default.intelliSenseMode": "linux-gcc-x64"
+  "C_Cpp.default.intelliSenseMode": "linux-gcc-x64",
+  "C_Cpp.errorSquiggles": "enabled",
+  "C_Cpp.intelliSenseEngine": "default",
+  "C_Cpp.autocomplete": "default",
+  "C_Cpp.loggingLevel": "Information",
+  "cmake.configureSettings": {
+    "VCPKG_ROOT": "/home/fahmad/vcpkg"
+  }
 }
