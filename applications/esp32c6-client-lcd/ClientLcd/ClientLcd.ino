@@ -169,6 +169,8 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     if (advertisedDevice.getName() == bleServerName) { //Check if the name of the advertiser matches
       advertisedDevice.getScan()->stop(); //Scan can be stopped, we found what we are looking for
       pServerAddress = new BLEAddress(advertisedDevice.getAddress()); //Address of advertiser is the one we need
+      Serial.print("Address: ");
+      Serial.println(pServerAddress->toString().c_str());
       doConnect = true; //Set indicator, stating that we are ready to connect
       Serial.println("Device found. Connecting!");
     }
@@ -176,15 +178,155 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
 };
 
 void printReadings() {
-  // TODO: print sen55 data to TFT LCD
+  screen.fillScreen(COLOR_RGB565_BLACK);
+  
+  int y = 5;
+  
+  // Header
+  screen.setTextSize(1);
+  screen.setCursor(10, y);
+  screen.setTextColor(COLOR_RGB565_CYAN);
+  screen.print("SEN55 Air Quality");
+  y += 15;
+  
+  screen.drawFastHLine(0, y, 128, COLOR_RGB565_WHITE);
+  y += 5;
+  
+  // PM values
+  screen.setTextColor(COLOR_RGB565_WHITE);
+  screen.setCursor(2, y);
+  screen.print("PM1.0:");
+  screen.setCursor(50, y);
+  screen.setTextColor(COLOR_RGB565_YELLOW);
+  screen.printf("%.1f", getPM1_0());
+  y += 12;
+  
+  screen.setTextColor(COLOR_RGB565_WHITE);
+  screen.setCursor(2, y);
+  screen.print("PM2.5:");
+  screen.setCursor(50, y);
+  float pm25 = getPM2_5();
+  if (pm25 <= 12.0) {
+    screen.setTextColor(COLOR_RGB565_GREEN);
+  } else if (pm25 <= 35.4) {
+    screen.setTextColor(COLOR_RGB565_YELLOW);
+  } else {
+    screen.setTextColor(COLOR_RGB565_RED);
+  }
+  screen.printf("%.1f", pm25);
+  y += 12;
+  
+  screen.setTextColor(COLOR_RGB565_WHITE);
+  screen.setCursor(2, y);
+  screen.print("PM4.0:");
+  screen.setCursor(50, y);
+  screen.setTextColor(COLOR_RGB565_YELLOW);
+  screen.printf("%.1f", getPM4_0());
+  y += 12;
+  
+  screen.setTextColor(COLOR_RGB565_WHITE);
+  screen.setCursor(2, y);
+  screen.print("PM10 :");
+  screen.setCursor(50, y);
+  screen.setTextColor(COLOR_RGB565_YELLOW);
+  screen.printf("%.1f", getPM10());
+  y += 15;
+  
+  // Separator
+  screen.drawFastHLine(0, y, 128, COLOR_RGB565_DGRAY);
+  y += 5;
+  
+  // Temperature & Humidity
+  float temp = getTemperature();
+  float hum = getHumidity();
+  
+  screen.setTextColor(COLOR_RGB565_WHITE);
+  screen.setCursor(2, y);
+  screen.print("Temp :");
+  screen.setCursor(50, y);
+  if (temp != -999) {
+    screen.setTextColor(COLOR_RGB565_ORANGE);
+    screen.printf("%.1f C", temp);
+  } else {
+    screen.setTextColor(COLOR_RGB565_DGRAY);
+    screen.print("n/a");
+  }
+  y += 12;
+  
+  screen.setTextColor(COLOR_RGB565_WHITE);
+  screen.setCursor(2, y);
+  screen.print("Humid:");
+  screen.setCursor(50, y);
+  if (hum != -999) {
+    screen.setTextColor(COLOR_RGB565_CYAN);
+    screen.printf("%.1f %%", hum);
+  } else {
+    screen.setTextColor(COLOR_RGB565_DGRAY);
+    screen.print("n/a");
+  }
+  y += 15;
+  
+  // Separator
+  screen.drawFastHLine(0, y, 128, COLOR_RGB565_DGRAY);
+  y += 5;
+  
+  // VOC & NOx
+  float voc = getVOCIndex();
+  float nox = getNOxIndex();
+  
+  screen.setTextColor(COLOR_RGB565_WHITE);
+  screen.setCursor(2, y);
+  screen.print("VOC  :");
+  screen.setCursor(50, y);
+  if (voc != -999) {
+    screen.setTextColor(COLOR_RGB565_MAGENTA);
+    screen.printf("%.0f", voc);
+  } else {
+    screen.setTextColor(COLOR_RGB565_DGRAY);
+    screen.print("n/a");
+  }
+  y += 12;
+  
+  screen.setTextColor(COLOR_RGB565_WHITE);
+  screen.setCursor(2, y);
+  screen.print("NOx  :");
+  screen.setCursor(50, y);
+  if (nox != -999) {
+    screen.setTextColor(COLOR_RGB565_MAGENTA);
+    screen.printf("%.0f", nox);
+  } else {
+    screen.setTextColor(COLOR_RGB565_DGRAY);
+    screen.print("n/a");
+  }
+  
+  // Status bar at bottom
+  screen.fillRect(0, 150, 128, 10, COLOR_RGB565_DGREEN);
+  screen.setTextColor(COLOR_RGB565_WHITE);
+  screen.setCursor(25, 152);
+  screen.print("CONNECTED");
 }
 
 void setup() {
   Serial.begin(115200);
+
+  // screen
   screen.begin();
+  screen.fillScreen(COLOR_RGB565_BLACK);
+  screen.setTextSize(1);
+  screen.setTextColor(COLOR_RGB565_WHITE);
+  screen.setCursor(5, 30);
+  screen.println("SEN55 BLE Client");
+  screen.setCursor(5, 50);
+  screen.println("Initializing...");
+  
+  delay(500);
 
   // init ble
   BLEDevice::init("");
+
+  screen.setCursor(5, 70);
+  screen.setTextColor(COLOR_RGB565_YELLOW);
+  screen.println("Scanning...");
 
   BLEScan *pBLEScan = BLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
@@ -196,52 +338,36 @@ void loop() {
   if (doConnect == true) {
     if (connectToServer(*pServerAddress)) {
       Serial.println("we are now connected to the ble server");
+
+      // show connection status on screen
+      screen.fillScreen(COLOR_RGB565_BLACK);
+      screen.setCursor(10, 50);
+      screen.setTextSize(2);
+      screen.setTextColor(COLOR_RGB565_GREEN);
+      screen.println("Connected!");
+      screen.setTextSize(1);
+      screen.setCursor(5, 80);
+      screen.setTextColor(COLOR_RGB565_WHITE);
+      screen.println("Waiting for data...");
+
       // activate the notify property of each characteristic
-      sen55Characteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)notificationOn, 2, true);
-      connected = true;
+      // sen55Characteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)notificationOn, 2, true);
+      // connected = true;
     } else {
       Serial.println("failed to connect to the server");
+
+      screen.fillScreen(COLOR_RGB565_BLACK);
+      screen.setCursor(10, 50);
+      screen.setTextColor(COLOR_RGB565_RED);
+      screen.println("Failed!");
     }
     doConnect = false;
   }
 
-  if (newSen55) {
-    newSen55 = false;
-    printReadings();
-  }
-  delay(1000);
-
-  screen.setTextSize(2);
-  screen.fillScreen(COLOR_RGB565_BLACK);
-  screen.setFont(&FreeMono12pt7b);
-  screen.setCursor(/*x=*/32,/*y=*/64);
-  screen.setTextColor(COLOR_RGB565_LGRAY);
-  screen.setTextWrap(true);
-  screen.print("DFRobot");
-  delay(500);
-
-  screen.fillScreen(COLOR_RGB565_BLACK);
-  screen.setFont(&FreeMonoBold12pt7b);
-  screen.setCursor(/*x=*/32,/*y=*/64);
-  screen.setTextColor(COLOR_RGB565_GREEN);
-  screen.setTextWrap(true);
-  screen.print("GDL");
-  delay(500);
-
-  screen.fillScreen(COLOR_RGB565_BLACK);
-  screen.setFont(&FreeMonoBoldOblique12pt7b);
-  screen.setCursor(/*x=*/32,/*y=*/64);
-  screen.setTextColor(COLOR_RGB565_RED);
-  screen.setTextWrap(true);
-  screen.print("fonts test");
-  delay(500);
-
-  screen.fillScreen(COLOR_RGB565_BLACK);
-  screen.setFont(&FreeMonoOblique12pt7b);
-  screen.setCursor(/*x=*/32,/*y=*/64);
-  screen.setTextColor(COLOR_RGB565_BLUE);
-  screen.setTextWrap(true);
-  screen.print("hello,world!");
-  delay(500);
+  // if (newSen55) {
+  //   newSen55 = false;
+  //   printReadings();
+  // }
+  // delay(100);
 }
 
