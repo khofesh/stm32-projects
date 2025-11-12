@@ -1,0 +1,27 @@
+# Build output directories
+build/
+sdkconfig
+sdkconfig.old
+
+# Temporary files
+*.pyc
+*.o
+*.d
+*.elf
+*.bin
+*.map
+*.bak
+*.swp
+*~
+
+# Editor-specific files
+.vscode/
+.idea/
+
+# Other generated files
+managed_components/
+components/*/build/
+components/*/managed_components/
+
+# Environment variables (if using a separate file for them)
+.env
