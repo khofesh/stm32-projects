@@ -19,6 +19,31 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 
+#include "esp_lcd_panel_io.h"
+#include "esp_lcd_panel_ops.h"
+#include "esp_lcd_panel_vendor.h"
+#include "esp_lcd_st7735.h"
+#include "driver/spi_master.h"
+#include "driver/gpio.h"
+
+// LCD Pin definitions for ESP32C6 (adjust these to your actual wiring)
+#define LCD_HOST SPI2_HOST
+#define LCD_PIXEL_CLOCK_HZ (40 * 1000 * 1000) // 40MHz
+#define LCD_BK_LIGHT_ON_LEVEL 1
+#define LCD_BK_LIGHT_OFF_LEVEL !LCD_BK_LIGHT_ON_LEVEL
+
+// Pin assignments for FireBeetle 2 ESP32-C6 GDI Interface
+#define PIN_NUM_MOSI 22     // SPI MOSI (SDA)
+#define PIN_NUM_CLK 23      // SPI SCK (SCL)
+#define PIN_NUM_CS 1        // SPI CS (Chip Select)
+#define PIN_NUM_DC 8        // DC (Data/Command)
+#define PIN_NUM_RST 14      // RST (Reset)
+#define PIN_NUM_BK_LIGHT 15 // Backlight (BL)
+
+// LCD resolution
+#define LCD_H_RES 128
+#define LCD_V_RES 160
+
 #define GATTC_TAG "SEN55_CLIENT"
 
 // Bluetooth address macros for compatibility
@@ -30,19 +55,17 @@
 #endif
 
 // SEN55 Service and Characteristic UUIDs (128-bit)
-#define SERVICE_UUID        "0000fe40-cc7a-482a-984a-7f2ed5b3e58f"
-#define SEN55_CHAR_UUID     "0000fe42-8e22-4541-9d4c-21edae82ed19"
+#define SERVICE_UUID "0000fe40-cc7a-482a-984a-7f2ed5b3e58f"
+#define SEN55_CHAR_UUID "0000fe42-8e22-4541-9d4c-21edae82ed19"
 
 // UUID128 in byte array format (little-endian)
 static uint8_t service_uuid128[ESP_UUID_LEN_128] = {
     0x8f, 0xe5, 0xb3, 0xd5, 0x2e, 0x7f, 0x4a, 0x98,
-    0x2a, 0x48, 0x7a, 0xcc, 0x40, 0xfe, 0x00, 0x00
-};
+    0x2a, 0x48, 0x7a, 0xcc, 0x40, 0xfe, 0x00, 0x00};
 
 static uint8_t char_uuid128[ESP_UUID_LEN_128] = {
     0x19, 0xed, 0x82, 0xae, 0xed, 0x21, 0x4c, 0x9d,
-    0x41, 0x45, 0x22, 0x8e, 0x42, 0xfe, 0x00, 0x00
-};
+    0x41, 0x45, 0x22, 0x8e, 0x42, 0xfe, 0x00, 0x00};
 
 #define PROFILE_NUM 1
 #define PROFILE_A_APP_ID 0
@@ -634,9 +657,143 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
     }
 }
 
+// Global LCD handle
+static esp_lcd_panel_handle_t panel_handle = NULL;
+
+// RGB565 color definitions
+#define COLOR_BLACK 0x0000
+#define COLOR_WHITE 0xFFFF
+#define COLOR_RED 0xF800
+#define COLOR_GREEN 0x07E0
+#define COLOR_BLUE 0x001F
+#define COLOR_YELLOW 0xFFE0
+#define COLOR_CYAN 0x07FF
+#define COLOR_MAGENTA 0xF81F
+
+// Helper function to fill screen with color
+static void lcd_fill_screen(uint16_t color)
+{
+    uint16_t *buffer = heap_caps_malloc(LCD_H_RES * LCD_V_RES * sizeof(uint16_t), MALLOC_CAP_DMA);
+    if (buffer == NULL)
+    {
+        ESP_LOGE(GATTC_TAG, "Failed to allocate screen buffer");
+        return;
+    }
+
+    // Fill buffer with color
+    for (int i = 0; i < LCD_H_RES * LCD_V_RES; i++)
+    {
+        buffer[i] = color;
+    }
+
+    // Draw to screen
+    esp_lcd_panel_draw_bitmap(panel_handle, 0, 0, LCD_H_RES, LCD_V_RES, buffer);
+    free(buffer);
+}
+
+// Helper function to draw a filled rectangle
+static void lcd_draw_rect(int x, int y, int width, int height, uint16_t color)
+{
+    uint16_t *buffer = heap_caps_malloc(width * height * sizeof(uint16_t), MALLOC_CAP_DMA);
+    if (buffer == NULL)
+    {
+        ESP_LOGE(GATTC_TAG, "Failed to allocate rect buffer");
+        return;
+    }
+
+    for (int i = 0; i < width * height; i++)
+    {
+        buffer[i] = color;
+    }
+
+    esp_lcd_panel_draw_bitmap(panel_handle, x, y, x + width, y + height, buffer);
+    free(buffer);
+}
+
+// Simple function to display text-like pattern (you'd need a font library for real text)
+static void lcd_display_demo(void)
+{
+    ESP_LOGI(GATTC_TAG, "Drawing demo screen...");
+
+    // Fill screen with black
+    lcd_fill_screen(COLOR_BLACK);
+    vTaskDelay(pdMS_TO_TICKS(500));
+
+    // Draw colored bars
+    lcd_draw_rect(0, 0, LCD_H_RES, 20, COLOR_RED);
+    lcd_draw_rect(0, 20, LCD_H_RES, 20, COLOR_GREEN);
+    lcd_draw_rect(0, 40, LCD_H_RES, 20, COLOR_BLUE);
+    lcd_draw_rect(0, 60, LCD_H_RES, 20, COLOR_YELLOW);
+    lcd_draw_rect(0, 80, LCD_H_RES, 20, COLOR_CYAN);
+    lcd_draw_rect(0, 100, LCD_H_RES, 20, COLOR_MAGENTA);
+    lcd_draw_rect(0, 120, LCD_H_RES, 40, COLOR_WHITE);
+
+    ESP_LOGI(GATTC_TAG, "Demo screen displayed!");
+}
+
+static void lcd_init(void)
+{
+    ESP_LOGI(GATTC_TAG, "Initializing SPI bus for LCD...");
+
+    spi_bus_config_t buscfg = {
+        .sclk_io_num = PIN_NUM_CLK,
+        .mosi_io_num = PIN_NUM_MOSI,
+        .miso_io_num = -1,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = LCD_H_RES * LCD_V_RES * sizeof(uint16_t),
+    };
+    ESP_ERROR_CHECK(spi_bus_initialize(LCD_HOST, &buscfg, SPI_DMA_CH_AUTO));
+
+    ESP_LOGI(GATTC_TAG, "Installing LCD IO...");
+    esp_lcd_panel_io_handle_t io_handle = NULL;
+    esp_lcd_panel_io_spi_config_t io_config = {
+        .dc_gpio_num = PIN_NUM_DC,
+        .cs_gpio_num = PIN_NUM_CS,
+        .pclk_hz = LCD_PIXEL_CLOCK_HZ,
+        .lcd_cmd_bits = 8,
+        .lcd_param_bits = 8,
+        .spi_mode = 0,
+        .trans_queue_depth = 10,
+    };
+    ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)LCD_HOST, &io_config, &io_handle));
+
+    ESP_LOGI(GATTC_TAG, "Installing ST7735 panel driver...");
+    esp_lcd_panel_dev_config_t panel_config = {
+        .reset_gpio_num = PIN_NUM_RST,
+        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
+        .bits_per_pixel = 16,
+    };
+    ESP_ERROR_CHECK(esp_lcd_new_panel_st7735(io_handle, &panel_config, &panel_handle));
+
+    ESP_LOGI(GATTC_TAG, "Resetting and initializing LCD panel...");
+    ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle));
+    ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
+    ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel_handle, true));
+    ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel_handle, false, false));
+
+    // Turn on display
+    ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
+
+    // Configure and turn on backlight
+    ESP_LOGI(GATTC_TAG, "Turning on backlight...");
+    gpio_config_t bk_gpio_config = {
+        .mode = GPIO_MODE_OUTPUT,
+        .pin_bit_mask = 1ULL << PIN_NUM_BK_LIGHT};
+    ESP_ERROR_CHECK(gpio_config(&bk_gpio_config));
+    gpio_set_level(PIN_NUM_BK_LIGHT, LCD_BK_LIGHT_ON_LEVEL);
+
+    ESP_LOGI(GATTC_TAG, "LCD initialization complete!");
+}
+
 void app_main(void)
 {
-    ESP_LOGI(GATTC_TAG, "\n=== ESP-IDF SEN55 BLE Client ===");
+    // Initialize LCD first
+    ESP_LOGI(GATTC_TAG, "\n=== ESP-IDF SEN55 BLE Client with LCD ===");
+    lcd_init();
+    lcd_display_demo();
+
+    ESP_LOGI(GATTC_TAG, "\n=== Starting BLE ===");
     ESP_LOGI(GATTC_TAG, "Looking for device: %s", remote_device_name);
     ESP_LOGI(GATTC_TAG, "Service UUID: %s", SERVICE_UUID);
     ESP_LOGI(GATTC_TAG, "Char UUID: %s\n", SEN55_CHAR_UUID);
