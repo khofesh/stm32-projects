@@ -14,4 +14,4 @@ dependencies:
   #   # `public` flag doesn't have an effect dependencies of the `main` component.
   #   # All dependencies of `main` are public by default.
   #   public: true
-  teriyakigod/esp_lcd_st7735: ^0.0.1
+  teriyakigod/esp_lcd_st7735: "^0.0.1"

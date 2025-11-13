@@ -25,8 +25,8 @@
 #include "esp_lcd_st7735.h"
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
+#include "simple_font.h"
 
-// LCD Pin definitions for ESP32C6 (adjust these to your actual wiring)
 #define LCD_HOST SPI2_HOST
 #define LCD_PIXEL_CLOCK_HZ (40 * 1000 * 1000) // 40MHz
 #define LCD_BK_LIGHT_ON_LEVEL 1
@@ -146,6 +146,152 @@ typedef struct
     int16_t noxIndex;
 } sen55_data_t;
 
+// RGB565 color definitions
+#define COLOR_BLACK 0x0000
+#define COLOR_WHITE 0xFFFF
+#define COLOR_RED 0xF800
+#define COLOR_GREEN 0x07E0
+#define COLOR_BLUE 0x001F
+#define COLOR_YELLOW 0xFFE0
+#define COLOR_CYAN 0x07FF
+#define COLOR_MAGENTA 0xF81F
+
+// Global LCD handle
+static esp_lcd_panel_handle_t panel_handle = NULL;
+
+// Static line buffer for drawing (256 bytes)
+static uint16_t line_buffer[LCD_H_RES];
+
+// Helper function to fill screen with color (line by line to save memory)
+static void lcd_fill_screen(uint16_t color)
+{
+    // Fill line buffer with color
+    for (int i = 0; i < LCD_H_RES; i++)
+    {
+        line_buffer[i] = color;
+    }
+
+    // Draw line by line
+    for (int y = 0; y < LCD_V_RES; y++)
+    {
+        esp_lcd_panel_draw_bitmap(panel_handle, 0, y, LCD_H_RES, y + 1, line_buffer);
+    }
+}
+
+// Helper function to draw a filled rectangle (line by line to save memory)
+static void lcd_draw_rect(int x, int y, int width, int height, uint16_t color)
+{
+    // Skip if width or height is 0
+    if (width <= 0 || height <= 0)
+    {
+        return;
+    }
+
+    // Fill line buffer with color (only up to width)
+    for (int i = 0; i < width && i < LCD_H_RES; i++)
+    {
+        line_buffer[i] = color;
+    }
+
+    // Draw line by line
+    for (int row = 0; row < height; row++)
+    {
+        esp_lcd_panel_draw_bitmap(panel_handle, x, y + row, x + width, y + row + 1, line_buffer);
+    }
+}
+
+// Draw a single character at position (x, y) using 6x8 font
+static void lcd_draw_char(int x, int y, char c, uint16_t color)
+{
+    const uint8_t *font_data = get_char_font(c);
+
+    for (int col = 0; col < 6; col++)
+    {
+        uint8_t column_data = font_data[col];
+        for (int row = 0; row < 8; row++)
+        {
+            if (column_data & (1 << row))
+            {
+                lcd_draw_rect(x + col, y + row, 1, 1, color);
+            }
+        }
+    }
+}
+
+// Draw text string at position (x, y)
+static void lcd_draw_text(int x, int y, const char *text, uint16_t color)
+{
+    int cursor_x = x;
+    while (*text)
+    {
+        lcd_draw_char(cursor_x, y, *text, color);
+        cursor_x += 7; // 6 pixels + 1 pixel spacing
+        text++;
+    }
+}
+
+// Display SEN55 data on LCD with text labels
+static void lcd_display_sen55_data(sen55_data_t *data)
+{
+    lcd_fill_screen(COLOR_BLACK);
+
+    char buf[16];
+    int y = 2;
+
+    // PM2.5
+    lcd_draw_text(2, y, "PM25", COLOR_CYAN);
+    float pm25 = data->pm2_5 / 10.0;
+    snprintf(buf, sizeof(buf), "%.1fug/m3", pm25);
+    lcd_draw_text(35, y, buf, COLOR_WHITE);
+    y += 10;
+
+    // PM10
+    lcd_draw_text(2, y, "PM10", COLOR_CYAN);
+    float pm10 = data->pm10 / 10.0;
+    snprintf(buf, sizeof(buf), "%.1fug/m3", pm10);
+    lcd_draw_text(35, y, buf, COLOR_WHITE);
+    y += 10;
+
+    // Temperature
+    lcd_draw_text(2, y, "TEMP", COLOR_RED);
+    if (data->temperature != 0x7fff)
+    {
+        float temp = data->temperature / 200.0;
+        snprintf(buf, sizeof(buf), "%.1f°C", temp);
+        lcd_draw_text(35, y, buf, COLOR_WHITE);
+    }
+    y += 10;
+
+    // Humidity
+    lcd_draw_text(2, y, "HUM", COLOR_BLUE);
+    if (data->humidity != 0x7fff)
+    {
+        float humid = data->humidity / 100.0;
+        snprintf(buf, sizeof(buf), "%.0f%%", humid);
+        lcd_draw_text(35, y, buf, COLOR_WHITE);
+    }
+    y += 10;
+
+    // VOC
+    lcd_draw_text(2, y, "VOC", COLOR_YELLOW);
+    if (data->vocIndex != 0x7fff)
+    {
+        float voc = data->vocIndex / 10.0;
+        snprintf(buf, sizeof(buf), "%.0f", voc);
+        lcd_draw_text(35, y, buf, COLOR_WHITE);
+    }
+    y += 10;
+
+    // NOx
+    lcd_draw_text(2, y, "NOX", COLOR_MAGENTA);
+    if (data->noxIndex != 0x7fff)
+    {
+        float nox = data->noxIndex / 10.0;
+        snprintf(buf, sizeof(buf), "%.0f", nox);
+        lcd_draw_text(35, y, buf, COLOR_WHITE);
+    }
+}
+
 // Parse and print SEN55 data
 static void print_sen55_data(uint8_t *data, uint16_t len)
 {
@@ -208,6 +354,9 @@ static void print_sen55_data(uint8_t *data, uint16_t len)
         ESP_LOGI(GATTC_TAG, "NOx:   N/A");
     }
     ESP_LOGI(GATTC_TAG, "==================\n");
+
+    // update LCD
+    lcd_display_sen55_data(&sensor_data);
 }
 
 static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp_ble_gattc_cb_param_t *param)
@@ -655,59 +804,6 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
             }
         }
     }
-}
-
-// Global LCD handle
-static esp_lcd_panel_handle_t panel_handle = NULL;
-
-// RGB565 color definitions
-#define COLOR_BLACK 0x0000
-#define COLOR_WHITE 0xFFFF
-#define COLOR_RED 0xF800
-#define COLOR_GREEN 0x07E0
-#define COLOR_BLUE 0x001F
-#define COLOR_YELLOW 0xFFE0
-#define COLOR_CYAN 0x07FF
-#define COLOR_MAGENTA 0xF81F
-
-// Helper function to fill screen with color
-static void lcd_fill_screen(uint16_t color)
-{
-    uint16_t *buffer = heap_caps_malloc(LCD_H_RES * LCD_V_RES * sizeof(uint16_t), MALLOC_CAP_DMA);
-    if (buffer == NULL)
-    {
-        ESP_LOGE(GATTC_TAG, "Failed to allocate screen buffer");
-        return;
-    }
-
-    // Fill buffer with color
-    for (int i = 0; i < LCD_H_RES * LCD_V_RES; i++)
-    {
-        buffer[i] = color;
-    }
-
-    // Draw to screen
-    esp_lcd_panel_draw_bitmap(panel_handle, 0, 0, LCD_H_RES, LCD_V_RES, buffer);
-    free(buffer);
-}
-
-// Helper function to draw a filled rectangle
-static void lcd_draw_rect(int x, int y, int width, int height, uint16_t color)
-{
-    uint16_t *buffer = heap_caps_malloc(width * height * sizeof(uint16_t), MALLOC_CAP_DMA);
-    if (buffer == NULL)
-    {
-        ESP_LOGE(GATTC_TAG, "Failed to allocate rect buffer");
-        return;
-    }
-
-    for (int i = 0; i < width * height; i++)
-    {
-        buffer[i] = color;
-    }
-
-    esp_lcd_panel_draw_bitmap(panel_handle, x, y, x + width, y + height, buffer);
-    free(buffer);
 }
 
 // Simple function to display text-like pattern (you'd need a font library for real text)
