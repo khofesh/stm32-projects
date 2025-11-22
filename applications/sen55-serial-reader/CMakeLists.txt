@@ -13,7 +13,8 @@ endif()
 # include(${VCPKG_DIR}/scripts/buildsystems/vcpkg.cmake)
 
 # Add executable
-add_executable(sen55-serial-reader main.cpp serial.cpp)
+add_executable(sen55-serial-reader main.cpp serial.cpp db.cpp)
 
-# Link libraries if needed
-# target_link_libraries(sen55-serial-reader PRIVATE ...)
+find_package(libpqxx REQUIRED)
+
+target_link_libraries(sen55-serial-reader libpqxx::pqxx)

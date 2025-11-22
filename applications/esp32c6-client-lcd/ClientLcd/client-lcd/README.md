@@ -1,9 +1,21 @@
 | Supported Targets | ESP32 | ESP32-C2 | ESP32-C3 | ESP32-C5 | ESP32-C6 | ESP32-C61 | ESP32-H2 | ESP32-S3 |
 | ----------------- | ----- | -------- | -------- | -------- | -------- | --------- | -------- | -------- |
 
-# ESP-IDF Gatt Client Example
+# ESP32-C6 SEN55 Sensor BLE Client with LCD Display
 
-This example shows how to use ESP APIs to create a GATT Client.
+This example shows a BLE GATT Client that connects to an STM32WB55 server broadcasting SEN55 environmental sensor data. The client displays the data on an ST7735 LCD and implements power-saving features.
+
+## Features
+
+- **BLE GATT Client**: Connects to STM32WB55 server with SEN55 sensor data
+- **LCD Display**: Shows PM2.5, PM10, temperature, humidity, VOC, and NOx readings on ST7735 128x160 LCD
+- **Power Saving**: Implements light sleep mode between 1-minute notification intervals
+  - Receives sensor data every 60 seconds
+  - Disconnects BLE and enters light sleep for ~50 seconds between readings
+  - Automatically turns off LCD backlight during sleep
+  - Reconnects to BLE before next notification
+  - Reduces average power consumption by 85-95%
+- **Low Power Consumption**: Ideal for battery-powered applications
 
 ## How to Use Example
 
@@ -21,16 +33,41 @@ Please, check this [tutorial](tutorial/Gatt_Client_Example_Walkthrough.md) for m
 
 ### Hardware Required
 
-* A development board with ESP32/ESP32-C3/ESP32-H2/ESP32-C2/ESP32-S3 SoC (e.g., ESP32-DevKitC, ESP-WROVER-KIT, etc.)
-* A USB cable for Power supply and programming
+- FireBeetle 2 ESP32-C6 development board (or compatible ESP32-C6 board)
+- ST7735 128x160 LCD display
+- STM32WB55 with SEN55 sensor (BLE server)
+- A USB cable for power supply and programming
 
 See [Development Boards](https://www.espressif.com/en/products/devkits) for more information about it.
+
+### Power Management Configuration
+
+The notification interval and sleep duration can be adjusted in `gattc_demo.c`:
+
+```c
+#define NOTIFICATION_INTERVAL_MS 60000  // 1 minute (60000ms)
+#define SLEEP_DURATION_US (55 * 1000000ULL)  // 55 seconds
+```
+
+**Note**: The STM32WB55 server must be configured to send notifications at the same interval (60 seconds). If your server sends notifications more frequently (e.g., every 5 seconds), you should either:
+
+1. Modify the server to send notifications every 60 seconds, OR
+2. Adjust `NOTIFICATION_INTERVAL_MS` to match your server's notification rate
+
+**Power Saving Behavior**:
+
+- After receiving a notification, the ESP32-C6 disconnects BLE and enters light sleep mode
+- LCD backlight is turned off during sleep
+- BLE is disconnected during sleep (saves power, no radio activity)
+- System wakes up ~10 seconds before the next expected notification
+- Automatically reconnects to BLE server after waking up
+- Light sleep with disconnect reduces power consumption by 85-95% compared to active waiting
 
 ### Build and Flash
 
 Run `idf.py -p PORT flash monitor` to build, flash and monitor the project.
 
-(To exit the serial monitor, type ``Ctrl-]``.)
+(To exit the serial monitor, type `Ctrl-]`.)
 
 See the [Getting Started Guide](https://idf.espressif.com/) for full steps to configure and use ESP-IDF to build projects.
 
@@ -44,6 +81,7 @@ This example works with UUID16 as default. To change to UUID128, follow this ste
 // Create a new UUID128 (using random values for this example)
 static uint8_t gatts_xxx_uuid128[ESP_UUID_LEN_128] = {0x06, 0x18, 0x7a, 0xec, 0xbe, 0x11, 0x11, 0xea, 0x00, 0x16, 0x02, 0x42, 0x01, 0x13, 0x00, 0x04};
 ```
+
 By adding this new UUID128, you can remove the `#define` macros with the old UUID16.
 
 2. Change the structure to:
