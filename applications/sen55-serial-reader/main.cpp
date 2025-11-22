@@ -2,6 +2,7 @@
 #include <string>
 #include <iomanip>
 #include "serial.hpp"
+#include "db.hpp"
 
 struct Sen55Data
 {
@@ -21,12 +22,19 @@ bool parseJSON(const std::string& json, Sen55Data& data) {
 }
 
 // TODO:
-// 1. serial port from cli option, default to /dev/ttyACM0
 // 2. database connection
 // 3. save parsedJSON data to database
-int main() {
+int main(int argc, char** argv) {
+    if (argc < 2)
+    {
+        // how to: 
+        // sudo ./build/sen55-serial-reader /dev/ttyACM1
+        std::cerr << "usage: " << argv[0] << " /dev/ttyACM0" << "\n";
+        return 1;
+    }
+    
     try {
-        SerialPort serial("/dev/ttyACM1");
+        SerialPort serial(argv[1]);
         std::cout << "Connected!\n" << std::endl;
         
         while (true) {
