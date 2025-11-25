@@ -18,3 +18,20 @@ get the following:
 - the SystemView application
 - SystemView Target Sources
 - SystemView User Manual
+
+### share thirdParty
+
+- create folder `common`
+- copy `ThirdParty` folder from `002_freertos_manual`
+- drag folder `common` to `004_led_tasks`
+
+![alt text](image.png)
+
+- choose `Link to files and folder`
+- uncheck `Exclude resource from build`
+
+![alt text](image-1.png)
+
+- `File System`
+
+![alt text](image-2.png)
