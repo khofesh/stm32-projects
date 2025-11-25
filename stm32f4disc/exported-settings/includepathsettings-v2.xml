@@ -16,7 +16,7 @@
       <includepath>/media/wdhome/github/khofesh/stm32-projects/stm32f4disc/common/ThirdParty/SEGGER/Config</includepath>
       <includepath>/media/wdhome/github/khofesh/stm32-projects/stm32f4disc/common/ThirdParty/SEGGER/OS</includepath>
       <includepath>/media/wdhome/github/khofesh/stm32-projects/stm32f4disc/common/ThirdParty/SEGGER/SEGGER</includepath>
-      <includepath>/media/wdhome/github/khofesh/stm32-projects/stm32f4disc/common/ThirdParty/FreeRTOS</includepath>
+      <includepath>/media/wdhome/github/khofesh/stm32-projects/stm32f4disc/common/ThirdParty/SEGGER/Rec</includepath>
     </language>
     <language name="Object File"/>
   </section>
