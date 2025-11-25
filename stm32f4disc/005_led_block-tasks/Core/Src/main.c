@@ -328,7 +328,7 @@ static void led_green_handler(void* parameters)
 	{
 		SEGGER_SYSVIEW_PrintfTarget("Toggling green LED");
 		HAL_GPIO_TogglePin(GPIOD, LED_GREEN_PIN);
-		HAL_Delay(1000);
+		vTaskDelay(pdMS_TO_TICKS(1000));
 	}
 
 }
@@ -340,7 +340,7 @@ static void led_orange_handler(void* parameters)
 	{
 		SEGGER_SYSVIEW_PrintfTarget("Toggling orange LED");
 		HAL_GPIO_TogglePin(GPIOD, LED_ORANGE_PIN);
-		HAL_Delay(800);
+		vTaskDelay(pdMS_TO_TICKS(800));
 	}
 
 }
@@ -352,7 +352,7 @@ static void led_red_handler(void* parameters)
 	{
 		SEGGER_SYSVIEW_PrintfTarget("Toggling red LED");
 		HAL_GPIO_TogglePin(GPIOD, LED_RED_PIN);
-		HAL_Delay(400);
+		vTaskDelay(pdMS_TO_TICKS(400));
 	}
 
 }
