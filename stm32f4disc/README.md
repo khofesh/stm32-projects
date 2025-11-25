@@ -35,3 +35,11 @@ get the following:
 - `File System`
 
 ![alt text](image-2.png)
+
+- priority group is set to `4 bits for pre-emption ....`
+
+![alt text](image-3.png)
+
+- don't generate systick, pendsv, svc handler
+
+![alt text](image-4.png)
