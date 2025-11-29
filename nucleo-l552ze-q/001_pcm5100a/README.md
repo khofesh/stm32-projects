@@ -18,6 +18,6 @@
 | VCC        | 3.3V                | Power supply                  |
 | SCK        | D13 (PA5)           | SPI1_SCK                      |
 | SDA        | D11 (PA7)           | SPI1_MOSI                     |
-| RES        | D9 (PC7)            | GPIO for Reset                |
-| DC         | D8 (PA9)            | GPIO for Data/Command         |
-| BLK        | D7 (PA8) or 3.3V    | Backlight (GPIO or always-on) |
+| RES        | D9 (PD15)           | GPIO for Reset                |
+| DC         | D8 (PF12)           | GPIO for Data/Command         |
+| BLK        | D7 (PF13) or 3.3V   | Backlight (GPIO or always-on) |
