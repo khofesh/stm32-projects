@@ -13,3 +13,5 @@ USART pin connection:
 
 - PA10 -> RX
 - PA9 -> TX
+
+![alt text](image.png)
