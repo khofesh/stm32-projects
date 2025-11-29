@@ -31,11 +31,4 @@
 		<nature>org.eclipse.cdt.managedbuilder.core.managedBuildNature</nature>
 		<nature>org.eclipse.cdt.managedbuilder.core.ScannerConfigNature</nature>
 	</natures>
-	<linkedResources>
-		<link>
-			<name>st7789</name>
-			<type>2</type>
-			<locationURI>PARENT-2-PROJECT_LOC/libraries/st7789</locationURI>
-		</link>
-	</linkedResources>
 </projectDescription>
