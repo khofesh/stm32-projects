@@ -1,0 +1,2 @@
+- drag and drop to stm32cubeide
+- uncheck "Exclude resource from build" on stm32cubeide
