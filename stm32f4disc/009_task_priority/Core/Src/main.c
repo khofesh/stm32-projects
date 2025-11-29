@@ -355,7 +355,6 @@ void switch_priority(void)
 			vTaskPrioritySet(t1,p2);
 		}
 	}
-
 }
 
 static void task1_handler(void* parameters)
@@ -367,7 +366,6 @@ static void task1_handler(void* parameters)
 		HAL_Delay(100);
 		switch_priority();
 	}
-
 }
 
 
@@ -380,7 +378,6 @@ static void task2_handler(void* parameters)
 		HAL_Delay(1000);
 		switch_priority();
 	}
-
 }
 
 
