@@ -45,26 +45,18 @@
 /* USER CODE BEGIN PV */
 #define DWT_CTRL    (*(volatile uint32_t*)0xE0001000)
 
+volatile BaseType_t status_button = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 /* USER CODE BEGIN PFP */
-static void led_green_handler(void* parameters);
-static void led_orange_handler(void* parameters);
-static void led_red_handler(void* parameters);
+static void task1_handler(void* parameters);
+static void task2_handler(void* parameters);
 
 
 extern void SEGGER_UART_init(uint32_t);
-
-
-TaskHandle_t ledg_task_handle;
-TaskHandle_t ledo_task_handle;
-TaskHandle_t ledr_task_handle;
-TaskHandle_t btn_task_handle;
-
-TaskHandle_t volatile next_task_handle = NULL;
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -82,6 +74,8 @@ int main(void)
   /* USER CODE BEGIN 1 */
 	BaseType_t status;
 
+	TaskHandle_t task1_handle;
+	TaskHandle_t task2_handle;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -110,25 +104,18 @@ int main(void)
 
   SEGGER_SYSVIEW_Conf();
 
-  status = xTaskCreate(led_green_handler, "LED_green_task", 200, NULL, 3, &ledg_task_handle);
+  SEGGER_SYSVIEW_Start();
+
+  status = xTaskCreate(task1_handler, "Task-1", 200, NULL, 2, &task1_handle);
 
   configASSERT(status == pdPASS);
 
-  next_task_handle = ledg_task_handle;
-
-  status = xTaskCreate(led_orange_handler, "LED_orange_task", 200, NULL, 2, &ledo_task_handle);
-
-   configASSERT(status == pdPASS);
-
-  status = xTaskCreate(led_red_handler, "LED_red_task", 200,NULL, 1, &ledr_task_handle);
+  status = xTaskCreate(task2_handler, "Task-2", 200,NULL, 3, &task2_handle);
 
   configASSERT(status == pdPASS);
-
-
 
   //start the freeRTOS scheduler
   vTaskStartScheduler();
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -165,8 +152,8 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
   RCC_OscInitStruct.PLL.PLLM = 8;
-  RCC_OscInitStruct.PLL.PLLN = 168;
-  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+  RCC_OscInitStruct.PLL.PLLN = 50;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
   RCC_OscInitStruct.PLL.PLLQ = 7;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -182,7 +169,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
   {
     Error_Handler();
   }
@@ -337,82 +324,71 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void switch_priority(void)
+{
+	UBaseType_t p1,p2;
+	xTaskHandle t1,t2,curr;
+
+	BaseType_t switch_priority = 0;
+
+	portENTER_CRITICAL();
+	if(status_button){
+		status_button = 0;
+		switch_priority = 1;
+	}
+	portEXIT_CRITICAL();
+
+	if(switch_priority){
+		t1 = xTaskGetHandle("Task-1");
+		t2 = xTaskGetHandle("Task-2");
+
+		p1 = uxTaskPriorityGet(t1);
+		p2 = uxTaskPriorityGet(t2);
+
+		curr = xTaskGetCurrentTaskHandle();
+
+		if(curr == t1){
+			vTaskPrioritySet(t1,p2);
+			vTaskPrioritySet(t2,p1);
+		}else{
+			vTaskPrioritySet(t2,p1);
+			vTaskPrioritySet(t1,p2);
+		}
+	}
+
+}
+
+static void task1_handler(void* parameters)
+{
+
+	while(1)
+	{
+		HAL_GPIO_TogglePin(GPIOD, LED_RED_PIN);
+		HAL_Delay(100);
+		switch_priority();
+	}
+
+}
+
+
+static void task2_handler(void* parameters)
+{
+
+	while(1)
+	{
+		HAL_GPIO_TogglePin(GPIOD, LED_GREEN_PIN);
+		HAL_Delay(1000);
+		switch_priority();
+	}
+
+}
+
+
 void button_interrupt_handler(void)
 {
-	BaseType_t pxHigherPriorityTaskWoken;
-
-	pxHigherPriorityTaskWoken = pdFALSE;
-
-
 	traceISR_ENTER();
-	xTaskNotifyFromISR(next_task_handle,0,eNoAction,&pxHigherPriorityTaskWoken);
-
-	/* once the ISR exits, the below macro makes higher priority task which got unblocked to resume on the CPU */
-	portYIELD_FROM_ISR(pxHigherPriorityTaskWoken);
-
+	status_button = 1;
 	traceISR_EXIT();
-}
-
-
-static void led_green_handler(void* parameters)
-{
-	BaseType_t  status;
-	while(1)
-	{
-		SEGGER_SYSVIEW_PrintfTarget("Toggling green LED");
-		HAL_GPIO_TogglePin(GPIOD, LED_GREEN_PIN);
-		status = xTaskNotifyWait(0,0,NULL,pdMS_TO_TICKS(1000));
-		if(status == pdTRUE){
-			portENTER_CRITICAL();
-			next_task_handle = ledo_task_handle;
-			HAL_GPIO_WritePin(GPIOD, LED_GREEN_PIN,GPIO_PIN_SET);
-			SEGGER_SYSVIEW_PrintfTarget("Delete green LED task");
-			portEXIT_CRITICAL();
-			vTaskDelete(NULL);
-		}
-	}
-}
-
-
-static void led_orange_handler(void* parameters)
-{
-	BaseType_t  status;
-
-	while(1)
-	{
-		SEGGER_SYSVIEW_PrintfTarget("Toggling orange LED");
-		HAL_GPIO_TogglePin(GPIOD, LED_ORANGE_PIN );
-		status = xTaskNotifyWait(0,0,NULL,pdMS_TO_TICKS(800));
-		if(status == pdTRUE){
-			portENTER_CRITICAL();
-			next_task_handle = ledr_task_handle;
-			HAL_GPIO_WritePin(GPIOD, LED_ORANGE_PIN,GPIO_PIN_SET);
-			SEGGER_SYSVIEW_PrintfTarget("Delete orange LED task");
-			portEXIT_CRITICAL();
-			vTaskDelete(NULL);
-		}
-	}
-}
-
-
-static void led_red_handler(void* parameters)
-{
-	BaseType_t  status;
-
-	while(1)
-	{
-		SEGGER_SYSVIEW_PrintfTarget("Toggling red LED");
-		HAL_GPIO_TogglePin(GPIOD, LED_RED_PIN);
-		status = xTaskNotifyWait(0,0,NULL,pdMS_TO_TICKS(400));
-		if(status == pdTRUE){
-			portENTER_CRITICAL();
-			next_task_handle = NULL;
-			HAL_GPIO_WritePin(GPIOD, LED_RED_PIN,GPIO_PIN_SET);
-			SEGGER_SYSVIEW_PrintfTarget("Delete red LED task");
-			portEXIT_CRITICAL();
-			vTaskDelete(NULL);
-		}
-	}
 }
 /* USER CODE END 4 */
 
