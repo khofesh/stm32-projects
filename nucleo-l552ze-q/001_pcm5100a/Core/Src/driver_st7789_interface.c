@@ -31,8 +31,8 @@
  * - SCK (SPI_SCK) -> D13 (PA5) - SPI1_SCK
  * - SDA (SPI_MOSI) -> D11 (PA7) - SPI1_MOSI
  * - RES (Reset) -> D9 (PC7) - GPIO
- * - DC (Data/Command) -> D8 (PA9) - GPIO
- * - BLK (Backlight) -> 3.3V (always on) or D7 (PA8) for PWM control
+ * - DC (Data/Command) -> D9 (PC7) - GPIO
+ * - BLK (Backlight) -> 3.3V (always on) or D8 (PA9) for PWM control
  * - VCC -> 3.3V
  * - GND -> GND
  *
@@ -51,10 +51,10 @@
 
 extern SPI_HandleTypeDef hspi1;
 
-#define ST7789_RST_PIN      GPIO_PIN_7      // PC7 (D9) - or use your CubeMX label
-#define ST7789_RST_PORT     GPIOC
-#define ST7789_DC_PIN       GPIO_PIN_9      // PA9 (D8) - or use your CubeMX label
-#define ST7789_DC_PORT      GPIOA
+#define ST7789_RST_PIN      GPIO_PIN_15     // PD15 (D9) - Reset pin
+#define ST7789_RST_PORT     GPIOD
+#define ST7789_DC_PIN       GPIO_PIN_12     // PF12 (D8) - Data/Command pin
+#define ST7789_DC_PORT      GPIOF
 
 
 /**
