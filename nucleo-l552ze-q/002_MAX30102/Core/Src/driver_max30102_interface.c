@@ -79,7 +79,7 @@ uint8_t max30102_interface_iic_deinit(void)
 
 /**
  * @brief      interface iic bus read
- * @param[in]  addr iic device write address
+ * @param[in]  addr iic device write address (7-bit, not shifted)
  * @param[in]  reg iic register address
  * @param[out] *buf pointer to a data buffer
  * @param[in]  len length of the data buffer
@@ -90,40 +90,42 @@ uint8_t max30102_interface_iic_deinit(void)
  */
 uint8_t max30102_interface_iic_read(uint8_t addr, uint8_t reg, uint8_t *buf, uint16_t len)
 {
-	uint32_t timeout = 1000;
-	uint32_t start_time = HAL_GetTick();
+    uint32_t timeout = 1000;
+    uint32_t start_time = HAL_GetTick();
 
-	uint8_t device_addr = addr << 1;
+    // Don't shift here - HAL_I2C_Mem_Read will handle it
+    uint8_t device_addr = addr << 1;
 
-	while (i2c_state != I2C_STATE_READY)
-	{
-		if ((HAL_GetTick() - start_time) >= timeout)
-		{
-			return 1;
-		}
-		HAL_Delay(1);
-	}
+    while (i2c_state != I2C_STATE_READY)
+    {
+        if ((HAL_GetTick() - start_time) >= timeout)
+        {
+            return 1;
+        }
+        HAL_Delay(1);
+    }
 
-	i2c_operation_complete = 0;
-	i2c_error_occurred = 0;
-	i2c_state = I2C_STATE_BUSY_RX;
+    i2c_operation_complete = 0;
+    i2c_error_occurred = 0;
+    i2c_state = I2C_STATE_BUSY_RX;
 
-	if (HAL_I2C_Master_Receive_IT(&hi2c1, device_addr, buf, len) != HAL_OK)
-	{
-		i2c_state = I2C_STATE_READY;
-		return 1;
-	}
+    // Use Mem_Read to write register address then read data
+    if (HAL_I2C_Mem_Read_IT(&hi2c1, device_addr, reg, I2C_MEMADD_SIZE_8BIT, buf, len) != HAL_OK)
+    {
+        i2c_state = I2C_STATE_READY;
+        return 1;
+    }
 
-	start_time = HAL_GetTick();
-	while (!i2c_operation_complete && !i2c_error_occurred)
-	{
-		if ((HAL_GetTick() - start_time) >= timeout)
-		{
-			i2c_state = I2C_STATE_READY;
-			return 1;
-		}
-		HAL_Delay(1);
-	}
+    start_time = HAL_GetTick();
+    while (!i2c_operation_complete && !i2c_error_occurred)
+    {
+        if ((HAL_GetTick() - start_time) >= timeout)
+        {
+            i2c_state = I2C_STATE_READY;
+            return 1;
+        }
+        HAL_Delay(1);
+    }
 
     if (i2c_error_occurred) {
         i2c_state = I2C_STATE_READY;
@@ -131,13 +133,12 @@ uint8_t max30102_interface_iic_read(uint8_t addr, uint8_t reg, uint8_t *buf, uin
     }
 
     i2c_state = I2C_STATE_READY;
-
     return 0;
 }
 
 /**
  * @brief     interface iic bus write
- * @param[in] addr iic device write address
+ * @param[in] addr iic device write address (7-bit, not shifted)
  * @param[in] reg iic register address
  * @param[in] *buf pointer to a data buffer
  * @param[in] len length of the data buffer
@@ -148,40 +149,41 @@ uint8_t max30102_interface_iic_read(uint8_t addr, uint8_t reg, uint8_t *buf, uin
  */
 uint8_t max30102_interface_iic_write(uint8_t addr, uint8_t reg, uint8_t *buf, uint16_t len)
 {
-	uint32_t timeout = 1000;
-	uint32_t start_time = HAL_GetTick();
+    uint32_t timeout = 1000;
+    uint32_t start_time = HAL_GetTick();
 
-	uint8_t device_addr = addr << 1;
+    uint8_t device_addr = addr << 1;
 
-	while (i2c_state != I2C_STATE_READY)
-	{
-		if ((HAL_GetTick() - start_time) >= timeout)
-		{
-			return 1;
-		}
-		HAL_Delay(1);
-	}
+    while (i2c_state != I2C_STATE_READY)
+    {
+        if ((HAL_GetTick() - start_time) >= timeout)
+        {
+            return 1;
+        }
+        HAL_Delay(1);
+    }
 
-	i2c_operation_complete = 0;
-	i2c_error_occurred = 0;
-	i2c_state = I2C_STATE_BUSY_TX;
+    i2c_operation_complete = 0;
+    i2c_error_occurred = 0;
+    i2c_state = I2C_STATE_BUSY_TX;
 
-	if (HAL_I2C_Master_Transmit_IT(&hi2c1, device_addr, buf, len) != HAL_OK)
-	{
-		i2c_state = I2C_STATE_READY;
-		return 1;
-	}
+    // Use Mem_Write to write register address then data
+    if (HAL_I2C_Mem_Write_IT(&hi2c1, device_addr, reg, I2C_MEMADD_SIZE_8BIT, buf, len) != HAL_OK)
+    {
+        i2c_state = I2C_STATE_READY;
+        return 1;
+    }
 
-	start_time = HAL_GetTick();
-	while (!i2c_operation_complete && !i2c_error_occurred)
-	{
-		if ((HAL_GetTick() - start_time) >= timeout)
-		{
-			i2c_state = I2C_STATE_READY;
-			return 1;
-		}
-		HAL_Delay(1);
-	}
+    start_time = HAL_GetTick();
+    while (!i2c_operation_complete && !i2c_error_occurred)
+    {
+        if ((HAL_GetTick() - start_time) >= timeout)
+        {
+            i2c_state = I2C_STATE_READY;
+            return 1;
+        }
+        HAL_Delay(1);
+    }
 
     if (i2c_error_occurred) {
         i2c_state = I2C_STATE_READY;
@@ -189,7 +191,6 @@ uint8_t max30102_interface_iic_write(uint8_t addr, uint8_t reg, uint8_t *buf, ui
     }
 
     i2c_state = I2C_STATE_READY;
-
     return 0;
 }
 
@@ -268,29 +269,18 @@ void max30102_interface_receive_callback(uint8_t type)
     }
 }
 
-/**
- * @brief  I2C Master Tx Transfer completed callback.
- * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
- *                the configuration information for the specified I2C.
- * @retval None
- */
-void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c)
+void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
-	if (hi2c->Instance == I2C1)
-	{
-		i2c_operation_complete = 1;
-	}
+    if (hi2c->Instance == I2C1)
+    {
+        i2c_operation_complete = 1;
+    }
 }
 
-/**
- * @brief  I2C Master Rx Transfer completed callback.
- * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
- *                the configuration information for the specified I2C.
- * @retval None
- */
-void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c)
+void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
-    if (hi2c->Instance == I2C1) {
+    if (hi2c->Instance == I2C1)
+    {
         i2c_operation_complete = 1;
     }
 }

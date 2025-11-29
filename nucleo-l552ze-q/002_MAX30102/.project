@@ -31,11 +31,4 @@
 		<nature>org.eclipse.cdt.managedbuilder.core.managedBuildNature</nature>
 		<nature>org.eclipse.cdt.managedbuilder.core.ScannerConfigNature</nature>
 	</natures>
-	<linkedResources>
-		<link>
-			<name>max30102</name>
-			<type>2</type>
-			<locationURI>PARENT-2-PROJECT_LOC/libraries/max30102</locationURI>
-		</link>
-	</linkedResources>
 </projectDescription>

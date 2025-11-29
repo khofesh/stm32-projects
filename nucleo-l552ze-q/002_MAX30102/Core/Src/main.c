@@ -22,7 +22,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
-#include "driver_max30102_interface.h"
+#include "dfrobot_bloodoxygen.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -60,10 +61,7 @@ static void MX_ICACHE_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static max30102_handle_t gs_handle;        /**< max30102 handle */
-static volatile uint8_t gs_flag;           /**< flag */
-static uint32_t gs_raw_red[32];            /**< raw red buffer */
-static uint32_t gs_raw_ir[32];             /**< raw ir buffer */
+
 /* USER CODE END 0 */
 
 /**
@@ -122,40 +120,50 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  uint8_t res;
-  uint32_t timeout;
-  uint16_t raw;
-  float temp;
-  max30102_bool_t enable;
-  max30102_info_t info;
-
-  /* link interface function */
-  DRIVER_MAX30102_LINK_INIT(&gs_handle, max30102_handle_t);
-  DRIVER_MAX30102_LINK_IIC_INIT(&gs_handle, max30102_interface_iic_init);
-  DRIVER_MAX30102_LINK_IIC_DEINIT(&gs_handle, max30102_interface_iic_deinit);
-  DRIVER_MAX30102_LINK_IIC_READ(&gs_handle, max30102_interface_iic_read);
-  DRIVER_MAX30102_LINK_IIC_WRITE(&gs_handle, max30102_interface_iic_write);
-  DRIVER_MAX30102_LINK_DELAY_MS(&gs_handle, max30102_interface_delay_ms);
-  DRIVER_MAX30102_LINK_DEBUG_PRINT(&gs_handle, max30102_interface_debug_print);
-
-  /* start read test */
-  max30102_interface_debug_print("max30102: start fifo test.\n");
-
-  /* init the max30102 */
-  res = max30102_init(&gs_handle);
-  if (res != 0)
-  {
-      max30102_interface_debug_print("max30102: init failed.\n");
-
-      return 1;
+  for (uint8_t addr = 1; addr < 128; addr++) {
+      if (HAL_I2C_IsDeviceReady(&hi2c1, addr << 1, 1, 100) == HAL_OK) {
+          printf("Found device at 0x%02X\n", addr);
+      }
   }
 
+  // Initialize sensor
+  if (dfrobot_init(&hi2c1) != 0) {
+      printf("Sensor init failed!\n");
+      Error_Handler();
+  }
+
+  // Wait for sensor to stabilize
+  HAL_Delay(2000);
+
+  dfrobot_data_t data;
 
   while (1)
   {
 
-//	  printf("hola mundo - max30102\r\n");
-//	  HAL_Delay(200);
+      // Read sensor data
+      if (dfrobot_read_data(&hi2c1, &data) == 0) {
+          if (data.spo2 > 0) {
+              printf("SpO2: %d%%\n", data.spo2);
+          } else {
+              printf("SpO2: No finger detected\n");
+          }
+
+          if (data.heartbeat > 0) {
+              printf("Heart Rate: %ld BPM\n", data.heartbeat);
+          } else {
+              printf("Heart Rate: No finger detected\n");
+          }
+      }
+
+      // Read temperature
+      float temp = dfrobot_read_temperature(&hi2c1);
+      if (temp > -999.0f) {
+          printf("Temperature: %.2f°C\n", temp);
+      }
+
+      printf("---\n");
+
+      HAL_Delay(1000);  // Update every second
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
