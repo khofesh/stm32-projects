@@ -21,8 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "FreeRTOS.h"
-#include "task.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -46,7 +45,24 @@ RTC_HandleTypeDef hrtc;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-#define DWT_CTRL	(*(volatile uint32_t*)0xE0001000)
+xTaskHandle handle_cmd_task;
+xTaskHandle handle_menu_task;
+xTaskHandle handle_print_task;
+xTaskHandle handle_led_task;
+xTaskHandle handle_rtc_task;
+
+
+QueueHandle_t q_data;
+QueueHandle_t q_print;
+
+//software timer handles
+TimerHandle_t  handle_led_timer[4];
+TimerHandle_t rtc_timer;
+
+volatile uint8_t user_data;
+
+//state variable
+state_t curr_state = sMainMenu;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -55,7 +71,8 @@ static void MX_GPIO_Init(void);
 static void MX_RTC_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+void led_effect_callback(TimerHandle_t xTimer);
+void rtc_report_callback( TimerHandle_t xTimer );
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
