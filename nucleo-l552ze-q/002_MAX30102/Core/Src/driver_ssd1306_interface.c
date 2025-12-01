@@ -85,8 +85,13 @@ uint8_t ssd1306_interface_iic_deinit(void)
 uint8_t ssd1306_interface_iic_write(uint8_t addr, uint8_t reg, uint8_t *buf, uint16_t len)
 {
 	HAL_StatusTypeDef status;
+    static uint8_t tx_buf[1024];  // Static buffer to avoid VLA issues
 
-    uint8_t tx_buf[len + 1];
+    if (len > 1023) {
+        printf("ssd1306_interface: transfer too large (%d bytes)\n", len);
+        return 1;
+    }
+
     tx_buf[0] = reg;
 
     for (uint16_t i = 0; i < len; i++)
@@ -99,6 +104,8 @@ uint8_t ssd1306_interface_iic_write(uint8_t addr, uint8_t reg, uint8_t *buf, uin
 
     if (status != HAL_OK)
     {
+        printf("ssd1306_interface: I2C write failed! addr=0x%02X, reg=0x%02X, len=%d, status=%d\n", 
+               addr, reg, len, status);
         return 1;
     }
 

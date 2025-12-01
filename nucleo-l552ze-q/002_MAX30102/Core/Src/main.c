@@ -187,7 +187,7 @@ int main(void)
       return 1;
   }
 
-  res = ssd1306_set_addr_pin(&handle, SSD1306_ADDR_SA0_0);  // Address 0x3C
+  res = ssd1306_set_addr_pin(&handle, SSD1306_ADDR_SA0_0);  // address 0x3C
   if (res != 0)
   {
       ssd1306_interface_debug_print("ssd1306: set addr pin failed.\n");
@@ -198,6 +198,16 @@ int main(void)
   if (res != 0)
   {
       ssd1306_interface_debug_print("ssd1306: init failed.\n");
+      return 1;
+  }
+
+  /* enable charge pump - IMPORTANT */
+  printf("enabling charge pump...\n");
+  res = ssd1306_set_charge_pump(&handle, SSD1306_CHARGE_PUMP_ENABLE);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set charge pump failed.\n");
+      (void)ssd1306_deinit(&handle);
       return 1;
   }
 
@@ -297,6 +307,17 @@ int main(void)
       (void)ssd1306_deinit(&handle);
       return 1;
   }
+
+  /* update the display with GRAM buffer - IMPORTANT */
+  printf("Updating display with GRAM buffer...\n");
+  res = ssd1306_gram_update(&handle);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: gram update failed.\n");
+      (void)ssd1306_deinit(&handle);
+      return 1;
+  }
+  printf("LCD initialization complete!\n");
 
   while (1)
   {
