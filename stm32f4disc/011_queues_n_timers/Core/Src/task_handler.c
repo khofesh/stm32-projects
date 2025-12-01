@@ -56,17 +56,16 @@ void menu_task(void *param)
 				xQueueSend(q_print,&msg_inv,portMAX_DELAY);
 				continue;
 			}
-
-		}else{
+		}
+		else
+		{
 			//invalid entry
 			xQueueSend(q_print,&msg_inv,portMAX_DELAY);
 			continue;
 		}
 
-
 		//wait to run again when some other task notifies
 		xTaskNotifyWait(0,0,NULL,portMAX_DELAY);
-
 	}//while super loop
 }
 
@@ -105,15 +104,17 @@ void led_task(void *param)
 				led_effect(4);
 			else
 				xQueueSend(q_print,&msg_inv,portMAX_DELAY); /*print invalid message */
-		}else
+		}
+		else
+		{
 			xQueueSend(q_print,&msg_inv,portMAX_DELAY);
+		}
 
 		/* update state variable */
 		curr_state = sMainMenu;
 
 		/*Notify menu task */
 		xTaskNotify(handle_menu_task,0,eNoAction);
-
 	}
 }
 
@@ -128,7 +129,6 @@ uint8_t getnumber(uint8_t *p , int len)
 		value = p[0] - 48;
 
 	return value;
-
 }
 
 void rtc_task(void *param)
@@ -222,7 +222,9 @@ void rtc_task(void *param)
 						xQueueSend(q_print,&msg_inv,portMAX_DELAY);
 					}
 
-				}else{
+				}
+				else
+				{
 					curr_state = sMainMenu;
 					xQueueSend(q_print,&msg_inv,portMAX_DELAY);
 				}
@@ -253,8 +255,11 @@ void rtc_task(void *param)
 						rtc_configure_time(&time);
 						xQueueSend(q_print,&msg_conf,portMAX_DELAY);
 						show_time_date();
-					}else
+					}
+					else
+					{
 						xQueueSend(q_print,&msg_inv,portMAX_DELAY);
+					}
 
 					curr_state = sMainMenu;
 					rtc_state = 0;
@@ -297,8 +302,11 @@ void rtc_task(void *param)
 						rtc_configure_date(&date);
 						xQueueSend(q_print,&msg_conf,portMAX_DELAY);
 						show_time_date();
-					}else
+					}
+					else
+					{
 						xQueueSend(q_print,&msg_inv,portMAX_DELAY);
+					}
 
 					curr_state = sMainMenu;
 					rtc_state = 0;
@@ -312,12 +320,17 @@ void rtc_task(void *param)
 				/*enable or disable RTC current time reporting over ITM printf */
 				if(cmd->len == 1)
 				{
-					if(cmd->payload[0] == 'y'){
+					if(cmd->payload[0] == 'y')
+					{
 						if(xTimerIsTimerActive(rtc_timer) == pdFALSE)
 							xTimerStart(rtc_timer,portMAX_DELAY);
-					}else if (cmd->payload[0] == 'n'){
+					}
+					else if (cmd->payload[0] == 'n')
+					{
 						xTimerStop(rtc_timer,portMAX_DELAY);
-					}else{
+					}
+					else
+					{
 						xQueueSend(q_print,&msg_inv,portMAX_DELAY);
 					}
 
@@ -349,7 +362,6 @@ void rtc_task(void *param)
 
 void print_task(void *param)
 {
-
 	uint32_t *msg;
 	while(1){
 		xQueueReceive(q_print, &msg, portMAX_DELAY);
@@ -368,13 +380,12 @@ void cmd_handler_task(void *param)
 		/*Implement notify wait */
 		ret = xTaskNotifyWait(0,0,NULL,portMAX_DELAY);
 
-		if(ret == pdTRUE){
+		if(ret == pdTRUE)
+		{
 			/*process the user data(command) stored in input data queue */
 			process_command(&cmd);
 		}
-
 	}
-
 }
 
 
@@ -398,9 +409,7 @@ void process_command(command_t *cmd)
 	case sRtcReport:
 		xTaskNotify(handle_rtc_task,(uint32_t)cmd , eSetValueWithOverwrite);
 		break;
-
 	}
-
 }
 
 

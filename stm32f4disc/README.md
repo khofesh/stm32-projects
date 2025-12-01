@@ -43,3 +43,7 @@ get the following:
 - don't generate systick, pendsv, svc handler
 
 ![alt text](image-4.png)
+
+## references
+
+- https://github.com/niekiran/MasteringRTOS
