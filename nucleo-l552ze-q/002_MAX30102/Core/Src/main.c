@@ -61,7 +61,35 @@ static void MX_ICACHE_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void i2c_scan(I2C_HandleTypeDef *hi2c)
+{
+    printf("\n=== I2C Scanner ===\n");
+    printf("Scanning I2C bus...\n\n");
 
+    uint8_t found_devices = 0;
+
+    for (uint8_t addr = 1; addr < 128; addr++)
+    {
+        HAL_StatusTypeDef result = HAL_I2C_IsDeviceReady(hi2c, addr << 1, 1, 10);
+
+        if (result == HAL_OK)
+        {
+            printf("Device found at 0x%02X", addr);
+
+            // Common device identification
+            if (addr == 0x3C || addr == 0x3D) {
+                printf(" - Likely SSD1306/SSD1309 OLED");
+            } else if (addr == 0x57) {
+                printf(" - DFRobot Blood Oxygen Sensor");
+            }
+
+            printf("\n");
+            found_devices++;
+        }
+    }
+
+    printf("\nTotal devices found: %d\n", found_devices);
+}
 /* USER CODE END 0 */
 
 /**
@@ -120,11 +148,7 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  for (uint8_t addr = 1; addr < 128; addr++) {
-      if (HAL_I2C_IsDeviceReady(&hi2c1, addr << 1, 1, 100) == HAL_OK) {
-          printf("Found device at 0x%02X\n", addr);
-      }
-  }
+  i2c_scan(&hi2c1);
 
   // Initialize sensor
   if (dfrobot_init(&hi2c1) != 0) {
