@@ -211,6 +211,23 @@ int main(void)
       return 1;
   }
 
+  /* fix upside down display */
+  res = ssd1306_set_segment_remap(&handle, SSD1306_SEGMENT_COLUMN_ADDRESS_127);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set segment remap failed.\n");
+      (void)ssd1306_deinit(&handle);
+      return 1;
+  }
+
+  res = ssd1306_set_scan_direction(&handle, SSD1306_SCAN_DIRECTION_COMN_1_START);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set scan direction failed.\n");
+      (void)ssd1306_deinit(&handle);
+      return 1;
+  }
+
   /* close display */
   res = ssd1306_set_display(&handle, SSD1306_DISPLAY_OFF);
   if (res != 0)
@@ -298,29 +315,11 @@ int main(void)
       return 1;
   }
 
-  char *hello = "hello stm32!";
-
-  res =  ssd1306_gram_write_string(&handle, 0, 0, hello, (uint16_t)strlen(hello), 1, SSD1306_FONT_12);
-  if (res != 0)
-  {
-      ssd1306_interface_debug_print("ssd1306: write string failed.\n");
-      (void)ssd1306_deinit(&handle);
-      return 1;
-  }
-
-  /* update the display with GRAM buffer - IMPORTANT */
-  printf("Updating display with GRAM buffer...\n");
-  res = ssd1306_gram_update(&handle);
-  if (res != 0)
-  {
-      ssd1306_interface_debug_print("ssd1306: gram update failed.\n");
-      (void)ssd1306_deinit(&handle);
-      return 1;
-  }
   printf("LCD initialization complete!\n");
 
   while (1)
   {
+      char display_buf[32];
 
       // Read sensor data
       if (dfrobot_read_data(&hi2c1, &data) == 0) {
@@ -344,6 +343,39 @@ int main(void)
       }
 
       printf("---\n");
+
+      // update LCD with sensor data
+      ssd1306_clear(&handle);
+
+      // line 1: Title
+      ssd1306_gram_write_string(&handle, 0, 0, "Blood Oxygen", 12, 1, SSD1306_FONT_12);
+
+      // line 2: SpO2
+      if (data.spo2 > 0) {
+          snprintf(display_buf, sizeof(display_buf), "SpO2: %d%%", data.spo2);
+      } else {
+          snprintf(display_buf, sizeof(display_buf), "SpO2: --");
+      }
+      ssd1306_gram_write_string(&handle, 0, 16, display_buf, (uint16_t)strlen(display_buf), 1, SSD1306_FONT_12);
+
+      // line 3: Heart Rate
+      if (data.heartbeat > 0) {
+          snprintf(display_buf, sizeof(display_buf), "HR: %ld BPM", data.heartbeat);
+      } else {
+          snprintf(display_buf, sizeof(display_buf), "HR: --");
+      }
+      ssd1306_gram_write_string(&handle, 0, 32, display_buf, (uint16_t)strlen(display_buf), 1, SSD1306_FONT_12);
+
+      // line 4: Temperature
+      if (temp > -999.0f) {
+          snprintf(display_buf, sizeof(display_buf), "Temp: %.1fC", temp);
+      } else {
+          snprintf(display_buf, sizeof(display_buf), "Temp: --");
+      }
+      ssd1306_gram_write_string(&handle, 0, 48, display_buf, (uint16_t)strlen(display_buf), 1, SSD1306_FONT_12);
+
+      // Update display
+      ssd1306_gram_update(&handle);
 
       HAL_Delay(1000);  // Update every second
     /* USER CODE END WHILE */
