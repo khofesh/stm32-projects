@@ -23,7 +23,8 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include "dfrobot_bloodoxygen.h"
-
+#include "driver_ssd1306_interface.h"
+#include "driver_ssd1306.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -100,7 +101,8 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+    ssd1306_handle_t handle;
+    uint8_t res;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -160,6 +162,141 @@ int main(void)
   HAL_Delay(2000);
 
   dfrobot_data_t data;
+
+  /* I2C LCD */
+  DRIVER_SSD1306_LINK_INIT(&handle, ssd1306_handle_t);
+  DRIVER_SSD1306_LINK_IIC_INIT(&handle, ssd1306_interface_iic_init);
+  DRIVER_SSD1306_LINK_IIC_DEINIT(&handle, ssd1306_interface_iic_deinit);
+  DRIVER_SSD1306_LINK_IIC_WRITE(&handle, ssd1306_interface_iic_write);
+  DRIVER_SSD1306_LINK_SPI_INIT(&handle, ssd1306_interface_spi_init);
+  DRIVER_SSD1306_LINK_SPI_DEINIT(&handle, ssd1306_interface_spi_deinit);
+  DRIVER_SSD1306_LINK_SPI_WRITE_COMMAND(&handle, ssd1306_interface_spi_write_cmd);
+  DRIVER_SSD1306_LINK_SPI_COMMAND_DATA_GPIO_INIT(&handle, ssd1306_interface_spi_cmd_data_gpio_init);
+  DRIVER_SSD1306_LINK_SPI_COMMAND_DATA_GPIO_DEINIT(&handle, ssd1306_interface_spi_cmd_data_gpio_deinit);
+  DRIVER_SSD1306_LINK_SPI_COMMAND_DATA_GPIO_WRITE(&handle, ssd1306_interface_spi_cmd_data_gpio_write);
+  DRIVER_SSD1306_LINK_RESET_GPIO_INIT(&handle, ssd1306_interface_reset_gpio_init);
+  DRIVER_SSD1306_LINK_RESET_GPIO_DEINIT(&handle, ssd1306_interface_reset_gpio_deinit);
+  DRIVER_SSD1306_LINK_RESET_GPIO_WRITE(&handle, ssd1306_interface_reset_gpio_write);
+  DRIVER_SSD1306_LINK_DELAY_MS(&handle, ssd1306_interface_delay_ms);
+  DRIVER_SSD1306_LINK_DEBUG_PRINT(&handle, ssd1306_interface_debug_print);
+
+  res = ssd1306_set_interface(&handle, SSD1306_INTERFACE_IIC);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set interface failed.\n");
+      return 1;
+  }
+
+  res = ssd1306_set_addr_pin(&handle, SSD1306_ADDR_SA0_0);  // Address 0x3C
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set addr pin failed.\n");
+      return 1;
+  }
+
+  res = ssd1306_init(&handle);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: init failed.\n");
+      return 1;
+  }
+
+  /* close display */
+  res = ssd1306_set_display(&handle, SSD1306_DISPLAY_OFF);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set display failed.\n");
+      (void)ssd1306_deinit(&handle);
+
+      return 1;
+  }
+
+  /* set column address range */
+  res = ssd1306_set_column_address_range(&handle, 0x00, 0x7F);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set column address range failed.\n");
+      (void)ssd1306_deinit(&handle);
+
+      return 1;
+  }
+
+  /* set page address range */
+  res = ssd1306_set_page_address_range(&handle, 0x00, 0x07);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set page address range failed.\n");
+      (void)ssd1306_deinit(&handle);
+
+      return 1;
+  }
+
+  /* set low column start address */
+  res = ssd1306_set_low_column_start_address(&handle, 0x00);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set low column start address failed.\n");
+      (void)ssd1306_deinit(&handle);
+
+      return 1;
+  }
+
+  /* set high column start address */
+  res = ssd1306_set_high_column_start_address(&handle, 0x00);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set high column start address failed.\n");
+      (void)ssd1306_deinit(&handle);
+
+      return 1;
+  }
+
+  /* set display start line */
+  res = ssd1306_set_display_start_line(&handle, 0x00);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set display start line failed.\n");
+      (void)ssd1306_deinit(&handle);
+
+      return 1;
+  }
+
+  /* set fade blinking mode */
+  res = ssd1306_set_fade_blinking_mode(&handle, SSD1306_FADE_BLINKING_MODE_DISABLE, 0x00);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set fade blinking failed.\n");
+      (void)ssd1306_deinit(&handle);
+
+      return 1;
+  }
+
+  res = ssd1306_set_display(&handle, SSD1306_DISPLAY_ON);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set display failed.\n");
+      (void)ssd1306_deinit(&handle);
+
+      return 1;
+  }
+
+  res = ssd1306_clear(&handle);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: clear failed.\n");
+      (void)ssd1306_deinit(&handle);
+      return 1;
+  }
+
+  char *hello = "hello stm32!";
+
+  res =  ssd1306_gram_write_string(&handle, 0, 0, hello, (uint16_t)strlen(hello), 1, SSD1306_FONT_12);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: write string failed.\n");
+      (void)ssd1306_deinit(&handle);
+      return 1;
+  }
 
   while (1)
   {

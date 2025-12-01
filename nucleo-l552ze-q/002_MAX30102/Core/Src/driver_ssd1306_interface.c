@@ -36,6 +36,12 @@
  */
 
 #include "driver_ssd1306_interface.h"
+#include "main.h"
+#include <stdarg.h>
+#include <stdio.h>
+
+extern I2C_HandleTypeDef hi2c1;
+#define I2C_TIMEOUT_MS  100
 
 /**
  * @brief  interface iic bus init
@@ -58,6 +64,10 @@ uint8_t ssd1306_interface_iic_init(void)
  */
 uint8_t ssd1306_interface_iic_deinit(void)
 {
+    if (HAL_I2C_DeInit(&hi2c1) != HAL_OK)
+    {
+        return 1;
+    }
     return 0;
 }
 
@@ -74,6 +84,24 @@ uint8_t ssd1306_interface_iic_deinit(void)
  */
 uint8_t ssd1306_interface_iic_write(uint8_t addr, uint8_t reg, uint8_t *buf, uint16_t len)
 {
+	HAL_StatusTypeDef status;
+
+    uint8_t tx_buf[len + 1];
+    tx_buf[0] = reg;
+
+    for (uint16_t i = 0; i < len; i++)
+    {
+        tx_buf[i + 1] = buf[i];
+    }
+
+    /* Transmit via I2C */
+    status = HAL_I2C_Master_Transmit(&hi2c1, addr, tx_buf, len + 1, I2C_TIMEOUT_MS);
+
+    if (status != HAL_OK)
+    {
+        return 1;
+    }
+
     return 0;
 }
 
@@ -122,7 +150,7 @@ uint8_t ssd1306_interface_spi_write_cmd(uint8_t *buf, uint16_t len)
  */
 void ssd1306_interface_delay_ms(uint32_t ms)
 {
-
+	HAL_Delay(ms);
 }
 
 /**
@@ -132,7 +160,14 @@ void ssd1306_interface_delay_ms(uint32_t ms)
  */
 void ssd1306_interface_debug_print(const char *const fmt, ...)
 {
+    char buf[256];
+    va_list args;
 
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+
+    printf("%s", buf);
 }
 
 /**
