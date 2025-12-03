@@ -21,7 +21,15 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
+// freertos
+#include "FreeRTOS.h"
+#include "task.h"
+#include "semphr.h"
+#include "queue.h""
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -40,16 +48,34 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+char usr_msg[250] = {0};
 
+TaskHandle_t xTaskHandleM = NULL;
+TaskHandle_t xTaskHandleE = NULL;
+
+/* Declare a variable of type xSemaphoreHandle.  This is used to reference the
+semaphore that is used to synchronize both manager and employee task */
+xSemaphoreHandle xWork;
+
+/* this is the queue which manager uses to put the work ticket id */
+xQueueHandle xWorkQueue;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
+static void prvSetupHardware(void);
+void printmsg(char *msg);
+static void prvSetupUart(void);
+void prvSetupGpio(void);
 
+static void vManagerTask( void *pvParameters );
+static void vEmployeeTask( void *pvParameters );
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -86,7 +112,28 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+  SEGGER_UART_init(500000);
+
+  DWT_CTRL |= (1 << 0);
+
+  SEGGER_SYSVIEW_Conf();
+
+  printf("demo of binary semaphore \r\n");
+
+  vSemaphoreCreateBinary(xWork);
+
+  xWorkQueue = xQueueCreate(1, sizeof(unsigned int));
+
+  if ( (xWork != NULL) && (xWorkQueue != NULL))
+  {
+	  xTaskCreate(vManagerTask, "Manager", 500, NULL, 3, NULL);
+	  xTaskCreate(vEmployeeTask, "Employee", 500, NULL, 1, NULL);
+	  vTaskStartScheduler();
+  }
+
+  print("queue/sema create failed\r\n");
 
   /* USER CODE END 2 */
 
@@ -145,6 +192,39 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
+
 }
 
 /**
@@ -292,7 +372,34 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+static void vManagerTask( void *pvParameters )
+{
+	unsigned int xWorkTicketId;
+	portBASE_TYPE xStatus;
 
+	xSemaphoreGive(xWork);
+
+	for (;;)
+	{
+		xWorkTicketId = (rand() & 0x1FF);
+		xStatus = xQueueSend(xWorkQueue, &xWorkTicketId, portMAX_DELAY);
+
+		if (xStatus != pdPASS)
+		{
+			printf("could not send to the queue\r\n");
+		}
+		else
+		{
+			xSemaphoreGive(xWork);
+			taskYIELD();
+		}
+	}
+}
+
+static void vEmployeeTask( void *pvParameters )
+{
+
+}
 /* USER CODE END 4 */
 
 /**
