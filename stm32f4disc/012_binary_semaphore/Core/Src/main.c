@@ -24,12 +24,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "ringbuffer.h"
 
 // freertos
 #include "FreeRTOS.h"
 #include "task.h"
 #include "semphr.h"
-#include "queue.h""
+#include "queue.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -39,7 +40,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define DWT_CTRL	(*(volatile uint32_t*)0xE0001000)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -62,6 +63,13 @@ xSemaphoreHandle xWork;
 
 /* this is the queue which manager uses to put the work ticket id */
 xQueueHandle xWorkQueue;
+
+
+char readBuf[1];
+uint8_t txData;
+__IO ITStatus UartReady = SET;
+__IO ITStatus UartTxComplete = SET;
+RingBuffer txBuf, rxBuf;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -69,13 +77,26 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
-static void prvSetupHardware(void);
 void printmsg(char *msg);
-static void prvSetupUart(void);
 void prvSetupGpio(void);
 
 static void vManagerTask( void *pvParameters );
 static void vEmployeeTask( void *pvParameters );
+
+int _write(int file, char *ptr, int len)
+{
+  if (UART_Transmit(&huart2, (uint8_t *)ptr, len))
+  {
+    // Wait for transmission to complete to ensure log integrity
+    while (UartTxComplete == RESET || RingBuffer_GetDataLength(&txBuf) > 0)
+    {
+      // Allow other interrupts to process
+      __NOP();
+    }
+    return len;
+  }
+  return 0; // Return 0 on failure
+}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -114,11 +135,10 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-  SEGGER_UART_init(500000);
+  RingBuffer_Init(&txBuf);
+  RingBuffer_Init(&rxBuf);
 
   DWT_CTRL |= (1 << 0);
-
-  SEGGER_SYSVIEW_Conf();
 
   printf("demo of binary semaphore \r\n");
 
@@ -133,7 +153,7 @@ int main(void)
 	  vTaskStartScheduler();
   }
 
-  print("queue/sema create failed\r\n");
+  printf("queue/sema create failed\r\n");
 
   /* USER CODE END 2 */
 
@@ -372,6 +392,17 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
+{
+  UartTxComplete = RESET; // Mark transmission as in progress
+  if (HAL_UART_Transmit_IT(huart, pData, len) != HAL_OK)
+  {
+    if (RingBuffer_Write(&txBuf, pData, len) != RING_BUFFER_OK)
+      return 0;
+  }
+  return 1;
+}
+
 static void vManagerTask( void *pvParameters )
 {
 	unsigned int xWorkTicketId;
@@ -396,9 +427,38 @@ static void vManagerTask( void *pvParameters )
 	}
 }
 
+void EmployeeDoWork(unsigned char TicketId)
+{
+	/* implement the work according to TickedID */
+	snprintf(usr_msg, sizeof(usr_msg), "Employee task : Working on Ticked id : %d\r\n", TicketId);
+	printf(usr_msg);
+	vTaskDelay(TicketId);
+}
+
 static void vEmployeeTask( void *pvParameters )
 {
 
+	unsigned char xWorkTicketId;
+	portBASE_TYPE xStatus;
+    for( ;; )
+    {
+		/* First Employee tries to take the semaphore, if it is available that means there is a task assigned by manager, otherwise employee task will be blocked */
+		xSemaphoreTake( xWork, 0 );
+
+		/* get the ticket id from the work queue */
+		xStatus = xQueueReceive( xWorkQueue, &xWorkTicketId, 0 );
+
+		if( xStatus == pdPASS )
+		{
+		  /* employee may decode the xWorkTicketId in this function to do the work*/
+			EmployeeDoWork(xWorkTicketId);
+		}
+		else
+		{
+			/* We did not receive anything from the queue.  This must be an error as this task should only run when the manager assigns at least one work. */
+			printf("Employee task : Queue is empty , nothing to do.\r\n");
+		}
+    }
 }
 /* USER CODE END 4 */
 
