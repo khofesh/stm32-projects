@@ -242,7 +242,9 @@ static void MX_USART2_UART_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN USART2_Init 2 */
-
+  /* Enable UART2 interrupt */
+  HAL_NVIC_SetPriority(USART2_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(USART2_IRQn);
   /* USER CODE END USART2_Init 2 */
 
 }
@@ -403,6 +405,30 @@ uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
   return 1;
 }
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle)
+{
+  /* Set transmission flag: transfer complete*/
+  UartReady = SET;
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart == &huart2)
+  {
+    if (RingBuffer_GetDataLength(&txBuf) > 0)
+    {
+      RingBuffer_Read(&txBuf, &txData, 1);
+      HAL_UART_Transmit_IT(huart, &txData, 1);
+    }
+    else
+    {
+      UartTxComplete = SET; // Mark transmission as complete when buffer is empty
+    }
+  }
+}
+
+
+
 static void vManagerTask( void *pvParameters )
 {
 	unsigned int xWorkTicketId;
@@ -459,6 +485,20 @@ static void vEmployeeTask( void *pvParameters )
 			printf("Employee task : Queue is empty , nothing to do.\r\n");
 		}
     }
+}
+
+/**
+  * @brief  UART error callback
+  * @param  huart: UART handle
+  * @retval None
+  */
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART2)
+  {
+    // Mark transmission as complete on error to prevent deadlock
+    UartTxComplete = SET;
+  }
 }
 /* USER CODE END 4 */
 
