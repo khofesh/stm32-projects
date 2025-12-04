@@ -21,7 +21,16 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "ringbuffer.h"
 
+// freertos
+#include "FreeRTOS.h"
+#include "task.h"
+#include "semphr.h"
+#include "queue.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,7 +40,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define DWT_CTRL	(*(volatile uint32_t*)0xE0001000)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -40,16 +49,52 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+char usr_msg[250] = {0};
 
+TaskHandle_t xTaskHandle1=NULL;
+TaskHandle_t xTaskHandle2=NULL;
+
+/* this is the queue which manager uses to put the work ticket id */
+xQueueHandle xWorkQueue;
+
+
+char readBuf[1];
+uint8_t txData;
+__IO ITStatus UartReady = SET;
+__IO ITStatus UartTxComplete = SET;
+RingBuffer txBuf, rxBuf;
+
+/* Declare a variable of type xSemaphoreHandle.  This is used to reference the
+semaphore that is used to synchronize a task with an interrupt. */
+xSemaphoreHandle xCountingSemaphore;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
+static void vHandlerTask( void *pvParameters );
+static void vPeriodicTask( void *pvParameters );
+
+int _write(int file, char *ptr, int len)
+{
+  if (UART_Transmit(&huart2, (uint8_t *)ptr, len))
+  {
+    // Wait for transmission to complete to ensure log integrity
+    while (UartTxComplete == RESET || RingBuffer_GetDataLength(&txBuf) > 0)
+    {
+      // Allow other interrupts to process
+      __NOP();
+    }
+    return len;
+  }
+  return 0; // Return 0 on failure
+}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -86,7 +131,42 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+  RingBuffer_Init(&txBuf);
+  RingBuffer_Init(&rxBuf);
+
+  DWT_CTRL |= (1 << 0);
+
+  printf("demo of counting semaphore \r\n");
+
+  /* Before a semaphore is used it must be explicitly created.  In this example
+	a counting semaphore is created.  The semaphore is created to have a maximum
+	count value of 10, and an initial count value of 0. */
+  xCountingSemaphore = xSemaphoreCreateCounting( 10, 0 );
+
+  /* Check the semaphore was created successfully. */
+  if( xCountingSemaphore != NULL )
+  {
+	  /* Enable the button interrupt and set its priority. */
+//	  prvSetupSoftwareInterrupt();
+
+	  /* Create the 'handler' task.  This is the task that will be synchronized
+		with the interrupt.  The handler task is created with a high priority to
+		ensure it runs immediately after the interrupt exits.  In this case a
+		priority of 3 is chosen. */
+	  xTaskCreate( vHandlerTask, "Handler", 500, NULL, 1, NULL );
+
+	  /* Create the task that will periodically generate a software interrupt.
+		This is created with a priority below the handler task to ensure it will
+		get preempted each time the handler task exist the Blocked state. */
+	  xTaskCreate( vPeriodicTask, "Periodic", 500, NULL, 3, NULL );
+
+	  /* Start the scheduler so the created tasks start executing. */
+	  vTaskStartScheduler();
+  }
+
+  printf("queue/sema create failed\r\n");
 
   /* USER CODE END 2 */
 
@@ -145,6 +225,41 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+  /* Enable UART2 interrupt */
+  HAL_NVIC_SetPriority(USART2_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(USART2_IRQn);
+  /* USER CODE END USART2_Init 2 */
+
 }
 
 /**
@@ -286,13 +401,102 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(MEMS_INT2_GPIO_Port, &GPIO_InitStruct);
 
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
+uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
+{
+  UartTxComplete = RESET; // Mark transmission as in progress
+  if (HAL_UART_Transmit_IT(huart, pData, len) != HAL_OK)
+  {
+    if (RingBuffer_Write(&txBuf, pData, len) != RING_BUFFER_OK)
+      return 0;
+  }
+  return 1;
+}
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle)
+{
+  /* Set transmission flag: transfer complete*/
+  UartReady = SET;
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart == &huart2)
+  {
+    if (RingBuffer_GetDataLength(&txBuf) > 0)
+    {
+      RingBuffer_Read(&txBuf, &txData, 1);
+      HAL_UART_Transmit_IT(huart, &txData, 1);
+    }
+    else
+    {
+      UartTxComplete = SET; // Mark transmission as complete when buffer is empty
+    }
+  }
+}
+
+
+static void vHandlerTask( void *pvParameters )
+{
+	/* As per most tasks, this task is implemented within an infinite loop. */
+	for( ;; )
+	{
+		/* Use the semaphore to wait for the event.  The semaphore was created
+		before the scheduler was started so before this task ran for the first
+		time.  The task blocks indefinitely meaning this function call will only
+		return once the semaphore has been successfully obtained - so there is no
+		need to check the returned value. */
+		xSemaphoreTake( xCountingSemaphore, portMAX_DELAY );
+
+		/* To get here the event must have occurred.  Process the event (in this
+		case we just print out a message). */
+		printf("Handler task - Processing event.\r\n");
+	}
+}
+/*-----------------------------------------------------------*/
+
+static void vPeriodicTask( void *pvParameters )
+{
+	/* As per most tasks, this task is implemented within an infinite loop. */
+	for( ;; )
+	{
+		/* This task is just used to 'simulate' an interrupt.  This is done by
+		periodically generating a software interrupt. */
+		vTaskDelay( pdMS_TO_TICKS(500) );
+
+		/* Generate the interrupt, printing a message both before hand and
+		afterwards so the sequence of execution is evident from the output. */
+		printf("Periodic task - Pending the interrupt.\r\n" );
+
+		//pend the interrupt
+		NVIC_SetPendingIRQ(EXTI15_10_IRQn);
+
+		printf("Periodic task - Resuming.\r\n" );
+	}
+}
+
+/**
+  * @brief  UART error callback
+  * @param  huart: UART handle
+  * @retval None
+  */
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART2)
+  {
+    // Mark transmission as complete on error to prevent deadlock
+    UartTxComplete = SET;
+  }
+}
 /* USER CODE END 4 */
 
 /**
