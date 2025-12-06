@@ -1,3 +1,2 @@
-- [ ] binary semaphore
-- [ ] count semaphore
+- [ ] mutex using binary semaphore
 - [ ] mutex

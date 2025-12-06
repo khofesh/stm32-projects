@@ -44,6 +44,10 @@ get the following:
 
 ![alt text](image-4.png)
 
+## the board
+
+![board](./6161310708910459671.jpg)
+
 ## references
 
 - https://github.com/niekiran/MasteringRTOS
