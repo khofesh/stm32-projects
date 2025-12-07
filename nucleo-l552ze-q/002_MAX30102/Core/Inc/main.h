@@ -40,6 +40,13 @@ extern "C" {
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
 
+// I2C state management for interrupt mode
+typedef enum {
+    I2C_STATE_READY = 0,
+    I2C_STATE_BUSY_TX,
+    I2C_STATE_BUSY_RX,
+    I2C_STATE_ERROR
+} I2C_State_t;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/

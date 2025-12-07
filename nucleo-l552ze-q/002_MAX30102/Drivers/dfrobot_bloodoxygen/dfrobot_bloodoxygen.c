@@ -9,6 +9,11 @@
 #include "dfrobot_bloodoxygen.h"
 #include <stdio.h>
 
+extern volatile I2C_State_t i2c_state;
+extern volatile HAL_StatusTypeDef i2c_result;
+
+#define I2C_TIMEOUT_MS      1000
+
 static uint8_t dfrobot_write_reg(I2C_HandleTypeDef *hi2c, uint8_t reg, uint8_t *data, uint8_t len)
 {
     uint8_t buffer[32];
@@ -18,10 +23,32 @@ static uint8_t dfrobot_write_reg(I2C_HandleTypeDef *hi2c, uint8_t reg, uint8_t *
         buffer[i + 1] = data[i];
     }
 
-    HAL_StatusTypeDef status = HAL_I2C_Master_Transmit(hi2c, DFROBOT_I2C_ADDR << 1, buffer, len + 1, 1000);
+    // Set state to busy
+    i2c_state = I2C_STATE_BUSY_TX;
+    i2c_result = HAL_BUSY;
+
+    // Start interrupt-based transmission
+    HAL_StatusTypeDef status = HAL_I2C_Master_Transmit_IT(hi2c, DFROBOT_I2C_ADDR << 1, buffer, len + 1);
 
     if (status != HAL_OK) {
-        printf("Write failed: status=%d, error=0x%08lX\n", status, hi2c->ErrorCode);
+        printf("Write start failed: status=%d\n", status);
+        i2c_state = I2C_STATE_READY;
+        return 1;
+    }
+
+    // Wait for completion with timeout
+    uint32_t timeout = HAL_GetTick() + I2C_TIMEOUT_MS;
+    while (i2c_state == I2C_STATE_BUSY_TX) {
+        if (HAL_GetTick() > timeout) {
+            printf("Write timeout\n");
+            i2c_state = I2C_STATE_READY;
+            return 1;
+        }
+    }
+
+    if (i2c_state == I2C_STATE_ERROR || i2c_result != HAL_OK) {
+        printf("Write failed: error=0x%08lX\n", hi2c->ErrorCode);
+        i2c_state = I2C_STATE_READY;
         return 1;
     }
 
@@ -32,17 +59,57 @@ static uint8_t dfrobot_read_reg(I2C_HandleTypeDef *hi2c, uint8_t reg, uint8_t *d
 {
     HAL_StatusTypeDef status;
 
-    // Write register address
-    status = HAL_I2C_Master_Transmit(hi2c, DFROBOT_I2C_ADDR << 1, &reg, 1, 1000);
+    // Write register address using interrupt mode
+    i2c_state = I2C_STATE_BUSY_TX;
+    i2c_result = HAL_BUSY;
+
+    status = HAL_I2C_Master_Transmit_IT(hi2c, DFROBOT_I2C_ADDR << 1, &reg, 1);
     if (status != HAL_OK) {
-        printf("Read reg write failed: status=%d\n", status);
+        printf("Read reg write start failed: status=%d\n", status);
+        i2c_state = I2C_STATE_READY;
         return 1;
     }
 
-    // Read data
-    status = HAL_I2C_Master_Receive(hi2c, DFROBOT_I2C_ADDR << 1, data, len, 1000);
+    // Wait for TX completion
+    uint32_t timeout = HAL_GetTick() + I2C_TIMEOUT_MS;
+    while (i2c_state == I2C_STATE_BUSY_TX) {
+        if (HAL_GetTick() > timeout) {
+            printf("Read reg write timeout\n");
+            i2c_state = I2C_STATE_READY;
+            return 1;
+        }
+    }
+
+    if (i2c_state == I2C_STATE_ERROR || i2c_result != HAL_OK) {
+        printf("Read reg write failed\n");
+        i2c_state = I2C_STATE_READY;
+        return 1;
+    }
+
+    // Read data using interrupt mode
+    i2c_state = I2C_STATE_BUSY_RX;
+    i2c_result = HAL_BUSY;
+
+    status = HAL_I2C_Master_Receive_IT(hi2c, DFROBOT_I2C_ADDR << 1, data, len);
     if (status != HAL_OK) {
-        printf("Read reg receive failed: status=%d\n", status);
+        printf("Read reg receive start failed: status=%d\n", status);
+        i2c_state = I2C_STATE_READY;
+        return 1;
+    }
+
+    // Wait for RX completion
+    timeout = HAL_GetTick() + I2C_TIMEOUT_MS;
+    while (i2c_state == I2C_STATE_BUSY_RX) {
+        if (HAL_GetTick() > timeout) {
+            printf("Read reg receive timeout\n");
+            i2c_state = I2C_STATE_READY;
+            return 1;
+        }
+    }
+
+    if (i2c_state == I2C_STATE_ERROR || i2c_result != HAL_OK) {
+        printf("Read reg receive failed\n");
+        i2c_state = I2C_STATE_READY;
         return 1;
     }
 

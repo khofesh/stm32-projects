@@ -48,6 +48,8 @@ COM_InitTypeDef BspCOMInit;
 I2C_HandleTypeDef hi2c1;
 
 /* USER CODE BEGIN PV */
+volatile I2C_State_t i2c_state = I2C_STATE_READY;
+volatile HAL_StatusTypeDef i2c_result = HAL_OK;
 
 /* USER CODE END PV */
 
@@ -478,6 +480,12 @@ static void MX_I2C1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN I2C1_Init 2 */
+  
+  // Enable I2C interrupts
+  HAL_NVIC_SetPriority(I2C1_EV_IRQn, 2, 0);
+  HAL_NVIC_EnableIRQ(I2C1_EV_IRQn);
+  HAL_NVIC_SetPriority(I2C1_ER_IRQn, 2, 0);
+  HAL_NVIC_EnableIRQ(I2C1_ER_IRQn);
 
   /* USER CODE END I2C1_Init 2 */
 
@@ -539,6 +547,61 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+/**
+ * @brief I2C Memory Transmit Complete Callback
+ */
+void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1) {
+        i2c_state = I2C_STATE_READY;
+        i2c_result = HAL_OK;
+    }
+}
+
+/**
+ * @brief I2C Memory Receive Complete Callback
+ */
+void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1) {
+        i2c_state = I2C_STATE_READY;
+        i2c_result = HAL_OK;
+    }
+}
+
+/**
+ * @brief I2C Master Transmit Complete Callback
+ */
+void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1) {
+        i2c_state = I2C_STATE_READY;
+        i2c_result = HAL_OK;
+    }
+}
+
+/**
+ * @brief I2C Master Receive Complete Callback
+ */
+void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1) {
+        i2c_state = I2C_STATE_READY;
+        i2c_result = HAL_OK;
+    }
+}
+
+/**
+ * @brief I2C Error Callback
+ */
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1) {
+        i2c_state = I2C_STATE_ERROR;
+        i2c_result = HAL_ERROR;
+    }
+}
 
 /* USER CODE END 4 */
 

@@ -41,7 +41,11 @@
 #include <stdio.h>
 
 extern I2C_HandleTypeDef hi2c1;
-#define I2C_TIMEOUT_MS  100
+
+extern volatile I2C_State_t i2c_state;
+extern volatile HAL_StatusTypeDef i2c_result;
+
+#define I2C_TIMEOUT_MS  1000
 
 /**
  * @brief  interface iic bus init
@@ -99,13 +103,36 @@ uint8_t ssd1306_interface_iic_write(uint8_t addr, uint8_t reg, uint8_t *buf, uin
         tx_buf[i + 1] = buf[i];
     }
 
-    /* Transmit via I2C */
-    status = HAL_I2C_Master_Transmit(&hi2c1, addr, tx_buf, len + 1, I2C_TIMEOUT_MS);
+    // Set state to busy
+    i2c_state = I2C_STATE_BUSY_TX;
+    i2c_result = HAL_BUSY;
+
+    /* I2C interrupt mode */
+    status = HAL_I2C_Master_Transmit_IT(&hi2c1, addr, tx_buf, len + 1);
 
     if (status != HAL_OK)
     {
-        printf("ssd1306_interface: I2C write failed! addr=0x%02X, reg=0x%02X, len=%d, status=%d\n", 
+        printf("ssd1306_interface: I2C write start failed! addr=0x%02X, reg=0x%02X, len=%d, status=%d\n", 
                addr, reg, len, status);
+        i2c_state = I2C_STATE_READY;
+        return 1;
+    }
+
+    // Wait for completion with timeout
+    uint32_t timeout = HAL_GetTick() + I2C_TIMEOUT_MS;
+    while (i2c_state == I2C_STATE_BUSY_TX) {
+        if (HAL_GetTick() > timeout) {
+            printf("ssd1306_interface: I2C write timeout! addr=0x%02X, reg=0x%02X\n", addr, reg);
+            i2c_state = I2C_STATE_READY;
+            return 1;
+        }
+    }
+
+    if (i2c_state == I2C_STATE_ERROR || i2c_result != HAL_OK)
+    {
+        printf("ssd1306_interface: I2C write failed! addr=0x%02X, reg=0x%02X, error=0x%08lX\n", 
+               addr, reg, hi2c1.ErrorCode);
+        i2c_state = I2C_STATE_READY;
         return 1;
     }
 
