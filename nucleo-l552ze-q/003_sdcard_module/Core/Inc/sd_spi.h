@@ -12,6 +12,7 @@
 
 #define CMD0  (0)
 #define CMD8  (8)
+#define CMD9  (9)
 #define CMD17 (17)
 #define CMD24 (24)
 #define CMD55 (55)

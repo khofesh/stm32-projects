@@ -35,6 +35,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include <string.h>
 #include "ff_gen_drv.h"
+ #include "sd_spi.h"
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
@@ -81,7 +82,17 @@ DSTATUS USER_initialize (
 )
 {
   /* USER CODE BEGIN INIT */
-    Stat = STA_NOINIT;
+    (void)pdrv;
+
+    if (SD_SPI_Init() == SD_OK)
+    {
+      Stat = 0;
+    }
+    else
+    {
+      Stat = STA_NOINIT;
+    }
+
     return Stat;
   /* USER CODE END INIT */
 }
@@ -96,7 +107,7 @@ DSTATUS USER_status (
 )
 {
   /* USER CODE BEGIN STATUS */
-    Stat = STA_NOINIT;
+    (void)pdrv;
     return Stat;
   /* USER CODE END STATUS */
 }
@@ -117,7 +128,14 @@ DRESULT USER_read (
 )
 {
   /* USER CODE BEGIN READ */
-    return RES_OK;
+    (void)pdrv;
+
+    if (Stat & STA_NOINIT)
+    {
+      return RES_NOTRDY;
+    }
+
+    return (SD_ReadBlocks(buff, (uint32_t)sector, (uint32_t)count) == SD_OK) ? RES_OK : RES_ERROR;
   /* USER CODE END READ */
 }
 
@@ -138,8 +156,14 @@ DRESULT USER_write (
 )
 {
   /* USER CODE BEGIN WRITE */
-  /* USER CODE HERE */
-    return RES_OK;
+    (void)pdrv;
+
+    if (Stat & STA_NOINIT)
+    {
+      return RES_NOTRDY;
+    }
+
+    return (SD_WriteBlocks(buff, (uint32_t)sector, (uint32_t)count) == SD_OK) ? RES_OK : RES_ERROR;
   /* USER CODE END WRITE */
 }
 #endif /* _USE_WRITE == 1 */
@@ -159,8 +183,29 @@ DRESULT USER_ioctl (
 )
 {
   /* USER CODE BEGIN IOCTL */
-    DRESULT res = RES_ERROR;
-    return res;
+    (void)pdrv;
+
+    if (Stat & STA_NOINIT)
+    {
+      return RES_NOTRDY;
+    }
+
+    switch (cmd)
+    {
+      case CTRL_SYNC:
+        return RES_OK;
+
+      case GET_SECTOR_SIZE:
+        *(WORD *)buff = 512;
+        return RES_OK;
+
+      case GET_BLOCK_SIZE:
+        *(DWORD *)buff = 1;
+        return RES_OK;
+
+      default:
+        return RES_PARERR;
+    }
   /* USER CODE END IOCTL */
 }
 #endif /* _USE_IOCTL == 1 */
