@@ -173,6 +173,17 @@ int main(void)
   }
   else
   {
+    uint8_t sect0[512];
+    if (disk_read(0, sect0, 0, 1) == RES_OK)
+    {
+      printf("Sector0[510..511] = %02X %02X\r\n", sect0[510], sect0[511]);
+      printf("Sector0[0..2] = %02X %02X %02X\r\n", sect0[0], sect0[1], sect0[2]);
+    }
+    else
+    {
+      printf("disk_read sector0 failed\r\n");
+    }
+
     FRESULT res = f_mount(&USERFatFs, (TCHAR const*)USERPath, 1);
     if (res != FR_OK)
     {
