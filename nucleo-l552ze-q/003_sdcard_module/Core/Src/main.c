@@ -21,7 +21,9 @@
 #include "app_fatfs.h"
 
 /* USER CODE BEGIN Includes */
-#include "diskio.h"
+#include "sd_functions.h"
+#include "stdio.h"
+#include "sd_benchmark.h"
 /* USER CODE END Includes */
 
 /* Private includes ----------------------------------------------------------*/
@@ -65,47 +67,8 @@ static void MX_SPI1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
-static void SD_ListDir(const char *path)
-{
-  FRESULT res;
-  DIR dir;
-  FILINFO fno;
-
-  printf("Listing: %s\r\n", path);
-
-  res = f_opendir(&dir, path);
-  if (res != FR_OK)
-  {
-    printf("f_opendir failed: %d\r\n", (int)res);
-    return;
-  }
-
-  for (;;)
-  {
-    res = f_readdir(&dir, &fno);
-    if (res != FR_OK)
-    {
-      printf("f_readdir failed: %d\r\n", (int)res);
-      break;
-    }
-    if (fno.fname[0] == 0)
-    {
-      break;
-    }
-
-    if (fno.fattrib & AM_DIR)
-    {
-      printf("[DIR ] %s\r\n", fno.fname);
-    }
-    else
-    {
-      printf("[FILE] %s (%lu bytes)\r\n", fno.fname, (unsigned long)fno.fsize);
-    }
-  }
-
-  (void)f_closedir(&dir);
-}
+uint8_t bufr[80];
+UINT br;
 
 /* USER CODE END 0 */
 
@@ -167,36 +130,12 @@ int main(void)
     Error_Handler();
   }
 
-  if (disk_initialize(0) & STA_NOINIT)
-  {
-    printf("SD init failed\r\n");
-  }
-  else
-  {
-    uint8_t sect0[512];
-    if (disk_read(0, sect0, 0, 1) == RES_OK)
-    {
-      printf("Sector0[510..511] = %02X %02X\r\n", sect0[510], sect0[511]);
-      printf("Sector0[0..2] = %02X %02X %02X\r\n", sect0[0], sect0[1], sect0[2]);
-    }
-    else
-    {
-      printf("disk_read sector0 failed\r\n");
-    }
-
-    FRESULT res = f_mount(&USERFatFs, (TCHAR const*)USERPath, 1);
-    if (res != FR_OK)
-    {
-      printf("f_mount failed: %d\r\n", (int)res);
-    }
-    else
-    {
-      SD_ListDir("0:/");
-    }
-  }
-
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  sd_mount();
+  sd_read_file("F1/F1F2/File5.TXT", (char*)bufr, 50, &br);
+  printf("DATA from File:::: %s\n\n",bufr);
+  sd_unmount();
   while (1)
   {
 

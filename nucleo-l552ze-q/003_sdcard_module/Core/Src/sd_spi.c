@@ -23,7 +23,7 @@
  * You are free to edit anything below this line
  ***************************************************************/
 
-#define USE_DMA 1
+#define USE_DMA 0
 
 extern SPI_HandleTypeDef hspi1;
 #define SD_SPI_HANDLE hspi1
