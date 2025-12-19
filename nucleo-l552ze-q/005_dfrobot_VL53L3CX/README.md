@@ -10,3 +10,11 @@ pin connection:
 result:
 
 ![alt text](image.png)
+
+## how to
+
+- download the file https://www.st.com/en/embedded-software/stsw-img015.html
+- unzip the file
+- move `inc` and `src` in `platform` to the project
+- drag and drop `core` or `BareDriver` to stm32cubeide
+- include `core/inc`
