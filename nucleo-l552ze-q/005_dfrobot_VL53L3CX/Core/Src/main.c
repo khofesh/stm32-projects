@@ -126,6 +126,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   Dev->I2cHandle = &hi2c1;
   Dev->I2cDevAddr = 0x52;
+  Dev->i2c_slave_address = 0x52;
 
   VL53LX_RdByte(Dev, 0x010F, &byteData);
   printf("VL53LX Model_ID: %02X\n\r", byteData);
