@@ -21,7 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "vl53lx_api.h"
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,7 +46,11 @@ COM_InitTypeDef BspCOMInit;
 I2C_HandleTypeDef hi2c1;
 
 /* USER CODE BEGIN PV */
-
+VL53LX_Dev_t                   dev;
+VL53LX_DEV                     Dev = &dev;
+int status;
+volatile int IntCount;
+#define isInterrupt 1 /* If isInterrupt = 1 then device working in hardware interrupt mode, else device working in polling mode */
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -54,7 +59,7 @@ static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_ICACHE_Init(void);
 /* USER CODE BEGIN PFP */
-
+void RangingLoop(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -70,7 +75,8 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+	  uint8_t byteData;
+	  uint16_t wordData;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -118,6 +124,14 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  Dev->i2c_slave_address = 0x52;
+
+  VL53LX_RdByte(Dev, 0x010F, &byteData);
+  printf("VL53LX Model_ID: %02X\n\r", byteData);
+  VL53LX_RdByte(Dev, 0x0110, &byteData);
+  printf("VL53LX Module_Type: %02X\n\r", byteData);
+  VL53LX_RdWord(Dev, 0x010F, &wordData);
+  printf("VL53LX: %02X\n\r", wordData);
   while (1)
   {
 
