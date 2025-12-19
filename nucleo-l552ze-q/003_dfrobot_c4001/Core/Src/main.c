@@ -121,8 +121,8 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-//  C4001_Example_I2C();
-  C4001_Example_Advanced();
+  C4001_Example_I2C();
+//  C4001_Example_Advanced();
 
   while (1)
   {
@@ -342,11 +342,13 @@ void C4001_Example_I2C(void)
 
 void C4001_Example_Advanced(void)
 {
+	// init c4001
 	if (C4001_Init_I2C(&c4001_dev, &hi2c1, C4001_I2C_ADDR_1) != HAL_OK)
 	{
 		printf("C4001 I2C initialization failed!\r\n");
 		Error_Handler();
 	}
+	printf("C4001 I2C initialized successfully!\r\n");
 
     // Read current configuration
     uint8_t trig_sens = C4001_GetTrigSensitivity(&c4001_dev);

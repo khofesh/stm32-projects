@@ -726,6 +726,29 @@ uint8_t C4001_GetIoPolarity(C4001_Handle_t *dev)
 }
 
 /**
+ * @brief Set PWM output configuration
+ * @param dev: Device handle
+ * @param pwm1: Duty cycle when no target (0-100)
+ * @param pwm2: Duty cycle when target detected (0-100)
+ * @param timer: Timer value (0-255), time = timer * 64ms
+ * @retval true on success
+ */
+bool C4001_SetPwm(C4001_Handle_t *dev, uint8_t pwm1, uint8_t pwm2, uint8_t timer)
+{
+    if (dev->interface == C4001_INTERFACE_I2C) {
+        uint8_t temp[3] = {pwm1, pwm2, timer};
+        C4001_WriteReg_I2C(dev, C4001_REG_CTRL1, temp, 3);
+        C4001_SetSensor(dev, C4001_CMD_SAVE_PARAMS);
+        return true;
+    } else {
+        char cmd[48];
+        snprintf(cmd, sizeof(cmd), "setPwm %d %d %d", pwm1, pwm2, timer);
+        C4001_WriteCmd(dev, cmd, cmd, 1);
+        return true;
+    }
+}
+
+/**
  * @brief Get PWM configuration
  * @param dev: Device handle
  * @retval PWM configuration structure
