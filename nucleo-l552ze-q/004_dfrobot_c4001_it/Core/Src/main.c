@@ -380,6 +380,10 @@ void C4001_Example_I2C(void)
 		{
 			printf("Motion detected!\r\n");
 		}
+		else
+		{
+			printf("No motion detected\r\n");
+		}
 		HAL_Delay(100);
 	}
 }
