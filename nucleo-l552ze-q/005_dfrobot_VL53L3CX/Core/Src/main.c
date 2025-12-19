@@ -50,7 +50,7 @@ VL53LX_Dev_t                   dev;
 VL53LX_DEV                     Dev = &dev;
 int status;
 volatile int IntCount;
-#define isInterrupt 1 /* If isInterrupt = 1 then device working in hardware interrupt mode, else device working in polling mode */
+#define isInterrupt 0 /* If isInterrupt = 1 then device working in hardware interrupt mode, else device working in polling mode */
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
