@@ -47,6 +47,10 @@ I2C_HandleTypeDef hi2c1;
 
 /* USER CODE BEGIN PV */
 C4001_Handle_t c4001_dev;
+
+/* I2C interrupt state variables (defined in dfrobot_c4001.c) */
+extern volatile uint8_t i2c_state;
+extern volatile HAL_StatusTypeDef i2c_result;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -288,6 +292,46 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+/**
+ * @brief I2C Memory Tx Transfer completed callback
+ * @param hi2c: Pointer to I2C handle
+ */
+void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+	if (hi2c->Instance == I2C1)
+	{
+		i2c_state = 0; // I2C_STATE_READY
+		i2c_result = HAL_OK;
+	}
+}
+
+/**
+ * @brief I2C Memory Rx Transfer completed callback
+ * @param hi2c: Pointer to I2C handle
+ */
+void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+	if (hi2c->Instance == I2C1)
+	{
+		i2c_state = 0; // I2C_STATE_READY
+		i2c_result = HAL_OK;
+	}
+}
+
+/**
+ * @brief I2C error callback
+ * @param hi2c: Pointer to I2C handle
+ */
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
+{
+	if (hi2c->Instance == I2C1)
+	{
+		i2c_state = 3; // I2C_STATE_ERROR
+		i2c_result = HAL_ERROR;
+	}
+}
+
 void C4001_Example_I2C(void)
 {
 	// init c4001

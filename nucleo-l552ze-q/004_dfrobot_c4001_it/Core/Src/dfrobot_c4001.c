@@ -11,6 +11,17 @@
 #define UART_RX_BUFFER_SIZE 200
 #define UART_TX_BUFFER_SIZE 100
 
+/* I2C INTERRUPT STATE MANAGEMENT */
+typedef enum {
+	I2C_STATE_READY = 0,
+	I2C_STATE_BUSY_TX,
+	I2C_STATE_BUSY_RX,
+	I2C_STATE_ERROR
+} I2C_State_t;
+
+volatile I2C_State_t i2c_state = I2C_STATE_READY;
+volatile HAL_StatusTypeDef i2c_result = HAL_OK;
+
 /* PRIVATE */
 static HAL_StatusTypeDef C4001_WriteReg_I2C(C4001_Handle_t *dev, uint8_t reg, uint8_t *data, uint16_t len);
 static HAL_StatusTypeDef C4001_ReadReg_I2C(C4001_Handle_t *dev, uint8_t reg, uint8_t *data, uint16_t len);
@@ -823,12 +834,100 @@ C4001_Switch_t C4001_GetFrettingDetection(C4001_Handle_t *dev)
 /* PRIVATE */
 static HAL_StatusTypeDef C4001_WriteReg_I2C(C4001_Handle_t *dev, uint8_t reg, uint8_t *data, uint16_t len)
 {
-	return HAL_I2C_Mem_Write(dev->hi2c, dev->i2c_address, reg, I2C_MEMADD_SIZE_8BIT, data, len, C4001_TIMEOUT);
+	HAL_StatusTypeDef status;
+	uint32_t timeout_start = HAL_GetTick();
+
+	// Wait for I2C to be ready
+	while (i2c_state != I2C_STATE_READY)
+	{
+		if ((HAL_GetTick() - timeout_start) > C4001_TIMEOUT)
+		{
+			return HAL_TIMEOUT;
+		}
+	}
+
+	// Set state to busy
+	i2c_state = I2C_STATE_BUSY_TX;
+	i2c_result = HAL_OK;
+
+	// Start interrupt-based write
+	status = HAL_I2C_Mem_Write_IT(dev->hi2c, dev->i2c_address, reg, I2C_MEMADD_SIZE_8BIT, data, len);
+
+	if (status != HAL_OK)
+	{
+		i2c_state = I2C_STATE_READY;
+		return status;
+	}
+
+	// Wait for completion
+	timeout_start = HAL_GetTick();
+	while (i2c_state == I2C_STATE_BUSY_TX)
+	{
+		if ((HAL_GetTick() - timeout_start) > C4001_TIMEOUT)
+		{
+			i2c_state = I2C_STATE_READY;
+			return HAL_TIMEOUT;
+		}
+	}
+
+	// Check result
+	if (i2c_state == I2C_STATE_ERROR)
+	{
+		i2c_state = I2C_STATE_READY;
+		return HAL_ERROR;
+	}
+
+	i2c_state = I2C_STATE_READY;
+	return i2c_result;
 }
 
 static HAL_StatusTypeDef C4001_ReadReg_I2C(C4001_Handle_t *dev, uint8_t reg, uint8_t *data, uint16_t len)
 {
-	return HAL_I2C_Mem_Read(dev->hi2c, dev->i2c_address, reg, I2C_MEMADD_SIZE_8BIT, data, len, C4001_TIMEOUT);
+	HAL_StatusTypeDef status;
+	uint32_t timeout_start = HAL_GetTick();
+
+	// Wait for I2C to be ready
+	while (i2c_state != I2C_STATE_READY)
+	{
+		if ((HAL_GetTick() - timeout_start) > C4001_TIMEOUT)
+		{
+			return HAL_TIMEOUT;
+		}
+	}
+
+	// Set state to busy
+	i2c_state = I2C_STATE_BUSY_RX;
+	i2c_result = HAL_OK;
+
+	// Start interrupt-based read
+	status = HAL_I2C_Mem_Read_IT(dev->hi2c, dev->i2c_address, reg, I2C_MEMADD_SIZE_8BIT, data, len);
+
+	if (status != HAL_OK)
+	{
+		i2c_state = I2C_STATE_READY;
+		return status;
+	}
+
+	// Wait for completion
+	timeout_start = HAL_GetTick();
+	while (i2c_state == I2C_STATE_BUSY_RX)
+	{
+		if ((HAL_GetTick() - timeout_start) > C4001_TIMEOUT)
+		{
+			i2c_state = I2C_STATE_READY;
+			return HAL_TIMEOUT;
+		}
+	}
+
+	// Check result
+	if (i2c_state == I2C_STATE_ERROR)
+	{
+		i2c_state = I2C_STATE_READY;
+		return HAL_ERROR;
+	}
+
+	i2c_state = I2C_STATE_READY;
+	return i2c_result;
 }
 
 static HAL_StatusTypeDef C4001_WriteReg_UART(C4001_Handle_t *dev, uint8_t *data, uint16_t len)
