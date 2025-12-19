@@ -410,6 +410,15 @@ void RangingLoop(void)
    while (1);
  }
 }
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  if (GPIO_Pin == GPIO_PIN_3)
+  {
+    /* VL53L3CX interrupt */
+    IntCount++;
+  }
+}
 /* USER CODE END 4 */
 
 /**
