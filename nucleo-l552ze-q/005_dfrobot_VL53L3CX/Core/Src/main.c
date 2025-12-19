@@ -124,6 +124,7 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  Dev->I2cHandle = &hi2c1;
   Dev->i2c_slave_address = 0x52;
 
   VL53LX_RdByte(Dev, 0x010F, &byteData);
@@ -132,6 +133,7 @@ int main(void)
   printf("VL53LX Module_Type: %02X\n\r", byteData);
   VL53LX_RdWord(Dev, 0x010F, &wordData);
   printf("VL53LX: %02X\n\r", wordData);
+  RangingLoop();
   while (1)
   {
 
