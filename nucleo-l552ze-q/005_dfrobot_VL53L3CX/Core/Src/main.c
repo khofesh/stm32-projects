@@ -124,6 +124,29 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  
+  /* Enable sensor via XSHUT pin */
+  printf("\r\n=== VL53L3CX Initialization ===\r\n");
+  printf("Resetting sensor (XSHUT LOW)...\r\n");
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_RESET);
+  HAL_Delay(10);
+  printf("Enabling sensor (XSHUT HIGH)...\r\n");
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_SET);
+  HAL_Delay(100);  // Wait for sensor to boot
+  GPIO_PinState xshut_state = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);
+  printf("XSHUT pin state: %s\r\n", xshut_state == GPIO_PIN_SET ? "HIGH" : "LOW");
+  printf("Sensor enabled.\r\n\r\n");
+  
+  /* I2C Address Scanner */
+  printf("=== I2C Address Scanner ===\r\n");
+  printf("Scanning I2C bus...\r\n");
+  for(uint8_t addr = 1; addr < 128; addr++) {
+    if(HAL_I2C_IsDeviceReady(&hi2c1, addr << 1, 1, 10) == HAL_OK) {
+      printf("Found device at 0x%02X (8-bit: 0x%02X)\r\n", addr, addr << 1);
+    }
+  }
+  printf("Scan complete.\r\n\r\n");
+  
   Dev->I2cHandle = &hi2c1;
   Dev->I2cDevAddr = 0x52;
   Dev->i2c_slave_address = 0x52;
