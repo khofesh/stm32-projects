@@ -21,7 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "dfrobot_c4001.h"
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,7 +46,7 @@ COM_InitTypeDef BspCOMInit;
 I2C_HandleTypeDef hi2c1;
 
 /* USER CODE BEGIN PV */
-
+C4001_Handle_t c4001_dev;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -54,7 +55,9 @@ static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_ICACHE_Init(void);
 /* USER CODE BEGIN PFP */
-
+void C4001_Example_I2C(void);
+void C4001_Example_UART(void);
+void C4001_Example_Advanced(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -118,6 +121,9 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  C4001_Example_I2C();
+//  C4001_Example_Advanced();
+
   while (1)
   {
 
@@ -282,7 +288,103 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void C4001_Example_I2C(void)
+{
+	// init c4001
+	if (C4001_Init_I2C(&c4001_dev, &hi2c1, C4001_I2C_ADDR_1) != HAL_OK)
+	{
+		printf("C4001 I2C initialization failed!\r\n");
+		Error_Handler();
+	}
+	printf("C4001 I2C initialized successfully!\r\n");
 
+	// get sensor status
+	C4001_SensorStatus_t status = C4001_GetStatus(&c4001_dev);
+	printf("Status: work=%d, mode=%d, init=%d\r\n",
+			status.work_status, status.work_mode, status.init_status);
+
+	// start sensor if not running
+	if (!status.work_status)
+	{
+		C4001_SetSensor(&c4001_dev, C4001_CMD_START_SENSOR);
+		printf("Sensor started\r\n");
+	}
+
+	// set to presence detection mode
+	if (C4001_SetSensorMode(&c4001_dev, C4001_MODE_EXIST))
+	{
+		printf("Set to presence detection mode\r\n");
+	}
+
+	// configure sensitivity
+	C4001_SetTrigSensitivity(&c4001_dev, 7);  // 0-9, higher = more sensitive
+	C4001_SetKeepSensitivity(&c4001_dev, 5);
+	printf("Sensitivity configured\r\n");
+
+	// configure detection range
+	C4001_SetDetectionRange(&c4001_dev, 50, 500, 300);  // min, max, trig in cm
+	printf("Range: 50cm to 500cm, trigger at 300cm\r\n");
+
+	// configure delays
+	C4001_SetDelay(&c4001_dev, 10, 100);  // trig=0.1s, keep=50s
+	printf("Delay configured\r\n");
+
+	printf("\r\nStarting motion detection...\r\n");
+	while (1)
+	{
+		if (C4001_MotionDetection(&c4001_dev))
+		{
+			printf("Motion detected!\r\n");
+		}
+		HAL_Delay(100);
+	}
+}
+
+void C4001_Example_Advanced(void)
+{
+	// init c4001
+	if (C4001_Init_I2C(&c4001_dev, &hi2c1, C4001_I2C_ADDR_1) != HAL_OK)
+	{
+		printf("C4001 I2C initialization failed!\r\n");
+		Error_Handler();
+	}
+	printf("C4001 I2C initialized successfully!\r\n");
+
+    // Read current configuration
+    uint8_t trig_sens = C4001_GetTrigSensitivity(&c4001_dev);
+    uint8_t keep_sens = C4001_GetKeepSensitivity(&c4001_dev);
+    uint8_t trig_delay = C4001_GetTrigDelay(&c4001_dev);
+    uint16_t keep_timeout = C4001_GetKeepTimeout(&c4001_dev);
+    uint16_t min_range = C4001_GetMinRange(&c4001_dev);
+    uint16_t max_range = C4001_GetMaxRange(&c4001_dev);
+    uint16_t trig_range = C4001_GetTrigRange(&c4001_dev);
+
+    printf("\r\n--- Current Configuration ---\r\n");
+    printf("Trigger Sensitivity: %d\r\n", trig_sens);
+    printf("Keep Sensitivity: %d\r\n", keep_sens);
+    printf("Trigger Delay: %d (x0.01s)\r\n", trig_delay);
+    printf("Keep Timeout: %d (x0.5s)\r\n", keep_timeout);
+    printf("Min Range: %d cm\r\n", min_range);
+    printf("Max Range: %d cm\r\n", max_range);
+    printf("Trigger Range: %d cm\r\n", trig_range);
+
+    // Configure PWM output
+    C4001_SetPwm(&c4001_dev, 10, 90, 20);  // 10% no target, 90% target, 1.28s transition
+    C4001_PwmData_t pwm = C4001_GetPwm(&c4001_dev);
+    printf("PWM: %d%% -> %d%% over %dms\r\n", pwm.pwm1, pwm.pwm2, pwm.timer * 64);
+
+    // Configure I/O polarity
+    C4001_SetIoPolarity(&c4001_dev, 1);  // High when target detected
+    printf("I/O Polarity: %d\r\n", C4001_GetIoPolarity(&c4001_dev));
+
+    // Enable micro-motion detection
+    C4001_SetFrettingDetection(&c4001_dev, C4001_SWITCH_ON);
+    printf("Micro-motion: %d\r\n", C4001_GetFrettingDetection(&c4001_dev));
+
+    // Save configuration
+    C4001_SetSensor(&c4001_dev, C4001_CMD_SAVE_PARAMS);
+    printf("Configuration saved to sensor\r\n");
+}
 /* USER CODE END 4 */
 
 /**
@@ -293,9 +395,11 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
+
   __disable_irq();
   while (1)
   {
+	  BSP_LED_Toggle(LED_RED);
   }
   /* USER CODE END Error_Handler_Debug */
 }
