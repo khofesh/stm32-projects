@@ -31,11 +31,4 @@
 		<nature>org.eclipse.cdt.managedbuilder.core.managedBuildNature</nature>
 		<nature>org.eclipse.cdt.managedbuilder.core.ScannerConfigNature</nature>
 	</natures>
-	<linkedResources>
-		<link>
-			<name>Drivers/BareDriver</name>
-			<type>2</type>
-			<locationURI>PARENT-2-PROJECT_LOC/modules/dfrobot-VL53L3CX/BareDriver</locationURI>
-		</link>
-	</linkedResources>
 </projectDescription>
