@@ -50,7 +50,7 @@ VL53LX_Dev_t                   dev;
 VL53LX_DEV                     Dev = &dev;
 int status;
 volatile int IntCount;
-#define isInterrupt 0 /* If isInterrupt = 1 then device working in hardware interrupt mode, else device working in polling mode */
+#define isInterrupt 1 /* If isInterrupt = 1 then device working in hardware interrupt mode, else device working in polling mode */
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -100,6 +100,7 @@ int main(void)
   MX_I2C1_Init();
   MX_ICACHE_Init();
   /* USER CODE BEGIN 2 */
+  /* Enable EXTI3 interrupt */
 
   /* USER CODE END 2 */
 
@@ -329,9 +330,13 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : PA3 */
   GPIO_InitStruct.Pin = GPIO_PIN_3;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
