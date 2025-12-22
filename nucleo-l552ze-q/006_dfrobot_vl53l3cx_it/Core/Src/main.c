@@ -21,7 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "vl53lx_api.h"
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,7 +46,11 @@ COM_InitTypeDef BspCOMInit;
 I2C_HandleTypeDef hi2c1;
 
 /* USER CODE BEGIN PV */
-
+VL53LX_Dev_t                   dev;
+VL53LX_DEV                     Dev = &dev;
+int status;
+volatile int IntCount;
+#define isInterrupt 0 /* If isInterrupt = 1 then device working in hardware interrupt mode, else device working in polling mode */
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -54,7 +59,7 @@ static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_ICACHE_Init(void);
 /* USER CODE BEGIN PFP */
-
+void RangingLoop(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -70,7 +75,8 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+	  uint8_t byteData;
+	  uint16_t wordData;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -94,6 +100,7 @@ int main(void)
   MX_I2C1_Init();
   MX_ICACHE_Init();
   /* USER CODE BEGIN 2 */
+  /* Enable EXTI3 interrupt */
 
   /* USER CODE END 2 */
 
@@ -118,6 +125,40 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
+  /* Enable sensor via XSHUT pin */
+  printf("\r\n=== VL53L3CX Initialization ===\r\n");
+  printf("Resetting sensor (XSHUT LOW)...\r\n");
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_RESET);
+  HAL_Delay(10);
+  printf("Enabling sensor (XSHUT HIGH)...\r\n");
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_SET);
+  HAL_Delay(100);  // Wait for sensor to boot
+  GPIO_PinState xshut_state = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);
+  printf("XSHUT pin state: %s\r\n", xshut_state == GPIO_PIN_SET ? "HIGH" : "LOW");
+  printf("Sensor enabled.\r\n\r\n");
+
+  /* I2C Address Scanner */
+  printf("=== I2C Address Scanner ===\r\n");
+  printf("Scanning I2C bus...\r\n");
+  for(uint8_t addr = 1; addr < 128; addr++) {
+    if(HAL_I2C_IsDeviceReady(&hi2c1, addr << 1, 1, 10) == HAL_OK) {
+      printf("Found device at 0x%02X (8-bit: 0x%02X)\r\n", addr, addr << 1);
+    }
+  }
+  printf("Scan complete.\r\n\r\n");
+
+  Dev->I2cHandle = &hi2c1;
+  Dev->I2cDevAddr = 0x52;
+  Dev->i2c_slave_address = 0x52;
+
+  VL53LX_RdByte(Dev, 0x010F, &byteData);
+  printf("VL53LX Model_ID: %02X\n\r", byteData);
+  VL53LX_RdByte(Dev, 0x0110, &byteData);
+  printf("VL53LX Module_Type: %02X\n\r", byteData);
+  VL53LX_RdWord(Dev, 0x010F, &wordData);
+  printf("VL53LX: %02X\n\r", wordData);
+  RangingLoop();
   while (1)
   {
 
@@ -306,7 +347,86 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+/* ranging and display loop */
+void RangingLoop(void)
+{
+ VL53LX_MultiRangingData_t MultiRangingData;
+ VL53LX_MultiRangingData_t *pMultiRangingData = &MultiRangingData;
+ uint8_t NewDataReady=0;
+ int no_of_object_found=0,j;
+ printf("Ranging loop starts\n");
 
+ status = VL53LX_WaitDeviceBooted(Dev);
+ status = VL53LX_DataInit(Dev);
+ status = VL53LX_StartMeasurement(Dev);
+
+ if(status){
+   printf("VL53LX_StartMeasurement failed: error = %d \n", status);
+   while(1);
+ }
+
+ if (isInterrupt){
+   do // HW interrupt mode
+   {
+     __WFI();
+     if(IntCount !=0 ){
+       IntCount=0;
+       status = VL53LX_GetMultiRangingData(Dev, pMultiRangingData);
+       no_of_object_found=pMultiRangingData->NumberOfObjectsFound;
+       printf("Count=%5d, ", pMultiRangingData->StreamCount);
+       printf("#Objs=%1d ", no_of_object_found);
+       for(j=0;j<no_of_object_found;j++){
+         if(j!=0)printf("\n                     ");
+         printf("status=%d, D=%5dmm, Signal=%2.2f Mcps, Ambient=%2.2f Mcps",
+                pMultiRangingData->RangeData[j].RangeStatus,
+                pMultiRangingData->RangeData[j].RangeMilliMeter,
+                pMultiRangingData->RangeData[j].SignalRateRtnMegaCps/65536.0,
+                pMultiRangingData->RangeData[j].AmbientRateRtnMegaCps/65536.0);
+       }
+       printf ("\n");
+       if (status==0){
+         status = VL53LX_ClearInterruptAndStartMeasurement(Dev);
+       }
+
+     }
+   }
+   while(1);
+ }
+ else{
+   do{ // polling mode
+     status = VL53LX_GetMeasurementDataReady(Dev, &NewDataReady);
+     HAL_Delay(1); // 1 ms polling period, could be longer.
+     if((!status)&&(NewDataReady!=0)){
+       status = VL53LX_GetMultiRangingData(Dev, pMultiRangingData);
+       no_of_object_found=pMultiRangingData->NumberOfObjectsFound;
+       printf("Count=%5d, ", pMultiRangingData->StreamCount);
+       printf("#Objs=%1d ", no_of_object_found);
+       for(j=0;j<no_of_object_found;j++){
+         if(j!=0)printf("\n                     ");
+         printf("status=%d, D=%5dmm, Signal=%2.2f Mcps, Ambient=%2.2f Mcps",
+                pMultiRangingData->RangeData[j].RangeStatus,
+                pMultiRangingData->RangeData[j].RangeMilliMeter,
+                pMultiRangingData->RangeData[j].SignalRateRtnMegaCps/65536.0,
+                pMultiRangingData->RangeData[j].AmbientRateRtnMegaCps/65536.0);
+       }
+       printf ("\n");
+       if (status==0){
+         status = VL53LX_ClearInterruptAndStartMeasurement(Dev);
+       }
+     }
+   }
+   while (1);
+ }
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  if (GPIO_Pin == GPIO_PIN_3)
+  {
+    /* VL53L3CX interrupt */
+    IntCount++;
+  }
+}
 /* USER CODE END 4 */
 
 /**
