@@ -32,19 +32,100 @@
 
 uint8_t _I2CBuffer[256];
 
-/* Helper I2C functions */
+/* I2C Interrupt Mode Variables */
+typedef enum {
+    I2C_STATE_READY = 0,
+    I2C_STATE_BUSY_TX,
+    I2C_STATE_BUSY_RX,
+    I2C_STATE_ERROR
+} I2C_State_t;
+
+volatile I2C_State_t i2c_state = I2C_STATE_READY;
+volatile HAL_StatusTypeDef i2c_result = HAL_OK;
+
+/* Helper I2C functions - Interrupt Mode */
 int _I2CWrite(VL53LX_Dev_t *pdev, uint8_t *pdata, uint32_t count) {
-    int status;
-    int i2c_time_out = I2C_TIME_OUT_BASE + count * I2C_TIME_OUT_BYTE;
-    status = HAL_I2C_Master_Transmit(pdev->I2cHandle, pdev->I2cDevAddr, pdata, count, i2c_time_out);
-    return status;
+    HAL_StatusTypeDef status;
+    uint32_t timeout = I2C_TIME_OUT_BASE + count * I2C_TIME_OUT_BYTE;
+    uint32_t tickstart = HAL_GetTick();
+    
+    /* Wait for I2C to be ready */
+    while (i2c_state != I2C_STATE_READY) {
+        if ((HAL_GetTick() - tickstart) > timeout) {
+            return HAL_TIMEOUT;
+        }
+    }
+    
+    /* Set state to busy */
+    i2c_state = I2C_STATE_BUSY_TX;
+    i2c_result = HAL_OK;
+    
+    /* Start interrupt-based transmission */
+    status = HAL_I2C_Master_Transmit_IT(pdev->I2cHandle, pdev->I2cDevAddr, pdata, count);
+    
+    if (status != HAL_OK) {
+        i2c_state = I2C_STATE_READY;
+        return status;
+    }
+    
+    /* Wait for transmission to complete */
+    tickstart = HAL_GetTick();
+    while (i2c_state == I2C_STATE_BUSY_TX) {
+        if ((HAL_GetTick() - tickstart) > timeout) {
+            i2c_state = I2C_STATE_READY;
+            return HAL_TIMEOUT;
+        }
+    }
+    
+    /* Check if error occurred */
+    if (i2c_state == I2C_STATE_ERROR) {
+        i2c_state = I2C_STATE_READY;
+        return HAL_ERROR;
+    }
+    
+    return i2c_result;
 }
 
 int _I2CRead(VL53LX_Dev_t *pdev, uint8_t *pdata, uint32_t count) {
-    int status;
-    int i2c_time_out = I2C_TIME_OUT_BASE + count * I2C_TIME_OUT_BYTE;
-    status = HAL_I2C_Master_Receive(pdev->I2cHandle, pdev->I2cDevAddr | 1, pdata, count, i2c_time_out);
-    return status;
+    HAL_StatusTypeDef status;
+    uint32_t timeout = I2C_TIME_OUT_BASE + count * I2C_TIME_OUT_BYTE;
+    uint32_t tickstart = HAL_GetTick();
+    
+    /* Wait for I2C to be ready */
+    while (i2c_state != I2C_STATE_READY) {
+        if ((HAL_GetTick() - tickstart) > timeout) {
+            return HAL_TIMEOUT;
+        }
+    }
+    
+    /* Set state to busy */
+    i2c_state = I2C_STATE_BUSY_RX;
+    i2c_result = HAL_OK;
+    
+    /* Start interrupt-based reception */
+    status = HAL_I2C_Master_Receive_IT(pdev->I2cHandle, pdev->I2cDevAddr | 1, pdata, count);
+    
+    if (status != HAL_OK) {
+        i2c_state = I2C_STATE_READY;
+        return status;
+    }
+    
+    /* Wait for reception to complete */
+    tickstart = HAL_GetTick();
+    while (i2c_state == I2C_STATE_BUSY_RX) {
+        if ((HAL_GetTick() - tickstart) > timeout) {
+            i2c_state = I2C_STATE_READY;
+            return HAL_TIMEOUT;
+        }
+    }
+    
+    /* Check if error occurred */
+    if (i2c_state == I2C_STATE_ERROR) {
+        i2c_state = I2C_STATE_READY;
+        return HAL_ERROR;
+    }
+    
+    return i2c_result;
 }
 
 

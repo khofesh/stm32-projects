@@ -262,6 +262,12 @@ static void MX_I2C1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN I2C1_Init 2 */
+  
+  /* Enable I2C interrupts in NVIC */
+  HAL_NVIC_SetPriority(I2C1_EV_IRQn, 2, 0);
+  HAL_NVIC_EnableIRQ(I2C1_EV_IRQn);
+  HAL_NVIC_SetPriority(I2C1_ER_IRQn, 2, 0);
+  HAL_NVIC_EnableIRQ(I2C1_ER_IRQn);
 
   /* USER CODE END I2C1_Init 2 */
 
@@ -425,6 +431,35 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   {
     /* VL53L3CX interrupt */
     IntCount++;
+  }
+}
+
+/* I2C Interrupt Mode Variables - External declarations */
+extern volatile uint8_t i2c_state;
+extern volatile HAL_StatusTypeDef i2c_result;
+
+/* I2C Callback Functions for Interrupt Mode */
+void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+  if (hi2c->Instance == I2C1) {
+    i2c_state = 0; // I2C_STATE_READY
+    i2c_result = HAL_OK;
+  }
+}
+
+void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+  if (hi2c->Instance == I2C1) {
+    i2c_state = 0; // I2C_STATE_READY
+    i2c_result = HAL_OK;
+  }
+}
+
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
+{
+  if (hi2c->Instance == I2C1) {
+    i2c_state = 3; // I2C_STATE_ERROR
+    i2c_result = HAL_ERROR;
   }
 }
 /* USER CODE END 4 */
