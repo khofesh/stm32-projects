@@ -94,7 +94,29 @@ uint8_t aht30_interface_iic_read_cmd(uint8_t addr, uint8_t *buf, uint16_t len)
 	i2c_state = I2C_STATE_BUSY_RX;
 	i2c_result = HAL_OK;
 
+	if (HAL_I2C_Master_Receive_IT(&hi2c1, addr, buf, len) != HAL_OK)
+	{
+		return 1;
+	}
 
+	timeout_start = HAL_GetTick();
+	while (i2c_state == I2C_STATE_BUSY_RX)
+	{
+		if ((HAL_GetTick() - timeout_start) > I2C_TIMEOUT_MS)
+		{
+			i2c_state = I2C_STATE_READY;
+			return 1;
+		}
+	}
+
+	if (i2c_state == I2C_STATE_ERROR || i2c_result != HAL_OK)
+	{
+		i2c_state = I2C_STATE_READY;
+		return 1;
+	}
+
+	i2c_state = I2C_STATE_READY;
+	return 0;
 }
 
 /**
@@ -109,7 +131,34 @@ uint8_t aht30_interface_iic_read_cmd(uint8_t addr, uint8_t *buf, uint16_t len)
  */
 uint8_t aht30_interface_iic_write_cmd(uint8_t addr, uint8_t *buf, uint16_t len)
 {
-    return 0;
+	uint32_t timeout_start;
+
+	i2c_state = I2C_STATE_BUSY_TX;
+	i2c_result = HAL_OK;
+
+	if (HAL_I2C_Master_Transmit_IT(&hi2c1, addr, buf, len) != HAL_OK)
+	{
+		return 1;
+	}
+
+	timeout_start = HAL_GetTick();
+	while (i2c_state == I2C_STATE_BUSY_TX)
+	{
+		if ((HAL_GetTick() - timeout_start) > I2C_TIMEOUT_MS)
+		{
+			i2c_state = I2C_STATE_READY;
+			return 1;
+		}
+	}
+
+	if (i2c_state == I2C_STATE_ERROR || i2c_result != HAL_OK)
+	{
+		i2c_state = I2C_STATE_READY;
+		return 1;
+	}
+
+	i2c_state = I2C_STATE_READY;
+	return 0;
 }
 
 /**
@@ -137,4 +186,31 @@ void aht30_interface_debug_print(const char *const fmt, ...)
     va_end(args);
 
     printf("%s", buf);
+}
+
+void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1)
+    {
+        i2c_state = I2C_STATE_READY;
+        i2c_result = HAL_OK;
+    }
+}
+
+void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1)
+    {
+        i2c_state = I2C_STATE_READY;
+        i2c_result = HAL_OK;
+    }
+}
+
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1)
+    {
+        i2c_state = I2C_STATE_ERROR;
+        i2c_result = HAL_ERROR;
+    }
 }
