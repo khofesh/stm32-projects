@@ -36,6 +36,18 @@
  */
 
 #include "driver_ds3231_interface.h"
+#include "main.h"
+#include <stdarg.h>
+#include <stdio.h>
+
+
+
+extern I2C_HandleTypeDef hi2c1;
+
+volatile I2C_State_t i2c_state = I2C_STATE_READY;
+volatile HAL_StatusTypeDef i2c_result = HAL_OK;
+
+#define I2C_TIMEOUT_MS  1000
 
 /**
  * @brief  interface iic bus init
@@ -58,6 +70,10 @@ uint8_t ds3231_interface_iic_init(void)
  */
 uint8_t ds3231_interface_iic_deinit(void)
 {
+    if (HAL_I2C_DeInit(&hi2c1) != HAL_OK)
+    {
+        return 1;
+    }
     return 0;
 }
 
@@ -74,6 +90,34 @@ uint8_t ds3231_interface_iic_deinit(void)
  */
 uint8_t ds3231_interface_iic_read(uint8_t addr, uint8_t reg, uint8_t *buf, uint16_t len)
 {
+    uint32_t timeout_start;
+    
+    i2c_state = I2C_STATE_BUSY_RX;
+    i2c_result = HAL_OK;
+    
+    if (HAL_I2C_Mem_Read_IT(&hi2c1, addr, reg, I2C_MEMADD_SIZE_8BIT, buf, len) != HAL_OK)
+    {
+        i2c_state = I2C_STATE_ERROR;
+        return 1;
+    }
+    
+    timeout_start = HAL_GetTick();
+    while (i2c_state == I2C_STATE_BUSY_RX)
+    {
+        if ((HAL_GetTick() - timeout_start) > I2C_TIMEOUT_MS)
+        {
+            i2c_state = I2C_STATE_ERROR;
+            return 1;
+        }
+    }
+    
+    if (i2c_state == I2C_STATE_ERROR || i2c_result != HAL_OK)
+    {
+        i2c_state = I2C_STATE_READY;
+        return 1;
+    }
+    
+    i2c_state = I2C_STATE_READY;
     return 0;
 }
 
@@ -90,6 +134,34 @@ uint8_t ds3231_interface_iic_read(uint8_t addr, uint8_t reg, uint8_t *buf, uint1
  */
 uint8_t ds3231_interface_iic_write(uint8_t addr, uint8_t reg, uint8_t *buf, uint16_t len)
 {
+    uint32_t timeout_start;
+    
+    i2c_state = I2C_STATE_BUSY_TX;
+    i2c_result = HAL_OK;
+    
+    if (HAL_I2C_Mem_Write_IT(&hi2c1, addr, reg, I2C_MEMADD_SIZE_8BIT, buf, len) != HAL_OK)
+    {
+        i2c_state = I2C_STATE_ERROR;
+        return 1;
+    }
+    
+    timeout_start = HAL_GetTick();
+    while (i2c_state == I2C_STATE_BUSY_TX)
+    {
+        if ((HAL_GetTick() - timeout_start) > I2C_TIMEOUT_MS)
+        {
+            i2c_state = I2C_STATE_ERROR;
+            return 1;
+        }
+    }
+    
+    if (i2c_state == I2C_STATE_ERROR || i2c_result != HAL_OK)
+    {
+        i2c_state = I2C_STATE_READY;
+        return 1;
+    }
+    
+    i2c_state = I2C_STATE_READY;
     return 0;
 }
 
@@ -100,7 +172,7 @@ uint8_t ds3231_interface_iic_write(uint8_t addr, uint8_t reg, uint8_t *buf, uint
  */
 void ds3231_interface_delay_ms(uint32_t ms)
 {
-
+	HAL_Delay(ms);
 }
 
 /**
@@ -110,7 +182,14 @@ void ds3231_interface_delay_ms(uint32_t ms)
  */
 void ds3231_interface_debug_print(const char *const fmt, ...)
 {
+    char buf[256];
+    va_list args;
     
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+
+    printf("%s", buf);
 }
 
 /**

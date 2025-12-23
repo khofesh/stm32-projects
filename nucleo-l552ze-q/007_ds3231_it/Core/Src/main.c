@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "driver_ds3231_interface.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,7 +45,7 @@ COM_InitTypeDef BspCOMInit;
 I2C_HandleTypeDef hi2c1;
 
 /* USER CODE BEGIN PV */
-
+static ds3231_handle_t gs_handle; // ds3231 handle
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -70,7 +70,12 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+    uint8_t res;
+    int8_t reg;
+    uint8_t times;
+    uint8_t status;
+    ds3231_info_t info;
+    ds3231_time_t time_in;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -118,6 +123,79 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  DRIVER_DS3231_LINK_INIT(&gs_handle, ds3231_handle_t);
+  DRIVER_DS3231_LINK_IIC_INIT(&gs_handle, ds3231_interface_iic_init);
+  DRIVER_DS3231_LINK_IIC_DEINIT(&gs_handle, ds3231_interface_iic_deinit);
+  DRIVER_DS3231_LINK_IIC_READ(&gs_handle, ds3231_interface_iic_read);
+  DRIVER_DS3231_LINK_IIC_WRITE(&gs_handle, ds3231_interface_iic_write);
+  DRIVER_DS3231_LINK_DELAY_MS(&gs_handle, ds3231_interface_delay_ms);
+  DRIVER_DS3231_LINK_DEBUG_PRINT(&gs_handle, ds3231_interface_debug_print);
+  DRIVER_DS3231_LINK_RECEIVE_CALLBACK(&gs_handle, ds3231_interface_receive_callback);
+
+  /* get ds3231 info */
+  res = ds3231_info(&info);
+  if (res != 0)
+  {
+      ds3231_interface_debug_print("ds3231: get info failed.\n");
+
+      return 1;
+  }
+  else
+  {
+      /* print ds3231 info */
+      ds3231_interface_debug_print("ds3231: chip is %s.\n", info.chip_name);
+      ds3231_interface_debug_print("ds3231: manufacturer is %s.\n", info.manufacturer_name);
+      ds3231_interface_debug_print("ds3231: interface is %s.\n", info.interface);
+      ds3231_interface_debug_print("ds3231: driver version is %d.%d.\n", info.driver_version / 1000, (info.driver_version % 1000) / 100);
+      ds3231_interface_debug_print("ds3231: min supply voltage is %0.1fV.\n", info.supply_voltage_min_v);
+      ds3231_interface_debug_print("ds3231: max supply voltage is %0.1fV.\n", info.supply_voltage_max_v);
+      ds3231_interface_debug_print("ds3231: max current is %0.2fmA.\n", info.max_current_ma);
+      ds3231_interface_debug_print("ds3231: max temperature is %0.1fC.\n", info.temperature_max);
+      ds3231_interface_debug_print("ds3231: min temperature is %0.1fC.\n", info.temperature_min);
+  }
+
+  /* start readwrite test */
+  ds3231_interface_debug_print("ds3231: start readwrite test.\n");
+
+  /* init ds3231 */
+  res = ds3231_init(&gs_handle);
+  if (res != 0)
+  {
+      ds3231_interface_debug_print("ds3231: init failed.\n");
+
+      return 1;
+  }
+
+  /* set oscillator */
+  res = ds3231_set_oscillator(&gs_handle, DS3231_BOOL_TRUE);
+  if (res != 0)
+  {
+      ds3231_interface_debug_print("ds3231: set oscillator failed.\n");
+      (void)ds3231_deinit(&gs_handle);
+
+      return 1;
+  }
+
+  /* disable alarm1 */
+  res = ds3231_set_alarm_interrupt(&gs_handle, DS3231_ALARM_1, DS3231_BOOL_FALSE);
+  if (res != 0)
+  {
+      ds3231_interface_debug_print("ds3231: set alarm1 interrupt failed.\n");
+      (void)ds3231_deinit(&gs_handle);
+
+      return 1;
+  }
+
+  /* disable alarm2 */
+  res = ds3231_set_alarm_interrupt(&gs_handle, DS3231_ALARM_2, DS3231_BOOL_FALSE);
+  if (res != 0)
+  {
+      ds3231_interface_debug_print("ds3231: set alarm2 interrupt failed.\n");
+      (void)ds3231_deinit(&gs_handle);
+
+      return 1;
+  }
+
   while (1)
   {
 
@@ -282,6 +360,36 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+extern volatile I2C_State_t i2c_state;
+extern volatile HAL_StatusTypeDef i2c_result;
+
+void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1)
+    {
+        i2c_state = I2C_STATE_READY;
+        i2c_result = HAL_OK;
+    }
+}
+
+void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1)
+    {
+        i2c_state = I2C_STATE_READY;
+        i2c_result = HAL_OK;
+    }
+}
+
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1)
+    {
+        i2c_state = I2C_STATE_ERROR;
+        i2c_result = HAL_ERROR;
+    }
+}
 
 /* USER CODE END 4 */
 
