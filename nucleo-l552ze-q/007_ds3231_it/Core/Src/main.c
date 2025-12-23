@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "driver_ds3231_interface.h"
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -72,10 +73,12 @@ int main(void)
   /* USER CODE BEGIN 1 */
     uint8_t res;
     int8_t reg;
-    uint8_t times;
-    uint8_t status;
+    uint32_t i;
+    int16_t raw;
+    float s;
     ds3231_info_t info;
-    ds3231_time_t time_in;
+    ds3231_time_t time_in, time_out;
+    int times = 10;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -195,6 +198,137 @@ int main(void)
 
       return 1;
   }
+
+  /* disable 32khz output */
+  res = ds3231_set_32khz_output(&gs_handle, DS3231_BOOL_FALSE);
+  if (res != 0)
+  {
+      ds3231_interface_debug_print("ds3231: set 32khz output failed.\n");
+      (void)ds3231_deinit(&gs_handle);
+
+      return 1;
+  }
+
+  /* convert to register */
+  res = ds3231_aging_offset_convert_to_register(&gs_handle, 0, (int8_t *)&reg);
+  if (res != 0)
+  {
+      ds3231_interface_debug_print("ds3231: convert to register failed.\n");
+      (void)ds3231_deinit(&gs_handle);
+
+      return 1;
+  }
+
+  /* set aging offset */
+  res = ds3231_set_aging_offset(&gs_handle, reg);
+  if (res != 0)
+  {
+      ds3231_interface_debug_print("ds3231: set aging offset failed.\n");
+      (void)ds3231_deinit(&gs_handle);
+
+      return 1;
+  }
+
+  /* ds3231_set_time/ds3231_get_time test */
+  ds3231_interface_debug_print("ds3231: ds3231_set_time/ds3231_get_time test.\n");
+
+
+  /* 12H format */
+  time_in.format = DS3231_FORMAT_12H;
+  time_in.am_pm = DS3231_PM;
+  time_in.year = rand() % 100 + 2000;
+  time_in.month = rand() % 12 + 1;
+  time_in.date = rand() % 20 + 1;
+  time_in.date = rand() % 20 + 1;
+  time_in.week = rand() % 7 + 1;
+  time_in.hour = rand() % 11 + 1;
+  time_in.minute = rand() % 60;
+  time_in.second = rand() % 60;
+  ds3231_interface_debug_print("ds3231: set time %04d-%02d-%02d PM %02d:%02d:%02d %d in 12 format.\n",
+                               time_in.year, time_in.month, time_in.date,
+                               time_in.hour, time_in.minute, time_in.second, time_in.week
+                              );
+  res  = ds3231_set_time(&gs_handle, &time_in);
+  if (res != 0)
+  {
+      ds3231_interface_debug_print("ds3231: set time failed.\n");
+      (void)ds3231_deinit(&gs_handle);
+
+      return 1;
+  }
+  for (i = 0; i < times; i++)
+  {
+      ds3231_interface_delay_ms(1000);
+      res = ds3231_get_time(&gs_handle, &time_out);
+      if (res != 0)
+      {
+          ds3231_interface_debug_print("ds3231: get time failed.\n");
+          (void)ds3231_deinit(&gs_handle);
+
+          return 1;
+      }
+      ds3231_interface_debug_print("ds3231: time is %04d-%02d-%02d PM %02d:%02d:%02d %d.\n",
+                                   time_out.year, time_out.month, time_out.date,
+                                   time_out.hour, time_out.minute, time_out.second, time_out.week
+                                  );
+  }
+
+  /* 24H format */
+  time_in.format = DS3231_FORMAT_24H;
+  time_in.am_pm = DS3231_AM;
+  time_in.year = rand() % 100 + 2090;
+  time_in.month = rand() % 12 + 1;
+  time_in.date = rand() % 20 + 1;
+  time_in.week = rand() % 7 + 1;
+  time_in.hour = rand() % 12 + 12;
+  time_in.minute = rand() % 60;
+  time_in.second = rand() % 60;
+  ds3231_interface_debug_print("ds3231: set time %04d-%02d-%02d %02d:%02d:%02d %d in 24 format.\n",
+                               time_in.year, time_in.month, time_in.date,
+                               time_in.hour, time_in.minute, time_in.second, time_in.week
+                              );
+  res  = ds3231_set_time(&gs_handle, &time_in);
+  if (res != 0)
+  {
+      ds3231_interface_debug_print("ds3231: set time failed.\n");
+      (void)ds3231_deinit(&gs_handle);
+
+      return 1;
+  }
+  for (i = 0; i < times; i++)
+  {
+      ds3231_interface_delay_ms(1000);
+      res = ds3231_get_time(&gs_handle, &time_out);
+      if (res != 0)
+      {
+          ds3231_interface_debug_print("ds3231: get time failed.\n");
+          (void)ds3231_deinit(&gs_handle);
+
+          return 1;
+      }
+      ds3231_interface_debug_print("ds3231: time is %04d-%02d-%02d %02d:%02d:%02d %d.\n",
+                                   time_out.year, time_out.month, time_out.date,
+                                   time_out.hour, time_out.minute, time_out.second, time_out.week
+                                  );
+  }
+  ds3231_interface_debug_print("ds3231: read temperature.\n");
+  for (i = 0; i < times; i++)
+  {
+      ds3231_interface_delay_ms(1000);
+      res = ds3231_get_temperature(&gs_handle, (int16_t *)&raw, (float *)&s);
+      if (res != 0)
+      {
+          ds3231_interface_debug_print("ds3231: get temperature failed.\n");
+          (void)ds3231_deinit(&gs_handle);
+
+          return 1;
+      }
+      ds3231_interface_debug_print("ds3231: temperature is %0.2f.\n", s);
+  }
+
+  /* finish readwrite test */
+  ds3231_interface_debug_print("ds3231: finish readwrite test.\n");
+  (void)ds3231_deinit(&gs_handle);
 
   while (1)
   {
