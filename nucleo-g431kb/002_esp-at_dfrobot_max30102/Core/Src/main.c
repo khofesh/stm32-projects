@@ -21,7 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
+#include "dfrobot_bloodoxygen.h"
+#include "driver_ssd1306_interface.h"
+#include "driver_ssd1306.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -50,7 +53,8 @@ DMA_HandleTypeDef hdma_usart1_rx;
 DMA_HandleTypeDef hdma_usart1_tx;
 
 /* USER CODE BEGIN PV */
-
+volatile I2C_State_t i2c_state = I2C_STATE_READY;
+volatile HAL_StatusTypeDef i2c_result = HAL_OK;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -65,7 +69,35 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void i2c_scan(I2C_HandleTypeDef *hi2c)
+{
+    printf("\n=== I2C Scanner ===\n");
+    printf("Scanning I2C bus...\n\n");
 
+    uint8_t found_devices = 0;
+
+    for (uint8_t addr = 1; addr < 128; addr++)
+    {
+        HAL_StatusTypeDef result = HAL_I2C_IsDeviceReady(hi2c, addr << 1, 1, 10);
+
+        if (result == HAL_OK)
+        {
+            printf("Device found at 0x%02X", addr);
+
+            // Common device identification
+            if (addr == 0x3C || addr == 0x3D) {
+                printf(" - Likely SSD1306/SSD1309 OLED");
+            } else if (addr == 0x57) {
+                printf(" - DFRobot Blood Oxygen Sensor");
+            }
+
+            printf("\n");
+            found_devices++;
+        }
+    }
+
+    printf("\nTotal devices found: %d\n", found_devices);
+}
 /* USER CODE END 0 */
 
 /**
@@ -76,7 +108,8 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+    ssd1306_handle_t handle;
+    uint8_t res;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -120,9 +153,233 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  i2c_scan(&hi2c1);
+
+  // Initialize sensor
+  if (dfrobot_init(&hi2c1) != 0) {
+      printf("Sensor init failed!\n");
+      Error_Handler();
+  }
+
+  // Wait for sensor to stabilize
+  HAL_Delay(2000);
+
+  dfrobot_data_t data;
+
+  /* I2C LCD */
+  DRIVER_SSD1306_LINK_INIT(&handle, ssd1306_handle_t);
+  DRIVER_SSD1306_LINK_IIC_INIT(&handle, ssd1306_interface_iic_init);
+  DRIVER_SSD1306_LINK_IIC_DEINIT(&handle, ssd1306_interface_iic_deinit);
+  DRIVER_SSD1306_LINK_IIC_WRITE(&handle, ssd1306_interface_iic_write);
+  DRIVER_SSD1306_LINK_SPI_INIT(&handle, ssd1306_interface_spi_init);
+  DRIVER_SSD1306_LINK_SPI_DEINIT(&handle, ssd1306_interface_spi_deinit);
+  DRIVER_SSD1306_LINK_SPI_WRITE_COMMAND(&handle, ssd1306_interface_spi_write_cmd);
+  DRIVER_SSD1306_LINK_SPI_COMMAND_DATA_GPIO_INIT(&handle, ssd1306_interface_spi_cmd_data_gpio_init);
+  DRIVER_SSD1306_LINK_SPI_COMMAND_DATA_GPIO_DEINIT(&handle, ssd1306_interface_spi_cmd_data_gpio_deinit);
+  DRIVER_SSD1306_LINK_SPI_COMMAND_DATA_GPIO_WRITE(&handle, ssd1306_interface_spi_cmd_data_gpio_write);
+  DRIVER_SSD1306_LINK_RESET_GPIO_INIT(&handle, ssd1306_interface_reset_gpio_init);
+  DRIVER_SSD1306_LINK_RESET_GPIO_DEINIT(&handle, ssd1306_interface_reset_gpio_deinit);
+  DRIVER_SSD1306_LINK_RESET_GPIO_WRITE(&handle, ssd1306_interface_reset_gpio_write);
+  DRIVER_SSD1306_LINK_DELAY_MS(&handle, ssd1306_interface_delay_ms);
+  DRIVER_SSD1306_LINK_DEBUG_PRINT(&handle, ssd1306_interface_debug_print);
+
+  res = ssd1306_set_interface(&handle, SSD1306_INTERFACE_IIC);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set interface failed.\n");
+      return 1;
+  }
+
+  res = ssd1306_set_addr_pin(&handle, SSD1306_ADDR_SA0_0);  // address 0x3C
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set addr pin failed.\n");
+      return 1;
+  }
+
+  res = ssd1306_init(&handle);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: init failed.\n");
+      return 1;
+  }
+
+  /* enable charge pump - IMPORTANT */
+  printf("enabling charge pump...\n");
+  res = ssd1306_set_charge_pump(&handle, SSD1306_CHARGE_PUMP_ENABLE);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set charge pump failed.\n");
+      (void)ssd1306_deinit(&handle);
+      return 1;
+  }
+
+  /* fix upside down display */
+  res = ssd1306_set_segment_remap(&handle, SSD1306_SEGMENT_COLUMN_ADDRESS_127);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set segment remap failed.\n");
+      (void)ssd1306_deinit(&handle);
+      return 1;
+  }
+
+  res = ssd1306_set_scan_direction(&handle, SSD1306_SCAN_DIRECTION_COMN_1_START);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set scan direction failed.\n");
+      (void)ssd1306_deinit(&handle);
+      return 1;
+  }
+
+  /* close display */
+  res = ssd1306_set_display(&handle, SSD1306_DISPLAY_OFF);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set display failed.\n");
+      (void)ssd1306_deinit(&handle);
+
+      return 1;
+  }
+
+  /* set column address range */
+  res = ssd1306_set_column_address_range(&handle, 0x00, 0x7F);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set column address range failed.\n");
+      (void)ssd1306_deinit(&handle);
+
+      return 1;
+  }
+
+  /* set page address range */
+  res = ssd1306_set_page_address_range(&handle, 0x00, 0x07);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set page address range failed.\n");
+      (void)ssd1306_deinit(&handle);
+
+      return 1;
+  }
+
+  /* set low column start address */
+  res = ssd1306_set_low_column_start_address(&handle, 0x00);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set low column start address failed.\n");
+      (void)ssd1306_deinit(&handle);
+
+      return 1;
+  }
+
+  /* set high column start address */
+  res = ssd1306_set_high_column_start_address(&handle, 0x00);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set high column start address failed.\n");
+      (void)ssd1306_deinit(&handle);
+
+      return 1;
+  }
+
+  /* set display start line */
+  res = ssd1306_set_display_start_line(&handle, 0x00);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set display start line failed.\n");
+      (void)ssd1306_deinit(&handle);
+
+      return 1;
+  }
+
+  /* set fade blinking mode */
+  res = ssd1306_set_fade_blinking_mode(&handle, SSD1306_FADE_BLINKING_MODE_DISABLE, 0x00);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set fade blinking failed.\n");
+      (void)ssd1306_deinit(&handle);
+
+      return 1;
+  }
+
+  res = ssd1306_set_display(&handle, SSD1306_DISPLAY_ON);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: set display failed.\n");
+      (void)ssd1306_deinit(&handle);
+
+      return 1;
+  }
+
+  res = ssd1306_clear(&handle);
+  if (res != 0)
+  {
+      ssd1306_interface_debug_print("ssd1306: clear failed.\n");
+      (void)ssd1306_deinit(&handle);
+      return 1;
+  }
+
+  printf("LCD initialization complete!\n");
   while (1)
   {
+      char display_buf[32];
 
+      // Read sensor data
+      if (dfrobot_read_data(&hi2c1, &data) == 0) {
+          if (data.spo2 > 0) {
+              printf("SpO2: %d%%\n", data.spo2);
+          } else {
+              printf("SpO2: No finger detected\n");
+          }
+
+          if (data.heartbeat > 0) {
+              printf("Heart Rate: %ld BPM\n", data.heartbeat);
+          } else {
+              printf("Heart Rate: No finger detected\n");
+          }
+      }
+
+      // Read temperature
+      float temp = dfrobot_read_temperature(&hi2c1);
+      if (temp > -999.0f) {
+          printf("Temperature: %.2f°C\n", temp);
+      }
+
+      printf("---\n");
+
+      // update LCD with sensor data
+      ssd1306_clear(&handle);
+
+      // line 1: Title
+      ssd1306_gram_write_string(&handle, 0, 0, "Blood Oxygen", 12, 1, SSD1306_FONT_12);
+
+      // line 2: SpO2
+      if (data.spo2 > 0) {
+          snprintf(display_buf, sizeof(display_buf), "SpO2: %d%%", data.spo2);
+      } else {
+          snprintf(display_buf, sizeof(display_buf), "SpO2: --");
+      }
+      ssd1306_gram_write_string(&handle, 0, 16, display_buf, (uint16_t)strlen(display_buf), 1, SSD1306_FONT_12);
+
+      // line 3: Heart Rate
+      if (data.heartbeat > 0) {
+          snprintf(display_buf, sizeof(display_buf), "HR: %ld BPM", data.heartbeat);
+      } else {
+          snprintf(display_buf, sizeof(display_buf), "HR: --");
+      }
+      ssd1306_gram_write_string(&handle, 0, 32, display_buf, (uint16_t)strlen(display_buf), 1, SSD1306_FONT_12);
+
+      // line 4: Temperature
+      if (temp > -999.0f) {
+          snprintf(display_buf, sizeof(display_buf), "Temp: %.1fC", temp);
+      } else {
+          snprintf(display_buf, sizeof(display_buf), "Temp: --");
+      }
+      ssd1306_gram_write_string(&handle, 0, 48, display_buf, (uint16_t)strlen(display_buf), 1, SSD1306_FONT_12);
+
+      // Update display
+      ssd1306_gram_update(&handle);
+
+      HAL_Delay(1000);  // Update every second
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -313,7 +570,60 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+/**
+ * @brief I2C Memory Transmit Complete Callback
+ */
+void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1) {
+        i2c_state = I2C_STATE_READY;
+        i2c_result = HAL_OK;
+    }
+}
 
+/**
+ * @brief I2C Memory Receive Complete Callback
+ */
+void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1) {
+        i2c_state = I2C_STATE_READY;
+        i2c_result = HAL_OK;
+    }
+}
+
+/**
+ * @brief I2C Master Transmit Complete Callback
+ */
+void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1) {
+        i2c_state = I2C_STATE_READY;
+        i2c_result = HAL_OK;
+    }
+}
+
+/**
+ * @brief I2C Master Receive Complete Callback
+ */
+void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1) {
+        i2c_state = I2C_STATE_READY;
+        i2c_result = HAL_OK;
+    }
+}
+
+/**
+ * @brief I2C Error Callback
+ */
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C1) {
+        i2c_state = I2C_STATE_ERROR;
+        i2c_result = HAL_ERROR;
+    }
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header */
