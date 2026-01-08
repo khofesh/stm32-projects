@@ -3,7 +3,6 @@
  * @brief JSMN-based JSON parser implementation for SSCMA responses
  */
 
-#define JSMN_HEADER
 #include "jsmn.h"
 #include "sscma_parser.h"
 #include "sscma_stm32l5.h"

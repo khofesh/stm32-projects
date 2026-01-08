@@ -21,7 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "sscma_stm32l5.h"
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -50,7 +51,7 @@ UART_HandleTypeDef huart4;
 DMA_HandleTypeDef hdma_uart4_rx;
 
 /* USER CODE BEGIN PV */
-
+static sscma_handle_t sscma;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -78,7 +79,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+	sscma_err_t err;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -129,6 +130,34 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  /* Initialize handle */
+  sscma_init_handle(&sscma);
+
+  /* Initialize with I2C */
+  err = sscma_begin_i2c(&sscma, &hi2c1, SSCMA_I2C_ADDRESS);
+  if (err != SSCMA_OK) {
+      printf("SSCMA init failed: %s\n", sscma_err_to_str(err));
+  }
+
+  /* Get device info */
+  printf("Device ID: %s\n", sscma_get_id(&sscma, true));
+  printf("Device Name: %s\n", sscma_get_name(&sscma, true));
+
+  /* Run single inference */
+  err = sscma_invoke(&sscma, 1, true, false);  /* filter=true for classification */
+  if (err == SSCMA_OK) {
+      const sscma_results_t *results = sscma_get_results(&sscma);
+
+      printf("Classification results:\n");
+      for (int i = 0; i < results->num_classes; i++) {
+          printf("  Class %d: score=%d%%\n",
+                 results->classes[i].target,
+                 results->classes[i].score);
+      }
+  }
+
+  /* Cleanup */
+  sscma_deinit(&sscma);
   while (1)
   {
 
