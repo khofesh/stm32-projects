@@ -334,7 +334,7 @@ sscma_err_t sscma_invoke(sscma_handle_t *handle, int times, bool filter, bool sh
     snprintf(cmd, sizeof(cmd), SSCMA_CMD_PREFIX "%s=%d,%d,%d" SSCMA_CMD_SUFFIX,
              CMD_AT_INVOKE, times, !filter ? 1 : 0, filter ? 1 : 0);
 
-    printf("[TX] cmd='%s'\n", cmd);
+//    printf("[TX] cmd='%s'\n", cmd);
     sscma_write(handle, cmd, strlen(cmd));
 
     if (wait_response(handle, SSCMA_CMD_TYPE_RESPONSE, CMD_AT_INVOKE,
@@ -748,9 +748,9 @@ static int i2c_available(sscma_handle_t *handle)
 
     int available = (resp[0] << 8) | resp[1];
     /* Debug: only print when data is available or on error */
-    if (available > 0 || status != HAL_OK) {
-        printf("[I2C] available=%d, status=%d\n", available, status);
-    }
+//    if (available > 0 || status != HAL_OK) {
+//        printf("[I2C] available=%d, status=%d\n", available, status);
+//    }
     return available;
 }
 
