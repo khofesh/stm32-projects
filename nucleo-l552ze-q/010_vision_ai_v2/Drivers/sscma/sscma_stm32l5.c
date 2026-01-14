@@ -338,8 +338,10 @@ sscma_err_t sscma_invoke(sscma_handle_t *handle, int times, bool filter, bool sh
 
     if (wait_response(handle, SSCMA_CMD_TYPE_RESPONSE, CMD_AT_INVOKE,
                       handle->timeout_ms) == SSCMA_OK) {
-        if (wait_response(handle, SSCMA_CMD_TYPE_EVENT, CMD_AT_INVOKE,
-                          handle->timeout_ms * 5) == SSCMA_OK) {
+
+    	sscma_err_t result = wait_response(handle, SSCMA_CMD_TYPE_EVENT, CMD_AT_INVOKE,
+                handle->timeout_ms * 5);
+        if (result == SSCMA_OK) {
             return SSCMA_OK;
         }
     }
@@ -992,6 +994,8 @@ static sscma_err_t wait_response(sscma_handle_t *handle, int type, const char *c
 
         handle->rx_end += sscma_read(handle, handle->rx_buf + handle->rx_end, len);
         handle->rx_buf[handle->rx_end] = '\0';
+
+        printf("[RX] len=%d, buffer='%.*s'\n", len, (int)handle->rx_end, handle->rx_buf);
 
         /* Process complete responses */
         char *suffix;

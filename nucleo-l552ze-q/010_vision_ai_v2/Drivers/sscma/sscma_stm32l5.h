@@ -79,8 +79,8 @@ extern "C" {
 /* Response delimiters */
 #define SSCMA_RESPONSE_PREFIX       "\r{"
 #define SSCMA_RESPONSE_SUFFIX       "}\n"
-#define SSCMA_RESPONSE_PREFIX_LEN   2
-#define SSCMA_RESPONSE_SUFFIX_LEN   2
+#define SSCMA_RESPONSE_PREFIX_LEN   (sizeof(SSCMA_RESPONSE_PREFIX) - 1)
+#define SSCMA_RESPONSE_SUFFIX_LEN   (sizeof(SSCMA_RESPONSE_SUFFIX) - 1)
 
 /* Command format */
 #define SSCMA_CMD_PREFIX            "AT+"
