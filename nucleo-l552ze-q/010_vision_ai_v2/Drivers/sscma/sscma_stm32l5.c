@@ -334,16 +334,18 @@ sscma_err_t sscma_invoke(sscma_handle_t *handle, int times, bool filter, bool sh
     snprintf(cmd, sizeof(cmd), SSCMA_CMD_PREFIX "%s=%d,%d,%d" SSCMA_CMD_SUFFIX,
              CMD_AT_INVOKE, times, !filter ? 1 : 0, filter ? 1 : 0);
 
+    printf("[TX] cmd='%s'\n", cmd);
     sscma_write(handle, cmd, strlen(cmd));
 
     if (wait_response(handle, SSCMA_CMD_TYPE_RESPONSE, CMD_AT_INVOKE,
                       handle->timeout_ms) == SSCMA_OK) {
 
     	sscma_err_t result = wait_response(handle, SSCMA_CMD_TYPE_EVENT, CMD_AT_INVOKE,
-                handle->timeout_ms * 5);
+                handle->timeout_ms * 10);  /* Increased timeout for inference */
         if (result == SSCMA_OK) {
             return SSCMA_OK;
         }
+        return result;  /* Return actual error instead of generic timeout */
     }
 
     return SSCMA_ETIMEDOUT;
@@ -725,6 +727,7 @@ static int i2c_available(sscma_handle_t *handle)
 {
     uint8_t buf[6];
     uint8_t resp[2] = {0};
+    HAL_StatusTypeDef status;
 
     delay_ms(handle->wait_delay_ms);
 
@@ -735,14 +738,20 @@ static int i2c_available(sscma_handle_t *handle)
     buf[4] = 0;
     buf[5] = 0;
 
-    if (HAL_I2C_Master_Transmit(handle->hi2c, handle->i2c_addr << 1, buf,
-                                6, HAL_MAX_DELAY) == HAL_OK) {
+    status = HAL_I2C_Master_Transmit(handle->hi2c, handle->i2c_addr << 1, buf,
+                                6, HAL_MAX_DELAY);
+    if (status == HAL_OK) {
         delay_ms(handle->wait_delay_ms);
-        HAL_I2C_Master_Receive(handle->hi2c, handle->i2c_addr << 1, resp,
+        status = HAL_I2C_Master_Receive(handle->hi2c, handle->i2c_addr << 1, resp,
                                2, HAL_MAX_DELAY);
     }
 
-    return (resp[0] << 8) | resp[1];
+    int available = (resp[0] << 8) | resp[1];
+    /* Debug: only print when data is available or on error */
+    if (available > 0 || status != HAL_OK) {
+        printf("[I2C] available=%d, status=%d\n", available, status);
+    }
+    return available;
 }
 
 static int i2c_read(sscma_handle_t *handle, char *data, int length)
@@ -978,10 +987,21 @@ static sscma_err_t wait_response(sscma_handle_t *handle, int type, const char *c
 {
     sscma_err_t ret = SSCMA_OK;
     uint32_t start_tick = HAL_GetTick();
+    uint32_t last_print = 0;
+
+    printf("[WAIT] type=%d, cmd=%s, timeout=%lu\n", type, cmd, timeout);
 
     while ((HAL_GetTick() - start_tick) <= timeout) {
         int len = sscma_available(handle);
-        if (len == 0) continue;
+        if (len == 0) {
+            /* Print status every 1 second */
+            if ((HAL_GetTick() - last_print) >= 1000) {
+                printf("[WAIT] polling... elapsed=%lu ms\n", HAL_GetTick() - start_tick);
+                last_print = HAL_GetTick();
+            }
+            delay_ms(10);  /* Small delay to avoid overwhelming I2C bus */
+            continue;
+        }
 
         /* Ensure we don't overflow buffer */
         if (len + handle->rx_end > handle->rx_buf_size) {
