@@ -431,6 +431,14 @@ static HAL_StatusTypeDef camera_init(void)
 
     HAL_Delay(1000);  /* Wait for sensor to stabilize */
 
+    /* Enter standby mode to reduce power consumption and heat */
+    status = arducam_enter_standby(&cam);
+    if (status != HAL_OK) {
+        printf("Failed to enter standby mode!\r\n");
+        return status;
+    }
+    printf("Camera in standby mode (low power)\r\n");
+
     return HAL_OK;
 }
 /* USER CODE END 4 */

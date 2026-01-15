@@ -656,6 +656,20 @@ HAL_StatusTypeDef arducam_verify_spi(arducam_handle_t *handle);
  */
 HAL_StatusTypeDef arducam_verify_i2c(arducam_handle_t *handle, uint16_t *chip_id);
 
+/**
+ * @brief Enter standby mode (low power, reduces heat)
+ * @param handle Pointer to ArduCAM handle
+ * @return HAL status
+ */
+HAL_StatusTypeDef arducam_enter_standby(arducam_handle_t *handle);
+
+/**
+ * @brief Exit standby mode (resume normal operation)
+ * @param handle Pointer to ArduCAM handle
+ * @return HAL status
+ */
+HAL_StatusTypeDef arducam_exit_standby(arducam_handle_t *handle);
+
 #ifdef __cplusplus
 }
 #endif

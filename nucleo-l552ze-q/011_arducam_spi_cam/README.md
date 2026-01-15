@@ -1,5 +1,7 @@
 # Nucleo L552RE-Q + Arducam SPI Cam
 
+arducam type is ov5642 (Arducam_MINI_5MP_Plus)
+
 pin connections:
 
 - SDA -> PB9

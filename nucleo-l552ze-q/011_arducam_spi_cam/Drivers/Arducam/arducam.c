@@ -937,4 +937,26 @@ HAL_StatusTypeDef arducam_ov5642_test_pattern(arducam_handle_t *handle, uint8_t 
     return HAL_OK;
 }
 
+/*----------------------------------------------------------------------------
+ * Power Management Functions
+ *----------------------------------------------------------------------------*/
 
+HAL_StatusTypeDef arducam_enter_standby(arducam_handle_t *handle)
+{
+    if (handle == NULL) {
+        return HAL_ERROR;
+    }
+
+    /* Set PWDN bit to enter standby mode */
+    return arducam_set_bit(handle, ARDUCHIP_GPIO, GPIO_PWDN_MASK);
+}
+
+HAL_StatusTypeDef arducam_exit_standby(arducam_handle_t *handle)
+{
+    if (handle == NULL) {
+        return HAL_ERROR;
+    }
+
+    /* Clear PWDN bit to exit standby mode */
+    return arducam_clear_bit(handle, ARDUCHIP_GPIO, GPIO_PWDN_MASK);
+}
