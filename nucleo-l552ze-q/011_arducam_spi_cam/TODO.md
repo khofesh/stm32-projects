@@ -1,0 +1,2 @@
+- [ ] convert video streaming example in `PICO_SPI_CAM-master/C/Examples/Arducam_MINI_5MP_Plus_Videostreaming/Arducam_MINI_5MP_Plus_Videostreaming.cpp` to STM32 HAL
+- [ ] image capture on host using python script
