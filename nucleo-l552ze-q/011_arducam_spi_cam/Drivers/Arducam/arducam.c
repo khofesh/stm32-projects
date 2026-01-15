@@ -841,10 +841,8 @@ HAL_StatusTypeDef arducam_ov5642_set_jpeg_size(arducam_handle_t *handle, uint8_t
             return arducam_wr_sensor_regs16_8(handle, ov5642_2048x1536);
         case OV5642_2592x1944:
             return arducam_wr_sensor_regs16_8(handle, ov5642_2592x1944);
-        case OV5642_1920x1080:
-            return arducam_wr_sensor_regs16_8(handle, ov5642_1920x1080);
         default:
-            return HAL_ERROR;
+        	return arducam_wr_sensor_regs16_8(handle, ov5642_320x240);
     }
 }
 

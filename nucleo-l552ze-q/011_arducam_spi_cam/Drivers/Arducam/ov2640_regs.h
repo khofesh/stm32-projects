@@ -863,9 +863,9 @@ const arducam_sensor_reg_t OV2640_1600x1200_JPEG[]  =
 
 
 
-const arducam_sensor_reg_t OV2640_SVGA[]
+const arducam_sensor_reg_t OV2640_SVGA[] =
 {
-	{0xff, 0x01},
+{0xff, 0x01},
 {0x12, 0x80},
 {0xff, 0x00},
 {0x2c, 0xff},
@@ -1044,6 +1044,7 @@ const arducam_sensor_reg_t OV2640_SVGA[]
 {0x05, 0x00},
 {0xff, 0xff},
 };
+
 const arducam_sensor_reg_t OV2640_640x480_JPEG2[] =
 {
 	{0xff,0x01},		//001
