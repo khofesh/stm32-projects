@@ -21,7 +21,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "arducam.h"
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,7 +49,10 @@ I2C_HandleTypeDef hi2c1;
 SPI_HandleTypeDef hspi1;
 
 /* USER CODE BEGIN PV */
+static arducam_handle_t cam;
 
+#define IMAGE_BUFFER_SIZE   (64 * 1024)  /* 64KB for JPEG */
+static uint8_t image_buffer[IMAGE_BUFFER_SIZE];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -57,6 +62,7 @@ static void MX_I2C1_Init(void);
 static void MX_ICACHE_Init(void);
 static void MX_SPI1_Init(void);
 /* USER CODE BEGIN PFP */
+static HAL_StatusTypeDef camera_init(void);
 
 /* USER CODE END PFP */
 
@@ -122,6 +128,7 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  camera_init();
   while (1)
   {
 
@@ -336,7 +343,69 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+static HAL_StatusTypeDef camera_init(void)
+{
+    HAL_StatusTypeDef status;
+    uint16_t chip_id;
+    char msg[64];
 
+    /* Configure ArduCAM */
+    arducam_config_t config = {
+        .hspi = &hspi1,
+        .hi2c = &hi2c1,
+        .cs_port = GPIOD,
+        .cs_pin = GPIO_PIN_14,
+        .sensor_model = ARDUCAM_OV5642
+    };
+
+    /* Initialize driver */
+    status = arducam_init(&cam, &config);
+    if (status != HAL_OK) {
+        printf("ArduCAM init failed!\r\n");
+        return status;
+    }
+    printf("ArduCAM driver initialized\r\n");
+
+    /* Verify SPI communication */
+    status = arducam_verify_spi(&cam);
+    if (status != HAL_OK) {
+        printf("SPI verification failed! Check wiring.\r\n");
+        return status;
+    }
+    printf("SPI communication OK\r\n");
+
+    /* Verify I2C communication and read chip ID */
+    status = arducam_verify_i2c(&cam, &chip_id);
+    if (status != HAL_OK) {
+        printf("I2C verification failed! Check wiring.\r\n");
+        return status;
+    }
+    snprintf(msg, sizeof(msg), "Sensor detected, Chip ID: 0x%04X\r\n", chip_id);
+    printf(msg);
+
+    /* Set format to JPEG */
+    arducam_set_format(&cam, ARDUCAM_FMT_JPEG);
+
+    /* Initialize camera sensor */
+    status = arducam_init_cam(&cam);
+    if (status != HAL_OK) {
+        printf("Camera sensor init failed!\r\n");
+        return status;
+    }
+    printf("Camera sensor initialized\r\n");
+
+    /* Set resolution to 640x480 */
+    status = arducam_ov2640_set_jpeg_size(&cam, OV2640_640x480);
+    if (status != HAL_OK) {
+        printf("Failed to set resolution!\r\n");
+        return status;
+    }
+    printf("Resolution set to 640x480\r\n");
+
+    HAL_Delay(1000);  /* Wait for sensor to stabilize */
+
+    return HAL_OK;
+}
 /* USER CODE END 4 */
 
 /**
