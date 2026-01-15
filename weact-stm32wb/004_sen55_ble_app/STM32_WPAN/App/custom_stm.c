@@ -332,7 +332,7 @@ void SVCCTL_InitCustomSvc(void)
   }
   else
   {
-    APP_DBG_MSG("  Success: aci_gatt_add_service command: P2PS \n\r");
+    APP_DBG_MSG("  Success: aci_gatt_add_service command: P2PS , handle = 0x%04x \n\r", CustomContext.CustomP2PsHdle);
   }
 
   /**
@@ -354,7 +354,7 @@ void SVCCTL_InitCustomSvc(void)
   }
   else
   {
-    APP_DBG_MSG("  Success: aci_gatt_add_char command   : LED_C \n\r");
+    APP_DBG_MSG("  Success: aci_gatt_add_char command   : LED_C , handle = 0x%04x \n\r", CustomContext.CustomLed_CHdle);
   }
 
   /* USER CODE BEGIN SVCCTL_Init_Service1_Char1 */
@@ -380,7 +380,7 @@ void SVCCTL_InitCustomSvc(void)
   }
   else
   {
-    APP_DBG_MSG("  Success: aci_gatt_add_char command   : SEN55_C \n\r");
+    APP_DBG_MSG("  Success: aci_gatt_add_char command   : SEN55_C , handle = 0x%04x \n\r", CustomContext.CustomSen55_CHdle);
   }
 
   /* USER CODE BEGIN SVCCTL_Init_Service1_Char2 */
