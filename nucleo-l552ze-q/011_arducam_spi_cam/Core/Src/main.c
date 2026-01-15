@@ -298,7 +298,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   hspi1.Init.CRCPolynomial = 7;
   hspi1.Init.CRCLength = SPI_CRC_LENGTH_DATASIZE;
-  hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  hspi1.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
   if (HAL_SPI_Init(&hspi1) != HAL_OK)
   {
     Error_Handler();
@@ -328,13 +328,13 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);  /* CS high (inactive) by default */
 
-  /*Configure GPIO pin : PD14 */
+  /*Configure GPIO pin : PD14 (ArduCAM CS) */
   GPIO_InitStruct.Pin = GPIO_PIN_14;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;  /* High speed for SPI CS */
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -348,6 +348,7 @@ static HAL_StatusTypeDef camera_init(void)
     HAL_StatusTypeDef status;
     uint16_t chip_id;
     char msg[64];
+    uint8_t test_read;
 
     /* Configure ArduCAM */
     arducam_config_t config = {
@@ -366,10 +367,36 @@ static HAL_StatusTypeDef camera_init(void)
     }
     printf("ArduCAM driver initialized\r\n");
 
+    /* Debug: Test raw SPI read/write */
+    printf("Testing SPI communication...\r\n");
+
+    /* Write 0x55 to test register */
+    status = arducam_write_reg(&cam, 0x00, 0x55);
+    printf("  Write 0x55 to reg 0x00: %s\r\n", (status == HAL_OK) ? "OK" : "FAIL");
+
+    /* Read back */
+    status = arducam_read_reg(&cam, 0x00, &test_read);
+    printf("  Read reg 0x00: 0x%02X (expected 0x55), status: %s\r\n",
+           test_read, (status == HAL_OK) ? "OK" : "FAIL");
+
+    /* Write 0xAA to test register */
+    status = arducam_write_reg(&cam, 0x00, 0xAA);
+    printf("  Write 0xAA to reg 0x00: %s\r\n", (status == HAL_OK) ? "OK" : "FAIL");
+
+    /* Read back */
+    status = arducam_read_reg(&cam, 0x00, &test_read);
+    printf("  Read reg 0x00: 0x%02X (expected 0xAA), status: %s\r\n",
+           test_read, (status == HAL_OK) ? "OK" : "FAIL");
+
     /* Verify SPI communication */
     status = arducam_verify_spi(&cam);
     if (status != HAL_OK) {
         printf("SPI verification failed! Check wiring.\r\n");
+        printf("  Possible causes:\r\n");
+        printf("  - CS pin not connected (PD14)\r\n");
+        printf("  - SPI wiring: SCK=PA5, MISO=PA6, MOSI=PA7\r\n");
+        printf("  - ArduCAM not powered\r\n");
+        printf("  - SPI mode mismatch (Mode 0: CPOL=0, CPHA=0)\r\n");
         return status;
     }
     printf("SPI communication OK\r\n");
@@ -395,7 +422,7 @@ static HAL_StatusTypeDef camera_init(void)
     printf("Camera sensor initialized\r\n");
 
     /* Set resolution to 640x480 */
-    status = arducam_ov2640_set_jpeg_size(&cam, OV2640_640x480);
+    status = arducam_ov5642_set_jpeg_size(&cam, OV5642_640x480);
     if (status != HAL_OK) {
         printf("Failed to set resolution!\r\n");
         return status;

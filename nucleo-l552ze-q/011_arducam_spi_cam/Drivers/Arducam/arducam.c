@@ -217,20 +217,23 @@ HAL_StatusTypeDef arducam_write_reg(arducam_handle_t *handle, uint8_t addr, uint
 HAL_StatusTypeDef arducam_read_reg(arducam_handle_t *handle, uint8_t addr, uint8_t *data)
 {
     HAL_StatusTypeDef status;
-    uint8_t tx_data;
+    uint8_t tx_buf[2];
+    uint8_t rx_buf[2];
 
     if (handle == NULL || data == NULL) {
         return HAL_ERROR;
     }
 
-    tx_data = addr & 0x7F;  /* Clear write bit for read */
+    tx_buf[0] = addr & 0x7F;  /* Clear write bit for read */
+    tx_buf[1] = 0x00;         /* Dummy byte to clock out data */
 
     arducam_cs_low(handle);
-    status = HAL_SPI_Transmit(handle->hspi, &tx_data, 1, ARDUCAM_SPI_TIMEOUT);
-    if (status == HAL_OK) {
-        status = HAL_SPI_Receive(handle->hspi, data, 1, ARDUCAM_SPI_TIMEOUT);
-    }
+    status = HAL_SPI_TransmitReceive(handle->hspi, tx_buf, rx_buf, 2, ARDUCAM_SPI_TIMEOUT);
     arducam_cs_high(handle);
+
+    if (status == HAL_OK) {
+        *data = rx_buf[1];  /* Data is in second byte (received while sending dummy) */
+    }
 
     return status;
 }
