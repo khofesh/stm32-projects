@@ -24,13 +24,13 @@ Frame format received:
 
 import argparse
 import os
+import struct
 import sys
 import time
-import struct
-import serial
 from datetime import datetime
 from pathlib import Path
 
+import serial
 
 # Resolution command mapping
 RESOLUTIONS = {
@@ -130,15 +130,19 @@ class ArduCAMCapture:
             return ""
 
         self.serial.write(bytes([cmd]))
-        time.sleep(0.1)
+        time.sleep(0.2)  # Wait for STM32 to process command
 
-        # Read response (ACK message)
+        # Read response (ACK message) with timeout
         response = ""
-        while self.serial.in_waiting:
-            try:
-                response += self.serial.read(self.serial.in_waiting).decode('utf-8', errors='ignore')
-            except:
-                pass
+        start_time = time.time()
+        while time.time() - start_time < 0.5:  # 500ms timeout for ACK
+            if self.serial.in_waiting:
+                try:
+                    response += self.serial.read(self.serial.in_waiting).decode('utf-8', errors='ignore')
+                except:
+                    pass
+                if "ACK" in response:
+                    break
             time.sleep(0.05)
 
         return response.strip()
@@ -272,6 +276,9 @@ class ArduCAMCapture:
         # Validate JPEG
         if not self._validate_jpeg(image_data):
             print("Warning: Image may not be valid JPEG")
+        else:
+            # Trim padding after EOI marker
+            image_data = self._trim_jpeg(image_data)
 
         # Save image
         with open(save_path, "wb") as f:
@@ -303,6 +310,10 @@ class ArduCAMCapture:
                 if not image_data:
                     print("Failed to receive frame, retrying...")
                     continue
+
+                # Trim padding after EOI marker
+                if self._validate_jpeg(image_data):
+                    image_data = self._trim_jpeg(image_data)
 
                 # Generate filename with timestamp
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -340,9 +351,29 @@ class ArduCAMCapture:
         # SOI (Start of Image): 0xFF 0xD8
         # EOI (End of Image): 0xFF 0xD9
         has_soi = data[:2] == b'\xFF\xD8'
-        has_eoi = data[-2:] == b'\xFF\xD9'
+
+        # EOI might not be at the very end due to FIFO padding
+        # Search for EOI in the last 256 bytes
+        search_region = data[-256:] if len(data) > 256 else data
+        has_eoi = b'\xFF\xD9' in search_region
 
         return has_soi and has_eoi
+
+    def _trim_jpeg(self, data: bytes) -> bytes:
+        """
+        Trim JPEG data to remove padding after EOI marker.
+
+        Args:
+            data: Raw image data
+
+        Returns:
+            Trimmed JPEG data
+        """
+        # Find the last occurrence of EOI marker
+        eoi_pos = data.rfind(b'\xFF\xD9')
+        if eoi_pos != -1:
+            return data[:eoi_pos + 2]
+        return data
 
 
 def main():

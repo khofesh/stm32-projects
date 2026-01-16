@@ -34,7 +34,7 @@ python capture_image.py \
     --port /dev/ttyACM0 \
     --baud-rate 115200 \
     --save-location ./images \
-    --size 1024x768 \
+    --size 1600x1200 \
     --quality high \
     --camera-model OV5642 \
     --mode single \
