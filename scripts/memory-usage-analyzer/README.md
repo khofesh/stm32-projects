@@ -1,18 +1,23 @@
 # Pipe directly from arm-none-eabi-size
 
+```
 arm-none-eabi-size 00_aht_lcd.elf | ./stm32_size.py STM32G031F8
+```
 
 # Or paste the output as argument
 
+```
 ./stm32_size.py STM32G031F8 ' 37632 468 2700 40800 9f60 00_aht_lcd.elf'
+```
 
 # List supported chips
 
+```
 ./stm32_size.py --list
-
 ```
 
 Output will look like:
+
 ```
 
 ============================================================
@@ -32,3 +37,4 @@ RAM: 3.1 KB / 8.0 KB [███████████░░░░░░░░�
 Remaining:
 FLASH: 26.8 KB
 RAM: 4.9 KB
+```
