@@ -35,6 +35,13 @@
  */
 
 #include "driver_ssd1315_interface.h"
+#include "main.h"
+#include <stdarg.h>
+#include <stdio.h>
+
+extern I2C_HandleTypeDef hi2c1;
+
+#define I2C_TIMEOUT_MS  1000
 
 /**
  * @brief  interface iic bus init
@@ -73,6 +80,10 @@ uint8_t ssd1315_interface_iic_deinit(void)
  */
 uint8_t ssd1315_interface_iic_write(uint8_t addr, uint8_t reg, uint8_t *buf, uint16_t len)
 {
+    if (HAL_I2C_Mem_Write(&hi2c1, addr, reg, I2C_MEMADD_SIZE_8BIT, buf, len, I2C_TIMEOUT_MS) != HAL_OK)
+    {
+        return 1;
+    }
     return 0;
 }
 
@@ -121,7 +132,7 @@ uint8_t ssd1315_interface_spi_write_cmd(uint8_t *buf, uint16_t len)
  */
 void ssd1315_interface_delay_ms(uint32_t ms)
 {
-
+    HAL_Delay(ms);
 }
 
 /**
@@ -131,7 +142,14 @@ void ssd1315_interface_delay_ms(uint32_t ms)
  */
 void ssd1315_interface_debug_print(const char *const fmt, ...)
 {
+    char buf[128];
+    va_list args;
     
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+
+    printf("%s", buf);
 }
 
 /**

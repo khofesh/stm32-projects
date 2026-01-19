@@ -176,7 +176,7 @@ void aht30_interface_delay_ms(uint32_t ms)
  */
 void aht30_interface_debug_print(const char *const fmt, ...)
 {
-    char buf[256];
+    char buf[128];
     va_list args;
     
     va_start(args, fmt);

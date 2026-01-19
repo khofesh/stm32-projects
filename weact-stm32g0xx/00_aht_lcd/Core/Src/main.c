@@ -22,6 +22,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "driver_aht30_interface.h"
+#include "driver_ssd1315_interface.h"
+
 #include "ringbuffer.h"
 #include <string.h>
 #include <stdio.h>
@@ -40,7 +42,10 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+char readBuf[1];
+uint8_t txData;
+__IO ITStatus UartReady = SET;
+RingBuffer txBuf, rxBuf;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -54,6 +59,8 @@ RTC_HandleTypeDef hrtc;
 
 /* USER CODE BEGIN PV */
 static aht30_handle_t gs_handle;
+static ssd1315_handle_t gs_lcd_handle;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -64,7 +71,7 @@ static void MX_RTC_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_LPUART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+uint8_t UART_Transmit(UART_HandleTypeDef *lpuart, uint8_t *pData, uint16_t len);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -86,6 +93,13 @@ int main(void)
     float temperature;
     uint8_t humidity;
     aht30_info_t info;
+
+    uint8_t lcd_res;
+    ssd1315_info_t lcd_info;
+    char test_str1[] ="libdriver";
+    char test_str2[] ="ssd1315";
+    char test_str3[] ="ABCabc";
+    char test_str4[] ="123?!#$%";
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -160,6 +174,322 @@ int main(void)
 
   /* delay 2000 ms for read */
   aht30_interface_delay_ms(2000);
+
+  // LCD
+  DRIVER_SSD1315_LINK_INIT(&gs_lcd_handle, ssd1315_handle_t);
+  DRIVER_SSD1315_LINK_IIC_INIT(&gs_lcd_handle, ssd1315_interface_iic_init);
+  DRIVER_SSD1315_LINK_IIC_DEINIT(&gs_lcd_handle, ssd1315_interface_iic_deinit);
+  DRIVER_SSD1315_LINK_IIC_WRITE(&gs_lcd_handle, ssd1315_interface_iic_write);
+
+  DRIVER_SSD1315_LINK_SPI_INIT(&gs_lcd_handle, ssd1315_interface_spi_init);
+  DRIVER_SSD1315_LINK_SPI_DEINIT(&gs_lcd_handle, ssd1315_interface_spi_deinit);
+  DRIVER_SSD1315_LINK_SPI_WRITE_COMMAND(&gs_lcd_handle, ssd1315_interface_spi_write_cmd);
+  DRIVER_SSD1315_LINK_SPI_COMMAND_DATA_GPIO_INIT(&gs_lcd_handle, ssd1315_interface_spi_cmd_data_gpio_init);
+  DRIVER_SSD1315_LINK_SPI_COMMAND_DATA_GPIO_DEINIT(&gs_lcd_handle, ssd1315_interface_spi_cmd_data_gpio_deinit);
+  DRIVER_SSD1315_LINK_SPI_COMMAND_DATA_GPIO_WRITE(&gs_lcd_handle, ssd1315_interface_spi_cmd_data_gpio_write);
+
+  DRIVER_SSD1315_LINK_RESET_GPIO_INIT(&gs_lcd_handle, ssd1315_interface_reset_gpio_init);
+  DRIVER_SSD1315_LINK_RESET_GPIO_DEINIT(&gs_lcd_handle, ssd1315_interface_reset_gpio_deinit);
+  DRIVER_SSD1315_LINK_RESET_GPIO_WRITE(&gs_lcd_handle, ssd1315_interface_reset_gpio_write);
+  DRIVER_SSD1315_LINK_DELAY_MS(&gs_lcd_handle, ssd1315_interface_delay_ms);
+  DRIVER_SSD1315_LINK_DEBUG_PRINT(&gs_lcd_handle, ssd1315_interface_debug_print);
+
+  // Set I2C mode and address (0x78 for SA0=GND, 0x7A for SA0=VCC)
+  ssd1315_set_interface(&gs_lcd_handle, SSD1315_INTERFACE_IIC);
+  ssd1315_set_addr_pin(&gs_lcd_handle, SSD1315_ADDR_SA0_0);
+  /* ssd1315 info */
+  lcd_res = ssd1315_info(&lcd_info);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: get info failed.\n");
+
+      return 1;
+  }
+
+  /* ssd1315 init */
+  lcd_res = ssd1315_init(&gs_lcd_handle);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: init failed.\n");
+
+      return 1;
+  }
+
+  /* close display */
+  lcd_res = ssd1315_set_display(&gs_lcd_handle, SSD1315_DISPLAY_OFF);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set display failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* set column address range */
+  lcd_res = ssd1315_set_column_address_range(&gs_lcd_handle, 0x00, 0x7F);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set column address range failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* set page address range */
+  lcd_res = ssd1315_set_page_address_range(&gs_lcd_handle, 0x00, 0x07);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set page address range failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* set low column start address */
+  lcd_res = ssd1315_set_low_column_start_address(&gs_lcd_handle, 0x00);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set low column start address failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* set high column start address */
+  lcd_res = ssd1315_set_high_column_start_address(&gs_lcd_handle, 0x00);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set high column start address failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* set display start line */
+  lcd_res = ssd1315_set_display_start_line(&gs_lcd_handle, 0x00);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set display start line failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* set fade blinking mode */
+  lcd_res = ssd1315_set_fade_blinking_mode(&gs_lcd_handle, SSD1315_FADE_BLINKING_MODE_DISABLE, 0x00);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set fade blinking failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* deactivate scroll */
+  lcd_res = ssd1315_deactivate_scroll(&gs_lcd_handle);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set deactivate scroll failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* set zoom in */
+  lcd_res = ssd1315_set_zoom_in(&gs_lcd_handle, SSD1315_ZOOM_IN_DISABLE);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set set zoom in failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* set contrast */
+  lcd_res = ssd1315_set_contrast(&gs_lcd_handle, 0xCF);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set contrast failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* set segment remap */
+  lcd_res = ssd1315_set_segment_remap(&gs_lcd_handle, SSD1315_SEGMENT_COLUMN_ADDRESS_127);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set segment remap failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* set scan direction */
+  lcd_res = ssd1315_set_scan_direction(&gs_lcd_handle, SSD1315_SCAN_DIRECTION_COMN_1_START);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set scan direction failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* set display mode */
+  lcd_res = ssd1315_set_display_mode(&gs_lcd_handle, SSD1315_DISPLAY_MODE_NORMAL);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set display mode failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* set multiplex ratio */
+  lcd_res = ssd1315_set_multiplex_ratio(&gs_lcd_handle, 0x3F);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set multiplex ratio failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* set display offset */
+  lcd_res = ssd1315_set_display_offset(&gs_lcd_handle, 0x00);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set display offset failed.\n");
+      (void)ssd1315_deinit(&gs_handle);
+
+      return 1;
+  }
+
+  /* set display clock */
+  lcd_res = ssd1315_set_display_clock(&gs_lcd_handle, 0x08, 0x00);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set display clock failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* set pre charge period */
+  lcd_res = ssd1315_set_precharge_period(&gs_lcd_handle, 0x01, 0x0F);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set pre charge period failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* set iref */
+  lcd_res = ssd1315_set_iref(&gs_lcd_handle, SSD1315_IREF_ENABLE, SSD1315_IREF_VALUE_19UA_150UA);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set iref failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* set hardware pins conf */
+  lcd_res = ssd1315_set_com_pins_hardware_conf(&gs_lcd_handle, SSD1315_PIN_CONF_ALTERNATIVE, SSD1315_LEFT_RIGHT_REMAP_DISABLE);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set com pins hardware conf failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* set deselect level 0.77 */
+  lcd_res = ssd1315_set_deselect_level(&gs_lcd_handle, SSD1315_DESELECT_LEVEL_0P77);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set deselect level failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* set page memory addressing mode */
+  lcd_res = ssd1315_set_memory_addressing_mode(&gs_lcd_handle, SSD1315_MEMORY_ADDRESSING_MODE_PAGE);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set memory addressing level failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* enable charge pump */
+  lcd_res = ssd1315_set_charge_pump(&gs_lcd_handle, SSD1315_CHARGE_PUMP_ENABLE, SSD1315_CHARGE_PUMP_MODE_7P5V);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set charge pump failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* entire display off */
+  lcd_res = ssd1315_set_entire_display(&gs_lcd_handle, SSD1315_ENTIRE_DISPLAY_OFF);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set entire display failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* enable display */
+  lcd_res = ssd1315_set_display(&gs_lcd_handle, SSD1315_DISPLAY_ON);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: set display failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* clear screen */
+  lcd_res = ssd1315_clear(&gs_lcd_handle);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: clear failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* start display test */
+  ssd1315_interface_debug_print("ssd1315: start display test.\n");
+
+  /* font 12 test */
+  ssd1315_interface_debug_print("ssd1315: font 12 test.\n");
+
+  /* write str1 */
+  lcd_res =  ssd1315_gram_write_string(&gs_lcd_handle, 0, 0, (char *)test_str1, (uint16_t)strlen(test_str1), 1, SSD1315_FONT_12);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: gram write string failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
+
+  /* write str2 */
+  lcd_res =  ssd1315_gram_write_string(&gs_lcd_handle, 0, 15, (char *)test_str2, (uint16_t)strlen(test_str2), 1, SSD1315_FONT_12);
+  if (lcd_res != 0)
+  {
+      ssd1315_interface_debug_print("ssd1315: gram write string failed.\n");
+      (void)ssd1315_deinit(&gs_lcd_handle);
+
+      return 1;
+  }
   while (1)
   {
     /* USER CODE END WHILE */
@@ -425,7 +755,30 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+uint8_t UART_Transmit(UART_HandleTypeDef *lpuart, uint8_t *pData, uint16_t len)
+{
+  if(HAL_UART_Transmit_IT(lpuart, pData, len) != HAL_OK)
+  {
+    if(RingBuffer_Write(&txBuf, pData, len) != RING_BUFFER_OK)
+      return 0;
+  }
+  return 1;
+}
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle)
+{
+ /* Set transmission flag: transfer complete*/
+ UartReady = SET;
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if(RingBuffer_GetDataLength(&txBuf) > 0)
+  {
+    RingBuffer_Read(&txBuf, &txData, 1);
+    HAL_UART_Transmit_IT(huart, &txData, 1);
+  }
+}
 /* USER CODE END 4 */
 
 /**

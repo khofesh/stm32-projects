@@ -3,7 +3,7 @@
 #include <stdint.h>
 
 
-#define RING_BUFFER_LENGTH 1000
+#define RING_BUFFER_LENGTH 500
 
 typedef struct {
 	uint8_t buf[RING_BUFFER_LENGTH];
