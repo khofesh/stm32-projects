@@ -96,10 +96,6 @@ int main(void)
 
     uint8_t lcd_res;
     ssd1315_info_t lcd_info;
-    char test_str1[] ="libdriver";
-    char test_str2[] ="ssd1315";
-    char test_str3[] ="ABCabc";
-    char test_str4[] ="123?!#$%";
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -360,7 +356,7 @@ int main(void)
   if (lcd_res != 0)
   {
       ssd1315_interface_debug_print("ssd1315: set display offset failed.\n");
-      (void)ssd1315_deinit(&gs_handle);
+      (void)ssd1315_deinit(&gs_lcd_handle);
 
       return 1;
   }
@@ -465,33 +461,57 @@ int main(void)
       return 1;
   }
 
-  /* start display test */
-  ssd1315_interface_debug_print("ssd1315: start display test.\n");
+  char temp_str[20];
+  char hum_str[20];
 
-  /* font 12 test */
-  ssd1315_interface_debug_print("ssd1315: font 12 test.\n");
-
-  /* write str1 */
-  lcd_res =  ssd1315_gram_write_string(&gs_lcd_handle, 0, 0, (char *)test_str1, (uint16_t)strlen(test_str1), 1, SSD1315_FONT_12);
-  if (lcd_res != 0)
-  {
-      ssd1315_interface_debug_print("ssd1315: gram write string failed.\n");
-      (void)ssd1315_deinit(&gs_lcd_handle);
-
-      return 1;
-  }
-
-  /* write str2 */
-  lcd_res =  ssd1315_gram_write_string(&gs_lcd_handle, 0, 15, (char *)test_str2, (uint16_t)strlen(test_str2), 1, SSD1315_FONT_12);
-  if (lcd_res != 0)
-  {
-      ssd1315_interface_debug_print("ssd1315: gram write string failed.\n");
-      (void)ssd1315_deinit(&gs_lcd_handle);
-
-      return 1;
-  }
   while (1)
   {
+      /* read temperature and humidity */
+      res = aht30_read_temperature_humidity(&gs_handle, (uint32_t *)&temperature_raw, (float *)&temperature, (uint32_t *)&humidity_raw, (uint8_t *)&humidity);
+      if (res != 0)
+      {
+          aht30_interface_debug_print("aht30: read failed.\n");
+          (void)aht30_deinit(&gs_handle);
+
+          return 1;
+      }
+
+      /* clear display */
+      ssd1315_clear(&gs_lcd_handle);
+
+      /* format temperature string */
+      snprintf(temp_str, sizeof(temp_str), "Temp: %.1f C", temperature);
+      lcd_res =  ssd1315_gram_write_string(&gs_lcd_handle, 0, 0, temp_str, (uint16_t)strlen(temp_str), 1, SSD1315_FONT_12);
+      if (lcd_res != 0)
+      {
+          ssd1315_interface_debug_print("ssd1315: gram write string failed.\n");
+          (void)ssd1315_deinit(&gs_lcd_handle);
+
+          return 1;
+      }
+
+      /* format humidity string */
+      snprintf(hum_str, sizeof(hum_str), "Hum: %d %%", humidity);
+      lcd_res =  ssd1315_gram_write_string(&gs_lcd_handle, 0, 16, hum_str, (uint16_t)strlen(hum_str), 1, SSD1315_FONT_12);
+      if (lcd_res != 0)
+      {
+          ssd1315_interface_debug_print("ssd1315: gram write string failed.\n");
+          (void)ssd1315_deinit(&gs_lcd_handle);
+
+          return 1;
+      }
+
+      /* update display */
+      lcd_res = ssd1315_gram_update(&gs_lcd_handle);
+      if (lcd_res != 0)
+      {
+          ssd1315_interface_debug_print("ssd1315: gram update failed.\n");
+          (void)ssd1315_deinit(&gs_lcd_handle);
+
+          return 1;
+      }
+
+      aht30_interface_delay_ms(2000);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
