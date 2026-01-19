@@ -43,6 +43,13 @@
 extern "C"{
 #endif
 
+typedef enum {
+    I2C_STATE_READY = 0,
+    I2C_STATE_BUSY_TX,
+    I2C_STATE_BUSY_RX,
+    I2C_STATE_ERROR
+} I2C_State_t;
+
 /**
  * @defgroup aht30_interface_driver aht30 interface driver function
  * @brief    aht30 interface driver modules
