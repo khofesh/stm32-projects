@@ -10,3 +10,7 @@ pin connection:
 - PA3 -> LPUART1_RX
 
 ![alt text](image.png)
+
+result:
+
+![image](./6300759672717249952.jpg)
