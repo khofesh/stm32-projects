@@ -61,7 +61,7 @@ extern DMA_HandleTypeDef hdma_lpuart1_tx;
 extern UART_HandleTypeDef hlpuart1;
 extern RTC_HandleTypeDef hrtc;
 /* USER CODE BEGIN EV */
-extern RTC_HandleTypeDef hrtc;
+
 /* USER CODE END EV */
 
 /******************************************************************************/

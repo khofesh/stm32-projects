@@ -23,9 +23,6 @@ void Power_Init(RTC_HandleTypeDef *hrtc)
     
     /* Enable PWR clock */
     __HAL_RCC_PWR_CLK_ENABLE();
-    
-    /* Configure low power mode settings */
-    HAL_PWREx_EnableLowPowerRunMode();
 }
 
 /**

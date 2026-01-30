@@ -129,10 +129,6 @@ int main(void)
   /* Initialize power management */
   Power_Init(&hrtc);
   Power_SetMode(SELECTED_POWER_MODE);
-  
-  /* Enable RTC wakeup interrupt */
-  HAL_NVIC_SetPriority(RTC_TAMP_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(RTC_TAMP_IRQn);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -782,7 +778,8 @@ static void MX_RTC_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN RTC_Init 2 */
-
+  /* Disable the wakeup timer set by CubeMX - power management will control it */
+  HAL_RTCEx_DeactivateWakeUpTimer(&hrtc);
   /* USER CODE END RTC_Init 2 */
 
 }
