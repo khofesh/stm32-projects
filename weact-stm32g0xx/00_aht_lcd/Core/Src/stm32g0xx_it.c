@@ -59,6 +59,7 @@ extern I2C_HandleTypeDef hi2c1;
 extern DMA_HandleTypeDef hdma_lpuart1_rx;
 extern DMA_HandleTypeDef hdma_lpuart1_tx;
 extern UART_HandleTypeDef hlpuart1;
+extern RTC_HandleTypeDef hrtc;
 /* USER CODE BEGIN EV */
 extern RTC_HandleTypeDef hrtc;
 /* USER CODE END EV */
@@ -144,6 +145,20 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /**
+  * @brief This function handles RTC and TAMP interrupts through EXTI lines 19 and 21.
+  */
+void RTC_TAMP_IRQHandler(void)
+{
+  /* USER CODE BEGIN RTC_TAMP_IRQn 0 */
+
+  /* USER CODE END RTC_TAMP_IRQn 0 */
+  HAL_RTCEx_WakeUpTimerIRQHandler(&hrtc);
+  /* USER CODE BEGIN RTC_TAMP_IRQn 1 */
+
+  /* USER CODE END RTC_TAMP_IRQn 1 */
+}
+
+/**
   * @brief This function handles DMA1 channel 2 and channel 3 interrupts.
   */
 void DMA1_Channel2_3_IRQHandler(void)
@@ -207,11 +222,5 @@ void LPUART1_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
-/**
-  * @brief This function handles RTC and TAMP interrupts through EXTI lines 19 and 21.
-  */
-void RTC_TAMP_IRQHandler(void)
-{
-    HAL_RTCEx_WakeUpTimerIRQHandler(&hrtc);
-}
+
 /* USER CODE END 1 */
