@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include "driver_aht30_interface.h"
 #include "driver_ssd1315_interface.h"
+#include "power_management.h"
 
 #include "ringbuffer.h"
 #include <string.h>
@@ -61,6 +62,9 @@ RTC_HandleTypeDef hrtc;
 static aht30_handle_t gs_handle;
 static ssd1315_handle_t gs_lcd_handle;
 
+/* Power mode selection - change this to adjust power consumption */
+#define SELECTED_POWER_MODE  POWER_MODE_LOW_POWER
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -72,6 +76,7 @@ static void MX_I2C1_Init(void);
 static void MX_LPUART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 uint8_t UART_Transmit(UART_HandleTypeDef *lpuart, uint8_t *pData, uint16_t len);
+void SystemClock_Config_AfterStop(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -121,7 +126,13 @@ int main(void)
   MX_I2C1_Init();
   MX_LPUART1_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  /* Initialize power management */
+  Power_Init(&hrtc);
+  Power_SetMode(SELECTED_POWER_MODE);
+  
+  /* Enable RTC wakeup interrupt */
+  HAL_NVIC_SetPriority(RTC_TAMP_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(RTC_TAMP_IRQn);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -301,8 +312,8 @@ int main(void)
       return 1;
   }
 
-  /* set contrast */
-  lcd_res = ssd1315_set_contrast(&gs_lcd_handle, 0xCF);
+  /* set contrast based on power mode */
+  lcd_res = ssd1315_set_contrast(&gs_lcd_handle, Power_GetLCDContrast());
   if (lcd_res != 0)
   {
       ssd1315_interface_debug_print("ssd1315: set contrast failed.\n");
@@ -463,9 +474,22 @@ int main(void)
 
   char temp_str[20];
   char hum_str[20];
+  uint32_t sleep_duration;
 
   while (1)
   {
+      /* Get sleep duration based on power mode */
+      sleep_duration = Power_GetUpdateInterval();
+      
+      /* Enable peripherals for reading (if disabled in ultra-low mode) */
+      Power_EnablePeripheralsForReading();
+      
+      /* In ultra-low power mode, turn on LCD before update */
+      if (Power_ShouldTurnOffLCD())
+      {
+          ssd1315_set_display(&gs_lcd_handle, SSD1315_DISPLAY_ON);
+      }
+      
       /* read temperature and humidity */
       res = aht30_read_temperature_humidity(&gs_handle, (uint32_t *)&temperature_raw, (float *)&temperature, (uint32_t *)&humidity_raw, (uint8_t *)&humidity);
       if (res != 0)
@@ -511,7 +535,29 @@ int main(void)
           return 1;
       }
 
-      aht30_interface_delay_ms(2000);
+      /* In ultra-low power mode, turn off LCD after update to save power */
+      if (Power_ShouldTurnOffLCD())
+      {
+          /* Keep display on for 2 seconds so user can read it */
+          HAL_Delay(2000);
+          ssd1315_set_display(&gs_lcd_handle, SSD1315_DISPLAY_OFF);
+          sleep_duration -= 2000; /* Adjust sleep time */
+      }
+      
+      /* Disable peripherals after reading to save power */
+      Power_DisablePeripheralsAfterReading();
+      
+      /* Enter low power sleep mode instead of busy-wait delay */
+      if (Power_GetMode() == POWER_MODE_NORMAL)
+      {
+          /* Normal mode: use regular delay */
+          HAL_Delay(sleep_duration);
+      }
+      else
+      {
+          /* Low power modes: use Stop mode with RTC wakeup */
+          Power_EnterStopMode(sleep_duration);
+      }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -775,6 +821,48 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+/**
+  * @brief Restore system clock after Stop mode
+  * @note  Called by power_management.c after waking from Stop mode
+  */
+void SystemClock_Config_AfterStop(void)
+{
+    RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+    RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+
+    /* Configure the main internal regulator output voltage */
+    HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1);
+
+    /* Re-enable HSI and PLL after Stop mode */
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+    RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+    RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV1;
+    RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+    RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV1;
+    RCC_OscInitStruct.PLL.PLLN = 8;
+    RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+    RCC_OscInitStruct.PLL.PLLQ = RCC_PLLQ_DIV2;
+    RCC_OscInitStruct.PLL.PLLR = RCC_PLLR_DIV2;
+    
+    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+    {
+        Error_Handler();
+    }
+
+    /* Select PLL as system clock source */
+    RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1;
+    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+    RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+
+    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+    {
+        Error_Handler();
+    }
+}
+
 uint8_t UART_Transmit(UART_HandleTypeDef *lpuart, uint8_t *pData, uint16_t len)
 {
   if(HAL_UART_Transmit_IT(lpuart, pData, len) != HAL_OK)

@@ -60,7 +60,7 @@ extern DMA_HandleTypeDef hdma_lpuart1_rx;
 extern DMA_HandleTypeDef hdma_lpuart1_tx;
 extern UART_HandleTypeDef hlpuart1;
 /* USER CODE BEGIN EV */
-
+extern RTC_HandleTypeDef hrtc;
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -207,5 +207,11 @@ void LPUART1_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
-
+/**
+  * @brief This function handles RTC and TAMP interrupts through EXTI lines 19 and 21.
+  */
+void RTC_TAMP_IRQHandler(void)
+{
+    HAL_RTCEx_WakeUpTimerIRQHandler(&hrtc);
+}
 /* USER CODE END 1 */
