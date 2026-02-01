@@ -119,6 +119,19 @@ extern "C" {
 #define CONTRAST_MINUS_3            7
 #define CONTRAST_MINUS_4            8
 
+#define CONTRAST_DEGREE_MINUS_180            0
+#define CONTRAST_DEGREE_MINUS_150            1
+#define CONTRAST_DEGREE_MINUS_120            2
+#define CONTRAST_DEGREE_MINUS_90             3
+#define CONTRAST_DEGREE_MINUS_60             4
+#define CONTRAST_DEGREE_MINUS_30             5
+#define CONTRAST_DEGREE_MINUS_0              6
+#define CONTRAST_DEGREE_PLUS_30              7
+#define CONTRAST_DEGREE_PLUS_60              8
+#define CONTRAST_DEGREE_PLUS_90              9
+#define CONTRAST_DEGREE_PLUS_120             10
+#define CONTRAST_DEGREE_PLUS_150             11
+
 /* Special Effects */
 #define EFFECT_ANTIQUE              0
 #define EFFECT_BLUISH               1
@@ -157,6 +170,25 @@ extern "C" {
 #define SHARPNESS_MANUAL_3          6
 #define SHARPNESS_MANUAL_4          7
 #define SHARPNESS_MANUAL_5          8
+
+
+#define Sharpness1                         0
+#define Sharpness2                         1
+#define Sharpness3                         2
+#define Sharpness4                         3
+#define Sharpness5                         4
+#define Sharpness6                         5
+#define Sharpness7                         6
+#define Sharpness8                         7
+#define Sharpness_auto                       8
+
+#define EV3                                 0
+#define EV2                                 1
+#define EV1                                 2
+#define EV0                                 3
+#define EV_1                                4
+#define EV_2                                5
+#define EV_3                                6
 
 /* Mirror/Flip */
 #define MIRROR_NONE                 0
