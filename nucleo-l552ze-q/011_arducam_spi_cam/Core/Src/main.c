@@ -203,14 +203,9 @@ int main(void)
       /* Handle capture modes */
       if (capture_mode == MODE_SINGLE) {
           if (start_capture == 1) {
-              /* Start single capture */
+              /* Start single capture - camera already woken up and FIFO cleared in process_command */
               printf("Starting single capture...\r\n");
-              arducam_exit_standby(&cam);
-              HAL_Delay(300);  /* Wait for sensor to wake up */
-
-              /* Flush and clear FIFO */
-              arducam_flush_fifo(&cam);
-              arducam_clear_fifo_flag(&cam);
+              HAL_Delay(200);  /* Wait for sensor to stabilize */
 
               /* Start capture */
               arducam_start_capture(&cam);
@@ -838,8 +833,18 @@ static void process_command(uint8_t cmd)
 
         /* Single capture */
         case CMD_SINGLE_CAPTURE:
+            /* Flush UART to clear any pending data */
+            HAL_UART_AbortReceive(&huart2);
+            __HAL_UART_FLUSH_DRREGISTER(&huart2);
+            /* Ensure camera is in clean state before capture */
+            arducam_exit_standby(&cam);
+            HAL_Delay(100);
+            /* Clear any leftover data in FIFO */
+            arducam_flush_fifo(&cam);
+            arducam_clear_fifo_flag(&cam);
             capture_mode = MODE_SINGLE;
             start_capture = 1;
+
             break;
 
         /* Re-initialize JPEG mode */
@@ -863,7 +868,13 @@ static void process_command(uint8_t cmd)
         case CMD_STOP_STREAMING:
             capture_mode = MODE_IDLE;
             start_capture = 0;
+            /* Clear FIFO to remove any leftover data */
+            arducam_flush_fifo(&cam);
+            arducam_clear_fifo_flag(&cam);
             arducam_enter_standby(&cam);
+            /* Flush UART to clear any pending data */
+            HAL_UART_AbortReceive(&huart2);
+            __HAL_UART_FLUSH_DRREGISTER(&huart2);
             uart_send_string("ACK CMD CAM stop video streaming. END");
             break;
 

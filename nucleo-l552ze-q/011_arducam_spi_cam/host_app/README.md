@@ -94,6 +94,8 @@ python capture_image.py \
 
 ```bash
 python capture_image.py --port /dev/ttyACM0 --size 2592x1944 --quality high
+
+python capture_image.py --port /dev/ttyACM0 --size 1280x960 --quality high --save-location ./images
 ```
 
 ### Stream 100 frames
