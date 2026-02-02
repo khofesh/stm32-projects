@@ -139,7 +139,7 @@ class ArduCAMCapture:
             if self.serial.in_waiting:
                 try:
                     response += self.serial.read(self.serial.in_waiting).decode('utf-8', errors='ignore')
-                except:
+                except Exception:
                     pass
                 if "ACK" in response:
                     break
@@ -188,6 +188,40 @@ class ArduCAMCapture:
         print(f"Set quality to {quality}: {response}")
         return "ACK" in response
 
+    def _validate_jpeg(self, data: bytes) -> bool:
+        """
+        Validate JPEG data by checking SOI and EOI markers.
+
+        Args:
+            data: Raw image data
+
+        Returns:
+            True if valid JPEG structure
+        """
+        if len(data) < 4:
+            return False
+        # Check for SOI marker (Start of Image): 0xFF 0xD8
+        has_soi = data[:2] == b'\xFF\xD8'
+        # Check for EOI marker (End of Image): 0xFF 0xD9
+        has_eoi = b'\xFF\xD9' in data
+        return has_soi and has_eoi
+
+    def _trim_jpeg(self, data: bytes) -> bytes:
+        """
+        Trim JPEG data to remove padding after EOI marker.
+
+        Args:
+            data: Raw image data
+
+        Returns:
+            Trimmed JPEG data
+        """
+        # Find the last occurrence of EOI marker
+        eoi_pos = data.rfind(b'\xFF\xD9')
+        if eoi_pos != -1:
+            return data[:eoi_pos + 2]
+        return data
+
     def wait_for_frame(self) -> bytes:
         """
         Wait for and receive a complete image frame.
@@ -214,6 +248,9 @@ class ArduCAMCapture:
                 # Keep buffer small while searching
                 if len(buffer) > 1024:
                     buffer = buffer[-2:]
+            else:
+                # Small sleep to avoid busy-waiting when no data available
+                time.sleep(0.001)
         else:
             print("Timeout waiting for start marker")
             return b""
@@ -234,19 +271,26 @@ class ArduCAMCapture:
         # Read image data
         image_data = b""
         remaining = length
+        read_start_time = time.time()
         while remaining > 0:
+            # Check for timeout during data read
+            if time.time() - read_start_time > self.timeout:
+                print("Timeout reading image data")
+                return b""
+            
             chunk_size = min(remaining, 4096)
             chunk = self.serial.read(chunk_size)
             if not chunk:
-                print("Timeout reading image data")
-                return b""
+                # No data received, but serial.read() returned due to timeout
+                # Continue waiting unless overall timeout exceeded
+                continue
             image_data += chunk
             remaining -= len(chunk)
 
         # Read end marker
         end_marker = self.serial.read(2)
         if end_marker != END_MARKER:
-            print(f"Invalid end marker: {end_marker.hex()}")
+            print(f"Invalid end marker: {end_marker.hex() if end_marker else 'empty'}")
             # Still return data, might be usable
             return image_data
 
@@ -273,11 +317,8 @@ class ArduCAMCapture:
             print("Failed to receive image")
             return False
 
-        # Validate JPEG
-        if not self._validate_jpeg(image_data):
-            print("Warning: Image may not be valid JPEG")
-        else:
-            # Trim padding after EOI marker
+        # Validate and trim JPEG data
+        if self._validate_jpeg(image_data):
             image_data = self._trim_jpeg(image_data)
 
         # Save image
@@ -303,13 +344,23 @@ class ArduCAMCapture:
         print(f"Response: {response}")
 
         frame_count = 0
+        consecutive_failures = 0
+        max_consecutive_failures = 5  # Prevent infinite loop on persistent errors
+
         try:
             while max_frames == 0 or frame_count < max_frames:
                 image_data = self.wait_for_frame()
 
                 if not image_data:
-                    print("Failed to receive frame, retrying...")
+                    consecutive_failures += 1
+                    print(f"Failed to receive frame (attempt {consecutive_failures}/{max_consecutive_failures}), retrying...")
+                    if consecutive_failures >= max_consecutive_failures:
+                        print("Too many consecutive failures, stopping streaming")
+                        break
                     continue
+
+                # Reset failure counter on success
+                consecutive_failures = 0
 
                 # Trim padding after EOI marker
                 if self._validate_jpeg(image_data):
@@ -333,47 +384,6 @@ class ArduCAMCapture:
         self.send_command(CMD_STOP_STREAMING)
         print(f"Streaming stopped. Captured {frame_count} frames.")
         return frame_count
-
-    def _validate_jpeg(self, data: bytes) -> bool:
-        """
-        Validate JPEG data.
-
-        Args:
-            data: Image data
-
-        Returns:
-            True if valid JPEG
-        """
-        if len(data) < 4:
-            return False
-
-        # Check JPEG markers
-        # SOI (Start of Image): 0xFF 0xD8
-        # EOI (End of Image): 0xFF 0xD9
-        has_soi = data[:2] == b'\xFF\xD8'
-
-        # EOI might not be at the very end due to FIFO padding
-        # Search for EOI in the last 256 bytes
-        search_region = data[-256:] if len(data) > 256 else data
-        has_eoi = b'\xFF\xD9' in search_region
-
-        return has_soi and has_eoi
-
-    def _trim_jpeg(self, data: bytes) -> bytes:
-        """
-        Trim JPEG data to remove padding after EOI marker.
-
-        Args:
-            data: Raw image data
-
-        Returns:
-            Trimmed JPEG data
-        """
-        # Find the last occurrence of EOI marker
-        eoi_pos = data.rfind(b'\xFF\xD9')
-        if eoi_pos != -1:
-            return data[:eoi_pos + 2]
-        return data
 
 
 def main():
