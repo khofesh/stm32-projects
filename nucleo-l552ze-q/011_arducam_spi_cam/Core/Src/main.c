@@ -58,6 +58,7 @@
 #define CMD_QUALITY_LOW         0xD2
 #define CMD_RESET_CAMERA        0xF0
 
+
 /* Capture modes */
 #define MODE_IDLE               0
 #define MODE_SINGLE             1
