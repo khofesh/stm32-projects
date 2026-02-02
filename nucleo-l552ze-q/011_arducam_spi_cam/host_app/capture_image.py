@@ -60,6 +60,7 @@ CAMERA_MODELS = {
 CMD_SINGLE_CAPTURE = 0x10
 CMD_START_STREAMING = 0x20
 CMD_STOP_STREAMING = 0x21
+CMD_RESET_CAMERA = 0xF0
 
 # Frame markers
 START_MARKER = bytes([0xFF, 0xAA])
@@ -186,6 +187,41 @@ class ArduCAMCapture:
         cmd = QUALITIES[quality]
         response = self.send_command(cmd)
         print(f"Set quality to {quality}: {response}")
+        return "ACK" in response
+
+    def reset_camera(self) -> bool:
+        """
+        Perform a full camera reset (software reset of sensor).
+
+        This is useful when the camera gets into a bad state after
+        streaming or multiple captures.
+
+        Returns:
+            True if successful
+        """
+        print("Resetting camera...")
+        # Flush serial buffers before reset
+        self.serial.reset_input_buffer()
+        self.serial.reset_output_buffer()
+        
+        self.serial.write(bytes([CMD_RESET_CAMERA]))
+        
+        time.sleep(3)
+        
+        # Read response
+        response = ""
+        start_time = time.time()
+        while time.time() - start_time < 2.0:
+            if self.serial.in_waiting:
+                try:
+                    response += self.serial.read(self.serial.in_waiting).decode('utf-8', errors='ignore')
+                except Exception:
+                    pass
+                if "ACK" in response or "ERR" in response:
+                    break
+            time.sleep(0.05)
+        
+        print(f"Reset response: {response.strip()}")
         return "ACK" in response
 
     def _validate_jpeg(self, data: bytes) -> bool:
@@ -470,6 +506,12 @@ Examples:
         help="Read timeout in seconds (default: 10.0)"
     )
 
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="Reset camera before capture (useful after streaming or errors)"
+    )
+
     args = parser.parse_args()
 
     # Create save directory
@@ -488,6 +530,12 @@ Examples:
         sys.exit(1)
 
     try:
+        # Reset camera if requested
+        if args.reset:
+            if not capture.reset_camera():
+                print("Warning: Camera reset may have failed")
+            time.sleep(1)  # Extra delay after reset
+
         # Set resolution
         if not capture.set_resolution(args.size):
             print("Warning: Failed to set resolution")

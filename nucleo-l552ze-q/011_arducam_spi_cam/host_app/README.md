@@ -109,3 +109,13 @@ python capture_image.py --port /dev/ttyACM0 --mode streaming --max-frames 100
 ```bash
 python capture_image.py --port COM3 --size 640x480 --save-location C:\images
 ```
+
+### reset
+
+```bash
+# Reset camera before single capture
+python capture_image.py --port /dev/ttyACM0 --reset --save-location ./images
+
+# Reset camera before streaming
+python capture_image.py --port /dev/ttyACM0 --reset --mode streaming --save-location ./frames
+```

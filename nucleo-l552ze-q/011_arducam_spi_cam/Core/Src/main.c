@@ -56,6 +56,7 @@
 #define CMD_QUALITY_HIGH        0xD0
 #define CMD_QUALITY_DEFAULT     0xD1
 #define CMD_QUALITY_LOW         0xD2
+#define CMD_RESET_CAMERA        0xF0
 
 /* Capture modes */
 #define MODE_IDLE               0
@@ -897,6 +898,31 @@ static void process_command(uint8_t cmd)
             status = arducam_ov5642_set_compress_quality(&cam, QUALITY_LOW);
             if (status == HAL_OK) {
                 uart_send_string("ACK CMD Set to low quality");
+            }
+            break;
+
+        /* Full camera reset */
+        case CMD_RESET_CAMERA:
+            capture_mode = MODE_IDLE;
+            start_capture = 0;
+            /* Flush UART */
+            HAL_UART_AbortReceive(&huart2);
+            __HAL_UART_FLUSH_DRREGISTER(&huart2);
+            /* Clear FIFO */
+            arducam_flush_fifo(&cam);
+            arducam_clear_fifo_flag(&cam);
+            /* Full sensor software reset and re-initialization */
+            arducam_set_format(&cam, ARDUCAM_FMT_JPEG);
+            status = arducam_init_cam(&cam);
+            if (status == HAL_OK) {
+                arducam_set_bit(&cam, ARDUCHIP_TIM, VSYNC_LEVEL_MASK);
+                HAL_Delay(1000);
+                arducam_ov5642_set_jpeg_size(&cam, OV5642_640x480);
+                HAL_Delay(500);
+                arducam_enter_standby(&cam);
+                uart_send_string("ACK CMD CAM reset complete");
+            } else {
+                uart_send_string("ERR CMD CAM reset failed");
             }
             break;
 
