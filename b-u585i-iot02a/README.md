@@ -1,5 +1,7 @@
 # B-U585I-IOT02A
 
+https://www.st.com/en/evaluation-tools/b-u585i-iot02a.html#overview
+
 ![the board](./6337103823411200982.jpg)
 
 ![the board 2](./6337103823411200981.jpg)
