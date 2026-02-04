@@ -21,7 +21,11 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "ringbuffer.h"
+#include "lora-e5.h"
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -48,7 +52,18 @@ DMA_HandleTypeDef hdma_usart2_rx;
 DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
+char readBuf[1];
+uint8_t txData;
+__IO ITStatus UartReady = SET;
+RingBuffer txBuf, rxBuf;
 
+/* LoRa-E5 Handle */
+LoRa_Handle_t hLoRa;
+
+/* LoRaWAN Configuration */
+#define LORA_APP_EUI    "0000000000000000"
+#define LORA_DEV_EUI    "0000000000000000"
+#define LORA_APP_KEY    "00000000000000000000000000000000"
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -100,6 +115,8 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  RingBuffer_Init(&txBuf);
+  RingBuffer_Init(&rxBuf);
   /* USER CODE END 2 */
 
   /* Initialize leds */
@@ -121,11 +138,94 @@ int main(void)
     Error_Handler();
   }
 
+  /* USER CODE BEGIN LoRa_Init */
+  printf("\r\n=== Grove Wio-E5 LoRa Module Test ===\r\n");
+  printf("Initializing LoRa-E5 module...\r\n");
+
+  /* Initialize LoRa-E5 module with USART2 */
+  if (LoRa_Init(&hLoRa, &huart2) != LORA_OK) {
+      printf("ERROR: Failed to initialize LoRa-E5 module!\r\n");
+      BSP_LED_On(LED_RED);
+  } else {
+      printf("LoRa-E5 module initialized successfully!\r\n");
+      BSP_LED_On(LED_GREEN);
+
+      /* Get and display module version */
+      char version_buf[128];
+      LoRa_GetVersion(&hLoRa, version_buf, LORA_DEFAULT_TIMEOUT);
+      printf("Version: %s\r\n", version_buf);
+
+      /* Get Device EUI */
+      char id_buf[128];
+      LoRa_GetId(&hLoRa, id_buf, LORA_ID_DEV_EUI, LORA_DEFAULT_TIMEWAIT);
+      printf("DevEUI: %s\r\n", id_buf);
+
+      /* Configure for OTAA mode */
+      printf("\r\nConfiguring for OTAA mode...\r\n");
+      LoRa_SetDeviceMode(&hLoRa, LORA_MODE_LWOTAA);
+
+      /* Set region (change as needed for your location) */
+      printf("Setting region to AS923...\r\n");
+      LoRa_SetFrequencyBand(&hLoRa, LORA_REGION_AS923);
+
+      /* Set keys - UPDATE THESE FOR YOUR NETWORK */
+      printf("Setting LoRaWAN keys...\r\n");
+      LoRa_SetId(&hLoRa, NULL, LORA_DEV_EUI, LORA_APP_EUI);
+      LoRa_SetKey(&hLoRa, NULL, NULL, LORA_APP_KEY);
+
+      /* Set Class A */
+      LoRa_SetClassType(&hLoRa, LORA_CLASS_A);
+
+      /* Disable ADR for testing */
+      LoRa_SetAdaptiveDataRate(&hLoRa, false);
+
+      /* Set data rate */
+      LoRa_SetDataRate(&hLoRa, LORA_DR5, LORA_REGION_UNINIT);
+
+      printf("Configuration complete!\r\n");
+      printf("\r\nAttempting to join network (this may take a while)...\r\n");
+
+      /* Try to join the network */
+      if (LoRa_JoinOTAA(&hLoRa, LORA_JOIN_JOIN, 30000) > 0) {
+          printf("Successfully joined the network!\r\n");
+          BSP_LED_Off(LED_GREEN);
+          BSP_LED_On(LED_BLUE);
+      } else {
+          printf("Failed to join network. Check your keys and gateway.\r\n");
+          BSP_LED_On(LED_RED);
+      }
+  }
+  /* USER CODE END LoRa_Init */
+
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  uint32_t last_tx_time = 0;
+  uint32_t tx_counter = 0;
+  char tx_buffer[64];
+
   while (1)
   {
+    /* Send a test message every 30 seconds */
+    if (HAL_GetTick() - last_tx_time >= 30000) {
+        last_tx_time = HAL_GetTick();
+        tx_counter++;
 
+        /* Create test payload */
+        snprintf(tx_buffer, sizeof(tx_buffer), "Hello LoRa #%lu", tx_counter);
+
+        printf("\r\nSending: %s\r\n", tx_buffer);
+        BSP_LED_Toggle(LED_GREEN);
+
+        /* Send unconfirmed message */
+        if (LoRa_TransferPacket(&hLoRa, tx_buffer, LORA_DEFAULT_TIMEOUT) > 0) {
+            printf("Message sent successfully!\r\n");
+        } else {
+            printf("Failed to send message.\r\n");
+        }
+    }
+
+    /* Toggle LED to show activity */
+    HAL_Delay(500);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -306,7 +406,35 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
+{
+  if(HAL_UART_Transmit_IT(huart, pData, len) != HAL_OK)
+  {
+    if(RingBuffer_Write(&txBuf, pData, len) != RING_BUFFER_OK)
+      return 0;
+  }
+  return 1;
+}
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle)
+{
+  /* Set transmission flag: transfer complete*/
+  UartReady = SET;
+
+  /* Handle LoRa-E5 UART reception */
+  if (UartHandle->Instance == USART2) {
+      LoRa_UART_RxCallback(&hLoRa);
+  }
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if(RingBuffer_GetDataLength(&txBuf) > 0)
+  {
+    RingBuffer_Read(&txBuf, &txData, 1);
+    HAL_UART_Transmit_IT(huart, &txData, 1);
+  }
+}
 /* USER CODE END 4 */
 
 /**
