@@ -110,6 +110,8 @@ int main(void)
   MX_ICACHE_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+  HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(USART2_IRQn);
 
   RingBuffer_Init(&txBuf);
   RingBuffer_Init(&rxBuf);
@@ -327,7 +329,7 @@ static void MX_USART2_UART_Init(void)
 
   /* USER CODE END USART2_Init 1 */
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
+  huart2.Init.BaudRate = 9600;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
@@ -400,6 +402,13 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle)
   /* Handle LoRa-E5 UART reception */
   if (UartHandle->Instance == USART2) {
       LoRa_UART_RxCallback(&hLoRa);
+  }
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == USART2) {
+      LoRa_UART_ErrorCallback(&hLoRa);
   }
 }
 

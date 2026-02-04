@@ -37,7 +37,7 @@ LoRa_Status_t LoRa_Init(LoRa_Handle_t *hlora, UART_HandleTypeDef *huart)
     hlora->initialized = false;
     hlora->lowpower_auto = false;
     hlora->adaptive_dr = true;
-    hlora->baud_rate = LORA_BR_115200;
+    hlora->baud_rate = LORA_BR_9600;
     hlora->region = LORA_REGION_UNINIT;
     hlora->sf = LORA_SF_X;
     hlora->bw = LORA_BW_X;
@@ -65,8 +65,12 @@ LoRa_Status_t LoRa_Init(LoRa_Handle_t *hlora, UART_HandleTypeDef *huart)
     /* Wake up the module */
     LoRa_WakeUp(hlora);
     
+    char debug_response[256] = {0};
+
     /* Test communication with AT command */
-    result = LoRa_SendCommand(hlora, "AT\r\n", "AT", LORA_DEFAULT_TIMEWAIT, NULL);
+    result = LoRa_SendCommand(hlora, "AT\r\n", "+AT: OK", 1000, debug_response);
+    printf("LoRa response: [%s], result: %lu, rx_index: %u, callbacks: %lu, errors: %lu\r\n", 
+           debug_response, result, hlora->rx_index, LoRa_GetRxCallbackCount(), LoRa_GetRxErrorCount());
     if (result == 0) {
         /* Try different baud rates */
         /* For now, assume 9600 works - can be extended */
@@ -102,16 +106,49 @@ static void LoRa_ClearBuffer(LoRa_Handle_t *hlora)
     hlora->rx_index = 0;
 }
 
+static volatile uint32_t rx_callback_count = 0;
+static volatile uint32_t rx_error_count = 0;
+static volatile HAL_StatusTypeDef last_rx_status = HAL_OK;
+
 void LoRa_UART_RxCallback(LoRa_Handle_t *hlora)
 {
+    HAL_StatusTypeDef status;
+    
     if (hlora == NULL) return;
+    
+    rx_callback_count++;
     
     if (hlora->rx_index < LORA_BUFFER_LENGTH_MAX - 1) {
         hlora->recv_buf[hlora->rx_index++] = hlora->rx_byte;
     }
     
     /* Continue receiving */
+    status = HAL_UART_Receive_IT(hlora->huart, &hlora->rx_byte, 1);
+    last_rx_status = status;
+    if (status != HAL_OK) {
+        rx_error_count++;
+    }
+}
+
+void LoRa_UART_ErrorCallback(LoRa_Handle_t *hlora)
+{
+    if (hlora == NULL) return;
+    
+    rx_error_count++;
+
+    /* Clear error flags and restart reception */
+    __HAL_UART_CLEAR_FLAG(hlora->huart, UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_PEF | UART_CLEAR_FEF);
     HAL_UART_Receive_IT(hlora->huart, &hlora->rx_byte, 1);
+}
+
+uint32_t LoRa_GetRxCallbackCount(void)
+{
+    return rx_callback_count;
+}
+
+uint32_t LoRa_GetRxErrorCount(void)
+{
+    return rx_error_count;
 }
 
 uint32_t LoRa_SendCommand(LoRa_Handle_t *hlora, const char *cmd, const char *ack, 
@@ -142,6 +179,8 @@ uint32_t LoRa_SendCommand(LoRa_Handle_t *hlora, const char *cmd, const char *ack
     /* Send command if provided */
     if (cmd != NULL) {
         HAL_UART_Transmit(hlora->huart, (uint8_t*)cmd, strlen(cmd), 1000);
+        /* Re-arm RX interrupt after blocking transmit */
+        HAL_UART_Receive_IT(hlora->huart, &hlora->rx_byte, 1);
     }
     
     /* Check for NO_ACK mode */
