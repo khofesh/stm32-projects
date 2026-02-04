@@ -164,11 +164,11 @@ int main(void)
       printf("\r\nConfiguring for OTAA mode...\r\n");
       LoRa_SetDeviceMode(&hLoRa, LORA_MODE_LWOTAA);
 
-      /* Set region (change as needed for your location) */
+      /* Set region */
       printf("Setting region to AS923...\r\n");
       LoRa_SetFrequencyBand(&hLoRa, LORA_REGION_AS923);
 
-      /* Set keys - UPDATE THESE FOR YOUR NETWORK */
+      /* Set keys */
       printf("Setting LoRaWAN keys...\r\n");
       LoRa_SetId(&hLoRa, NULL, LORA_DEV_EUI, LORA_APP_EUI);
       LoRa_SetKey(&hLoRa, NULL, NULL, LORA_APP_KEY);

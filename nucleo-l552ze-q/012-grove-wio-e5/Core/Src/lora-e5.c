@@ -173,13 +173,23 @@ uint32_t LoRa_SendCommand(LoRa_Handle_t *hlora, const char *cmd, const char *ack
     /* Send wake-up bytes if in low power auto mode */
     if (hlora->lowpower_auto) {
         uint8_t wake_bytes[] = {0xFF, 0xFF, 0xFF, 0xFF};
-        HAL_UART_Transmit(hlora->huart, wake_bytes, 4, 100);
+//        HAL_UART_Transmit(hlora->huart, wake_bytes, 4, 100);
+        UART_Transmit(hlora->huart, (uint8_t*)wake_bytes, 4);
+        while (HAL_UART_GetState(hlora->huart) == HAL_UART_STATE_BUSY_TX) {
+        	HAL_Delay(1);
+        }
     }
     
     /* Send command if provided */
     if (cmd != NULL) {
-        HAL_UART_Transmit(hlora->huart, (uint8_t*)cmd, strlen(cmd), 1000);
-        /* Re-arm RX interrupt after blocking transmit */
+//        HAL_UART_Transmit(hlora->huart, (uint8_t*)cmd, strlen(cmd), 1000);
+//        /* Re-arm RX interrupt after blocking transmit */
+//        HAL_UART_Receive_IT(hlora->huart, &hlora->rx_byte, 1);
+        UART_Transmit(hlora->huart, (uint8_t*)cmd, strlen(cmd));
+        /* Wait for TX to complete */
+        while (HAL_UART_GetState(hlora->huart) == HAL_UART_STATE_BUSY_TX) {
+            HAL_Delay(1);
+        }
         HAL_UART_Receive_IT(hlora->huart, &hlora->rx_byte, 1);
     }
     

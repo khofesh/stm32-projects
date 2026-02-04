@@ -12,7 +12,7 @@
 extern "C" {
 #endif
 
-#include "stm32l5xx_hal.h"
+#include "main.h"
 #include <stdint.h>
 #include <stdbool.h>
 
