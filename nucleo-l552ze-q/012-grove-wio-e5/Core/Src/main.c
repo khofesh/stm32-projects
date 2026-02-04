@@ -48,8 +48,6 @@
 COM_InitTypeDef BspCOMInit;
 
 UART_HandleTypeDef huart2;
-DMA_HandleTypeDef hdma_usart2_rx;
-DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
 char readBuf[1];
@@ -69,7 +67,6 @@ LoRa_Handle_t hLoRa;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_DMA_Init(void);
 static void MX_ICACHE_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
@@ -110,7 +107,6 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_DMA_Init();
   MX_ICACHE_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
@@ -138,6 +134,8 @@ int main(void)
     Error_Handler();
   }
 
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
   /* USER CODE BEGIN LoRa_Init */
   printf("\r\n=== Grove Wio-E5 LoRa Module Test ===\r\n");
   printf("Initializing LoRa-E5 module...\r\n");
@@ -197,8 +195,6 @@ int main(void)
   }
   /* USER CODE END LoRa_Init */
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
   uint32_t last_tx_time = 0;
   uint32_t tx_counter = 0;
   char tx_buffer[64];
@@ -360,26 +356,6 @@ static void MX_USART2_UART_Init(void)
   /* USER CODE BEGIN USART2_Init 2 */
 
   /* USER CODE END USART2_Init 2 */
-
-}
-
-/**
-  * Enable DMA controller clock
-  */
-static void MX_DMA_Init(void)
-{
-
-  /* DMA controller clock enable */
-  __HAL_RCC_DMAMUX1_CLK_ENABLE();
-  __HAL_RCC_DMA1_CLK_ENABLE();
-
-  /* DMA interrupt init */
-  /* DMA1_Channel1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
-  /* DMA1_Channel2_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
 
 }
 
