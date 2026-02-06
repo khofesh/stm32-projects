@@ -44,6 +44,9 @@
 MDF_HandleTypeDef AdfHandle0;
 MDF_FilterConfigTypeDef AdfFilterConfig0;
 
+DMA_HandleTypeDef handle_GPDMA1_Channel5;
+DMA_HandleTypeDef handle_GPDMA1_Channel4;
+
 I2C_HandleTypeDef hi2c1;
 I2C_HandleTypeDef hi2c2;
 
@@ -65,6 +68,7 @@ PCD_HandleTypeDef hpcd_USB_OTG_FS;
 void SystemClock_Config(void);
 static void SystemPower_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_GPDMA1_Init(void);
 static void MX_ADF1_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_I2C2_Init(void);
@@ -117,6 +121,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_GPDMA1_Init();
   MX_ADF1_Init();
   MX_I2C1_Init();
   MX_I2C2_Init();
@@ -275,6 +280,74 @@ static void MX_ADF1_Init(void)
   /* USER CODE BEGIN ADF1_Init 2 */
 
   /* USER CODE END ADF1_Init 2 */
+
+}
+
+/**
+  * @brief GPDMA1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_GPDMA1_Init(void)
+{
+
+  /* USER CODE BEGIN GPDMA1_Init 0 */
+
+  /* USER CODE END GPDMA1_Init 0 */
+
+  /* Peripheral clock enable */
+  __HAL_RCC_GPDMA1_CLK_ENABLE();
+
+  /* USER CODE BEGIN GPDMA1_Init 1 */
+
+  /* USER CODE END GPDMA1_Init 1 */
+  handle_GPDMA1_Channel5.Instance = GPDMA1_Channel5;
+  handle_GPDMA1_Channel5.Init.Request = DMA_REQUEST_SW;
+  handle_GPDMA1_Channel5.Init.BlkHWRequest = DMA_BREQ_SINGLE_BURST;
+  handle_GPDMA1_Channel5.Init.Direction = DMA_MEMORY_TO_MEMORY;
+  handle_GPDMA1_Channel5.Init.SrcInc = DMA_SINC_FIXED;
+  handle_GPDMA1_Channel5.Init.DestInc = DMA_DINC_FIXED;
+  handle_GPDMA1_Channel5.Init.SrcDataWidth = DMA_SRC_DATAWIDTH_BYTE;
+  handle_GPDMA1_Channel5.Init.DestDataWidth = DMA_DEST_DATAWIDTH_BYTE;
+  handle_GPDMA1_Channel5.Init.Priority = DMA_LOW_PRIORITY_LOW_WEIGHT;
+  handle_GPDMA1_Channel5.Init.SrcBurstLength = 1;
+  handle_GPDMA1_Channel5.Init.DestBurstLength = 1;
+  handle_GPDMA1_Channel5.Init.TransferAllocatedPort = DMA_SRC_ALLOCATED_PORT0|DMA_DEST_ALLOCATED_PORT0;
+  handle_GPDMA1_Channel5.Init.TransferEventMode = DMA_TCEM_BLOCK_TRANSFER;
+  handle_GPDMA1_Channel5.Init.Mode = DMA_NORMAL;
+  if (HAL_DMA_Init(&handle_GPDMA1_Channel5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_DMA_ConfigChannelAttributes(&handle_GPDMA1_Channel5, DMA_CHANNEL_NPRIV) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  handle_GPDMA1_Channel4.Instance = GPDMA1_Channel4;
+  handle_GPDMA1_Channel4.Init.Request = DMA_REQUEST_SW;
+  handle_GPDMA1_Channel4.Init.BlkHWRequest = DMA_BREQ_SINGLE_BURST;
+  handle_GPDMA1_Channel4.Init.Direction = DMA_MEMORY_TO_MEMORY;
+  handle_GPDMA1_Channel4.Init.SrcInc = DMA_SINC_FIXED;
+  handle_GPDMA1_Channel4.Init.DestInc = DMA_DINC_FIXED;
+  handle_GPDMA1_Channel4.Init.SrcDataWidth = DMA_SRC_DATAWIDTH_BYTE;
+  handle_GPDMA1_Channel4.Init.DestDataWidth = DMA_DEST_DATAWIDTH_BYTE;
+  handle_GPDMA1_Channel4.Init.Priority = DMA_LOW_PRIORITY_LOW_WEIGHT;
+  handle_GPDMA1_Channel4.Init.SrcBurstLength = 1;
+  handle_GPDMA1_Channel4.Init.DestBurstLength = 1;
+  handle_GPDMA1_Channel4.Init.TransferAllocatedPort = DMA_SRC_ALLOCATED_PORT0|DMA_DEST_ALLOCATED_PORT0;
+  handle_GPDMA1_Channel4.Init.TransferEventMode = DMA_TCEM_BLOCK_TRANSFER;
+  handle_GPDMA1_Channel4.Init.Mode = DMA_NORMAL;
+  if (HAL_DMA_Init(&handle_GPDMA1_Channel4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_DMA_ConfigChannelAttributes(&handle_GPDMA1_Channel4, DMA_CHANNEL_NPRIV) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN GPDMA1_Init 2 */
+
+  /* USER CODE END GPDMA1_Init 2 */
 
 }
 

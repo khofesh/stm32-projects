@@ -114,9 +114,9 @@
 /* Defined, this option enables deferred driver packet handling. This allows
    the driver to place a raw packet on the IP instance and have the driver's
    real processing routine called from the NetX internal IP helper thread. */
-/*
+
 #define NX_DRIVER_DEFERRED_PROCESSING
-*/
+
 
 /* Defined, the source address of incoming packet is checked. The default is
    disabled. */
