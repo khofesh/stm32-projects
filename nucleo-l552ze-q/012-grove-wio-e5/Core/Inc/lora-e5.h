@@ -263,10 +263,13 @@ uint32_t LoRa_GetBitRate(LoRa_Handle_t *hlora, uint32_t *bit_rate, float *tx_hea
 float LoRa_GetTransmissionTime(LoRa_Handle_t *hlora, uint32_t payload_size);
 
 /* UART Callback - call from HAL_UART_RxCpltCallback */
-void LoRa_UART_RxCallback(LoRa_Handle_t *hlora);
 void LoRa_UART_ErrorCallback(LoRa_Handle_t *hlora);
 uint32_t LoRa_GetRxCallbackCount(void);
 uint32_t LoRa_GetRxErrorCount(void);
+
+/* DMA Callbacks - call from HAL_UART_TxCpltCallback and HAL_UART_ErrorCallback */
+void LoRa_DMA_TxCpltCallback(LoRa_Handle_t *hlora);
+void LoRa_DMA_ErrorCallback(LoRa_Handle_t *hlora);
 
 // TODO
 /*

@@ -48,6 +48,8 @@
 COM_InitTypeDef BspCOMInit;
 
 UART_HandleTypeDef huart2;
+DMA_HandleTypeDef hdma_usart2_rx;
+DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
 char readBuf[1];
@@ -67,6 +69,7 @@ LoRa_Handle_t hLoRa;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_ICACHE_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
@@ -107,11 +110,10 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_ICACHE_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-  HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(USART2_IRQn);
 
   RingBuffer_Init(&txBuf);
   RingBuffer_Init(&rxBuf);
@@ -185,7 +187,7 @@ int main(void)
       printf("Configuration complete!\r\n");
       printf("\r\nAttempting to join network (this may take a while)...\r\n");
 
-      /* Try to join the network */
+      /* join the network */
       if (LoRa_JoinOTAA(&hLoRa, LORA_JOIN_JOIN, 30000) > 0) {
           printf("Successfully joined the network!\r\n");
           BSP_LED_Off(LED_GREEN);
@@ -222,7 +224,6 @@ int main(void)
         }
     }
 
-    /* Toggle LED to show activity */
     HAL_Delay(500);
     /* USER CODE END WHILE */
 
@@ -362,6 +363,26 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMAMUX1_CLK_ENABLE();
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+  /* DMA1_Channel2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -399,10 +420,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle)
   /* Set transmission flag: transfer complete*/
   UartReady = SET;
 
-  /* Handle LoRa-E5 UART reception */
-  if (UartHandle->Instance == USART2) {
-      LoRa_UART_RxCallback(&hLoRa);
-  }
+  (void)UartHandle;
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
@@ -414,6 +432,13 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
+  /* Handle LoRa-E5 DMA TX complete */
+  if (huart->Instance == USART2) {
+      LoRa_DMA_TxCpltCallback(&hLoRa);
+      return;
+  }
+
+  /* Handle other UARTs with ring buffer */
   if(RingBuffer_GetDataLength(&txBuf) > 0)
   {
     RingBuffer_Read(&txBuf, &txData, 1);

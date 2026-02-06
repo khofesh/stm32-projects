@@ -8,6 +8,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+/*============================================================================
+ * DMA Configuration
+ *============================================================================*/
+#define LORA_DMA_RX_BUFFER_SIZE    1024    /* Circular DMA RX buffer size */
+#define LORA_DMA_TX_BUFFER_SIZE    512     /* DMA TX buffer size */
+
+/* DMA Buffers */
+static uint8_t lora_dma_rx_buffer[LORA_DMA_RX_BUFFER_SIZE];
+static uint8_t lora_dma_tx_buffer[LORA_DMA_TX_BUFFER_SIZE];
+
+/* DMA State */
+static volatile uint32_t lora_dma_rx_read_pos = 0;  /* Read position in circular buffer */
+static volatile bool lora_dma_initialized = false;
+static volatile bool lora_dma_tx_busy = false;
+
 static const char *region_str[] = {
     "EU434", "EU868", "US915", "US915HYBRID", "US915OLD",
     "AU915", "AS923", "CN470", "CN779", "KR920",
@@ -19,6 +34,14 @@ static void LoRa_ClearBuffer(LoRa_Handle_t *hlora);
 static void LoRa_SF_BW_ToBitrate(LoRa_Handle_t *hlora, LoRa_SpreadingFactor_t sf, 
                                   LoRa_Bandwidth_t bw);
 static uint8_t LoRa_HexCharToValue(char c);
+
+/* DMA function prototypes */
+static HAL_StatusTypeDef LoRa_DMA_Init(LoRa_Handle_t *hlora);
+static uint32_t LoRa_DMA_GetReceivedData(LoRa_Handle_t *hlora, char *buffer, uint32_t max_len);
+static HAL_StatusTypeDef LoRa_DMA_Transmit(LoRa_Handle_t *hlora, const uint8_t *data, uint16_t len);
+
+static volatile uint32_t rx_error_count = 0;
+static volatile HAL_StatusTypeDef last_rx_status = HAL_OK;
 
 /*============================================================================
  * Initialization Functions
@@ -51,8 +74,11 @@ LoRa_Status_t LoRa_Init(LoRa_Handle_t *hlora, UART_HandleTypeDef *huart)
     /* Clear buffers */
     LoRa_ClearBuffer(hlora);
     
-    /* Start UART reception in interrupt mode */
-    HAL_UART_Receive_IT(hlora->huart, &hlora->rx_byte, 1);
+    /* Initialize DMA reception */
+    if (LoRa_DMA_Init(hlora) != HAL_OK) {
+        printf("LoRa-E5: DMA initialization failed\r\n");
+        return LORA_ERROR;
+    }
     
     /* Wait for module to boot */
     HAL_Delay(2000);
@@ -69,8 +95,8 @@ LoRa_Status_t LoRa_Init(LoRa_Handle_t *hlora, UART_HandleTypeDef *huart)
 
     /* Test communication with AT command */
     result = LoRa_SendCommand(hlora, "AT\r\n", "+AT: OK", 1000, debug_response);
-    printf("LoRa response: [%s], result: %lu, rx_index: %u, callbacks: %lu, errors: %lu\r\n", 
-           debug_response, result, hlora->rx_index, LoRa_GetRxCallbackCount(), LoRa_GetRxErrorCount());
+    printf("LoRa response: [%s], result: %lu, rx_index: %u, errors: %lu\r\n",
+           debug_response, result, hlora->rx_index, LoRa_GetRxErrorCount());
     if (result == 0) {
         /* Try different baud rates */
         /* For now, assume 9600 works - can be extended */
@@ -106,44 +132,172 @@ static void LoRa_ClearBuffer(LoRa_Handle_t *hlora)
     hlora->rx_index = 0;
 }
 
-static volatile uint32_t rx_callback_count = 0;
-static volatile uint32_t rx_error_count = 0;
-static volatile HAL_StatusTypeDef last_rx_status = HAL_OK;
+/*============================================================================
+ * DMA Functions
+ *============================================================================*/
 
-void LoRa_UART_RxCallback(LoRa_Handle_t *hlora)
+/**
+ * @brief Initialize DMA for UART reception (circular mode)
+ * @param hlora LoRa handle
+ * @return HAL_OK on success
+ */
+static HAL_StatusTypeDef LoRa_DMA_Init(LoRa_Handle_t *hlora)
 {
     HAL_StatusTypeDef status;
     
-    if (hlora == NULL) return;
+    /* Clear DMA buffers */
+    memset(lora_dma_rx_buffer, 0, LORA_DMA_RX_BUFFER_SIZE);
+    memset(lora_dma_tx_buffer, 0, LORA_DMA_TX_BUFFER_SIZE);
+    lora_dma_rx_read_pos = 0;
+    lora_dma_tx_busy = false;
     
-    rx_callback_count++;
-    
-    if (hlora->rx_index < LORA_BUFFER_LENGTH_MAX - 1) {
-        hlora->recv_buf[hlora->rx_index++] = hlora->rx_byte;
-    }
-    
-    /* Continue receiving */
-    status = HAL_UART_Receive_IT(hlora->huart, &hlora->rx_byte, 1);
-    last_rx_status = status;
+    /* Start DMA reception in circular mode */
+    status = HAL_UART_Receive_DMA(hlora->huart, lora_dma_rx_buffer, LORA_DMA_RX_BUFFER_SIZE);
     if (status != HAL_OK) {
-        rx_error_count++;
+        printf("LoRa-E5: HAL_UART_Receive_DMA failed: %d\r\n", status);
+        return status;
     }
+    
+    lora_dma_initialized = true;
+    printf("LoRa-E5: DMA initialized (RX buffer: %d bytes)\r\n", LORA_DMA_RX_BUFFER_SIZE);
+    
+    return HAL_OK;
 }
 
-void LoRa_UART_ErrorCallback(LoRa_Handle_t *hlora)
+/**
+ * @brief Get data from DMA circular buffer
+ * @param hlora LoRa handle
+ * @param buffer Output buffer
+ * @param max_len Maximum length to read
+ * @return Number of bytes read
+ */
+static uint32_t LoRa_DMA_GetReceivedData(LoRa_Handle_t *hlora, char *buffer, uint32_t max_len)
+{
+    uint32_t write_pos;
+    uint32_t bytes_available;
+    uint32_t bytes_to_read;
+    uint32_t i = 0;
+    
+    if (!lora_dma_initialized || buffer == NULL || max_len == 0) {
+        return 0;
+    }
+    
+    /* Get current DMA write position (DMA counts down, so we calculate from remaining) */
+    write_pos = LORA_DMA_RX_BUFFER_SIZE - __HAL_DMA_GET_COUNTER(hlora->huart->hdmarx);
+    
+    /* Calculate available bytes */
+    if (write_pos >= lora_dma_rx_read_pos) {
+        bytes_available = write_pos - lora_dma_rx_read_pos;
+    } else {
+        /* Buffer wrapped around */
+        bytes_available = (LORA_DMA_RX_BUFFER_SIZE - lora_dma_rx_read_pos) + write_pos;
+    }
+    
+    if (bytes_available == 0) {
+        return 0;
+    }
+    
+    /* Limit to max_len */
+    bytes_to_read = (bytes_available < max_len) ? bytes_available : max_len;
+    
+    /* Copy data from circular buffer */
+    for (i = 0; i < bytes_to_read; i++) {
+        buffer[i] = lora_dma_rx_buffer[lora_dma_rx_read_pos];
+        lora_dma_rx_read_pos = (lora_dma_rx_read_pos + 1) % LORA_DMA_RX_BUFFER_SIZE;
+    }
+    
+    return bytes_to_read;
+}
+
+/**
+ * @brief Transmit data using DMA
+ * @param hlora LoRa handle
+ * @param data Data to transmit
+ * @param len Length of data
+ * @return HAL_OK on success
+ */
+static HAL_StatusTypeDef LoRa_DMA_Transmit(LoRa_Handle_t *hlora, const uint8_t *data, uint16_t len)
+{
+    HAL_StatusTypeDef status;
+    uint32_t timeout = HAL_GetTick() + 1000; /* 1 second timeout */
+    
+    if (data == NULL || len == 0 || len > LORA_DMA_TX_BUFFER_SIZE) {
+        return HAL_ERROR;
+    }
+    
+    /* Wait for previous TX to complete */
+    while (lora_dma_tx_busy) {
+        if (HAL_GetTick() > timeout) {
+            printf("LoRa-E5: DMA TX timeout waiting for previous transfer\r\n");
+            lora_dma_tx_busy = false;
+            return HAL_TIMEOUT;
+        }
+        HAL_Delay(1);
+    }
+    
+    /* Copy data to TX buffer */
+    memcpy(lora_dma_tx_buffer, data, len);
+    
+    /* Start DMA transmission */
+    lora_dma_tx_busy = true;
+    status = HAL_UART_Transmit_DMA(hlora->huart, lora_dma_tx_buffer, len);
+    
+    if (status != HAL_OK) {
+        lora_dma_tx_busy = false;
+        printf("LoRa-E5: HAL_UART_Transmit_DMA failed: %d\r\n", status);
+        return status;
+    }
+    
+    /* Wait for transmission to complete */
+    timeout = HAL_GetTick() + 1000;
+    while (lora_dma_tx_busy) {
+        if (HAL_GetTick() > timeout) {
+            printf("LoRa-E5: DMA TX timeout\r\n");
+            HAL_UART_DMAStop(hlora->huart);
+            lora_dma_tx_busy = false;
+            /* Restart DMA RX */
+            HAL_UART_Receive_DMA(hlora->huart, lora_dma_rx_buffer, LORA_DMA_RX_BUFFER_SIZE);
+            return HAL_TIMEOUT;
+        }
+        HAL_Delay(1);
+    }
+    
+    return HAL_OK;
+}
+
+/**
+ * @brief DMA TX complete callback - call from HAL_UART_TxCpltCallback
+ * @param hlora LoRa handle
+ */
+void LoRa_DMA_TxCpltCallback(LoRa_Handle_t *hlora)
+{
+    (void)hlora;
+    lora_dma_tx_busy = false;
+}
+
+/**
+ * @brief DMA Error callback - call from HAL_UART_ErrorCallback
+ * @param hlora LoRa handle
+ */
+void LoRa_DMA_ErrorCallback(LoRa_Handle_t *hlora)
 {
     if (hlora == NULL) return;
     
     rx_error_count++;
-
-    /* Clear error flags and restart reception */
+    
+    /* Clear error flags */
     __HAL_UART_CLEAR_FLAG(hlora->huart, UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_PEF | UART_CLEAR_FEF);
-    HAL_UART_Receive_IT(hlora->huart, &hlora->rx_byte, 1);
+    
+    /* Restart DMA reception */
+    HAL_UART_DMAStop(hlora->huart);
+    lora_dma_rx_read_pos = 0;
+    HAL_UART_Receive_DMA(hlora->huart, lora_dma_rx_buffer, LORA_DMA_RX_BUFFER_SIZE);
 }
 
-uint32_t LoRa_GetRxCallbackCount(void)
+void LoRa_UART_ErrorCallback(LoRa_Handle_t *hlora)
 {
-    return rx_callback_count;
+    /* Forward to DMA error handler */
+    LoRa_DMA_ErrorCallback(hlora);
 }
 
 uint32_t LoRa_GetRxErrorCount(void)
@@ -156,7 +310,8 @@ uint32_t LoRa_SendCommand(LoRa_Handle_t *hlora, const char *cmd, const char *ack
 {
     uint32_t start_time;
     uint32_t elapsed = 0;
-    int ch;
+    uint32_t bytes_read;
+    char temp_buf[128];
     
     if (hlora == NULL) return 0;
     
@@ -164,33 +319,23 @@ uint32_t LoRa_SendCommand(LoRa_Handle_t *hlora, const char *cmd, const char *ack
     memset(hlora->recv_buf, 0, LORA_BUFFER_LENGTH_MAX);
     hlora->rx_index = 0;
     
-    /* Flush any pending data */
-    while (__HAL_UART_GET_FLAG(hlora->huart, UART_FLAG_RXNE)) {
-        ch = hlora->huart->Instance->RDR;
-        (void)ch;
+    /* Flush any pending DMA data */
+    while (LoRa_DMA_GetReceivedData(hlora, temp_buf, sizeof(temp_buf)) > 0) {
+        /* Discard old data */
     }
     
     /* Send wake-up bytes if in low power auto mode */
     if (hlora->lowpower_auto) {
         uint8_t wake_bytes[] = {0xFF, 0xFF, 0xFF, 0xFF};
-//        HAL_UART_Transmit(hlora->huart, wake_bytes, 4, 100);
-        UART_Transmit(hlora->huart, (uint8_t*)wake_bytes, 4);
-        while (HAL_UART_GetState(hlora->huart) == HAL_UART_STATE_BUSY_TX) {
-        	HAL_Delay(1);
-        }
+        LoRa_DMA_Transmit(hlora, wake_bytes, 4);
     }
     
     /* Send command if provided */
     if (cmd != NULL) {
-//        HAL_UART_Transmit(hlora->huart, (uint8_t*)cmd, strlen(cmd), 1000);
-//        /* Re-arm RX interrupt after blocking transmit */
-//        HAL_UART_Receive_IT(hlora->huart, &hlora->rx_byte, 1);
-        UART_Transmit(hlora->huart, (uint8_t*)cmd, strlen(cmd));
-        /* Wait for TX to complete */
-        while (HAL_UART_GetState(hlora->huart) == HAL_UART_STATE_BUSY_TX) {
-            HAL_Delay(1);
+        if (LoRa_DMA_Transmit(hlora, (const uint8_t*)cmd, strlen(cmd)) != HAL_OK) {
+            printf("LoRa-E5: Failed to send command\r\n");
+            return 0;
         }
-        HAL_UART_Receive_IT(hlora->huart, &hlora->rx_byte, 1);
     }
     
     /* Check for NO_ACK mode */
@@ -199,18 +344,43 @@ uint32_t LoRa_SendCommand(LoRa_Handle_t *hlora, const char *cmd, const char *ack
     }
     
     if (strcmp(ack, LORA_AT_NO_ACK) == 0) {
-        /* Just wait for timeout and return */
-        HAL_Delay(timeout_ms);
+        /* Just wait for timeout and collect data */
+        start_time = HAL_GetTick();
+        while ((HAL_GetTick() - start_time) < timeout_ms) {
+            bytes_read = LoRa_DMA_GetReceivedData(hlora, temp_buf, sizeof(temp_buf) - 1);
+            if (bytes_read > 0) {
+                temp_buf[bytes_read] = '\0';
+                /* Append to recv_buf if there's space */
+                if (hlora->rx_index + bytes_read < LORA_BUFFER_LENGTH_MAX - 1) {
+                    memcpy(&hlora->recv_buf[hlora->rx_index], temp_buf, bytes_read);
+                    hlora->rx_index += bytes_read;
+                    hlora->recv_buf[hlora->rx_index] = '\0';
+                }
+            }
+            HAL_Delay(10);
+        }
         if (response != NULL) {
             strcpy(response, hlora->recv_buf);
         }
         return timeout_ms;
     }
     
-    /* Wait for response */
+    /* Wait for response with ACK detection */
     start_time = HAL_GetTick();
     
     while ((HAL_GetTick() - start_time) < timeout_ms) {
+        /* Read available data from DMA buffer */
+        bytes_read = LoRa_DMA_GetReceivedData(hlora, temp_buf, sizeof(temp_buf) - 1);
+        if (bytes_read > 0) {
+            temp_buf[bytes_read] = '\0';
+            /* Append to recv_buf if there's space */
+            if (hlora->rx_index + bytes_read < LORA_BUFFER_LENGTH_MAX - 1) {
+                memcpy(&hlora->recv_buf[hlora->rx_index], temp_buf, bytes_read);
+                hlora->rx_index += bytes_read;
+                hlora->recv_buf[hlora->rx_index] = '\0';
+            }
+        }
+        
         /* Check if ACK received */
         if (strstr(hlora->recv_buf, ack) != NULL) {
             elapsed = HAL_GetTick() - start_time;
@@ -233,20 +403,31 @@ uint32_t LoRa_SendCommand(LoRa_Handle_t *hlora, const char *cmd, const char *ack
 uint32_t LoRa_ReadBuffer(LoRa_Handle_t *hlora, char *buffer, uint16_t length, 
                          uint32_t timeout_ms)
 {
-    uint16_t index = 0;
+    uint32_t start_time;
+    uint32_t bytes_read;
+    uint32_t total_read = 0;
+    char temp_buf[128];
     
     if (hlora == NULL || buffer == NULL) return 0;
     
     memset(buffer, 0, length);
-    HAL_Delay(timeout_ms);
     
-    /* Copy received data */
-    while (index < hlora->rx_index && index < length) {
-        buffer[index] = hlora->recv_buf[index];
-        index++;
+    /* Collect data for the timeout period */
+    start_time = HAL_GetTick();
+    while ((HAL_GetTick() - start_time) < timeout_ms) {
+        bytes_read = LoRa_DMA_GetReceivedData(hlora, temp_buf, sizeof(temp_buf) - 1);
+        if (bytes_read > 0) {
+            /* Copy to output buffer if there's space */
+            uint32_t copy_len = (total_read + bytes_read < length) ? bytes_read : (length - total_read);
+            if (copy_len > 0) {
+                memcpy(&buffer[total_read], temp_buf, copy_len);
+                total_read += copy_len;
+            }
+        }
+        HAL_Delay(10);
     }
     
-    return index;
+    return total_read;
 }
 
 /*============================================================================
