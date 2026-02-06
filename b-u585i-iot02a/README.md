@@ -29,3 +29,7 @@ follow the guidance in `b-u585i-iot02a/docs/um2839-discovery-kit-for-iot-node-wi
 download the firmware: https://www.st.com/en/development-tools/x-wifi-emw3080b.html?ecmp=tt9470_gl_link_feb2019&rt=um&id=UM2839#st-get-software
 
 ![update firmware](./Screenshot_2025-10-05_12-00-47_mxchip%20flash%20update%20success.png)
+
+## STSAFE-A110
+
+- https://community.st.com/t5/stm32-mcus-security/where-is-stsafe-a110-documentation/td-p/865817
