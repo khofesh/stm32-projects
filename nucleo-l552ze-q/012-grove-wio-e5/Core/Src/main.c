@@ -21,7 +21,6 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "ringbuffer.h"
 #include "lora-e5.h"
 #include <string.h>
 #include <stdio.h>
@@ -52,10 +51,6 @@ DMA_HandleTypeDef hdma_usart2_rx;
 DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
-char readBuf[1];
-uint8_t txData;
-__IO ITStatus UartReady = SET;
-RingBuffer txBuf, rxBuf;
 
 /* LoRa-E5 Handle */
 LoRa_Handle_t hLoRa;
@@ -115,8 +110,6 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  RingBuffer_Init(&txBuf);
-  RingBuffer_Init(&rxBuf);
   /* USER CODE END 2 */
 
   /* Initialize leds */
@@ -405,20 +398,8 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-uint8_t UART_Transmit(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
-{
-  if(HAL_UART_Transmit_IT(huart, pData, len) != HAL_OK)
-  {
-    if(RingBuffer_Write(&txBuf, pData, len) != RING_BUFFER_OK)
-      return 0;
-  }
-  return 1;
-}
-
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle)
 {
-  /* Set transmission flag: transfer complete*/
-  UartReady = SET;
 
   (void)UartHandle;
 }
@@ -438,12 +419,6 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
       return;
   }
 
-  /* Handle other UARTs with ring buffer */
-  if(RingBuffer_GetDataLength(&txBuf) > 0)
-  {
-    RingBuffer_Read(&txBuf, &txData, 1);
-    HAL_UART_Transmit_IT(huart, &txData, 1);
-  }
 }
 /* USER CODE END 4 */
 
