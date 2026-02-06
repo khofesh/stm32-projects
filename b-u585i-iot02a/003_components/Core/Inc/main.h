@@ -194,6 +194,23 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN Private defines */
 
+/* MXCHIP WiFi module GPIO pin aliases - map to WRLS_* pins */
+#define MXCHIP_RESET_Pin            WRLS_WKUP_W_Pin
+#define MXCHIP_RESET_GPIO_Port      WRLS_WKUP_W_GPIO_Port
+
+#define MXCHIP_NSS_Pin              WRLS_SPI2_NSS_Pin
+#define MXCHIP_NSS_GPIO_Port        WRLS_SPI2_NSS_GPIO_Port
+
+#define MXCHIP_NOTIFY_Pin           WRLS_NOTIFY_Pin
+#define MXCHIP_NOTIFY_GPIO_Port     WRLS_NOTIFY_GPIO_Port
+
+#define MXCHIP_FLOW_Pin             WRLS_FLOW_Pin
+#define MXCHIP_FLOW_GPIO_Port       WRLS_FLOW_GPIO_Port
+
+/* MXCHIP SPI handle alias */
+extern SPI_HandleTypeDef hspi2;
+#define MXCHIP_SPI                  hspi2
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
