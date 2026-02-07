@@ -25,6 +25,8 @@
 extern "C" {
 #endif
 
+#define USE_B_U585I_IOT02A_U585AI_REVD
+
 /* Includes ------------------------------------------------------------------*/
 #include "b_u585i_iot02a_conf.h"
 #include "b_u585i_iot02a_errno.h"
