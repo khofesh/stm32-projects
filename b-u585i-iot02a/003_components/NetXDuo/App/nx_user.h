@@ -60,7 +60,7 @@
 #define NX_USER_H
 
 /* USER CODE BEGIN 1 */
-#define NX_DRIVER_DEFERRED_PROCESSING
+
 /* USER CODE END 1 */
 
 /* Define various build options for the NetX Duo port. The application should
