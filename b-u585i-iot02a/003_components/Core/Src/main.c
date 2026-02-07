@@ -146,6 +146,58 @@ int main(void)
 		  HAL_UART_Transmit(&CONSOLE_UART, (uint8_t*)welcome, welcome_size, 0xFFFF);
 	  }
   }
+
+  /* Force no buffer for the printf() usage. */
+  setbuf(stdout, NULL);
+
+  {
+	  char the_compiler[100] = {0};
+
+#if defined(__GNUC__)
+	  strcat(the_compiler, " __GNUC__");
+#endif /* __GNUC__ */
+#if defined(__clang__)
+	  strcat(the_compiler, " __clang__");
+#endif /* __clang__ */
+#if defined(__ICCARM__)
+	  strcat(the_compiler, " __ICCARM__");
+#endif /* __ICCARM__ */
+#if defined(__ARMCC_VERSION)
+	  strcat(the_compiler, " __ARMCC_VERSION ");
+	  sprintf(&the_compiler[strlen(the_compiler)], "(%d)", __ARMCC_VERSION);
+#endif /* __ARMCC_VERSION */
+#if defined(__MICROLIB)
+	  strcat(the_compiler, " __MICROLIB");
+#endif /* __MICROLIB */
+	  {
+		  const uint32_t start_counting = HAL_GetTick();
+		  static __IO uint32_t count = 0;
+		  for (__IO uint32_t i = 0; i < 1600000; i++)
+		  {
+			  count++;
+		  }
+		  {
+			  const uint32_t end_counting = HAL_GetTick();
+			  printf("\n[%" PRIu32 "] main(): %s %s  (%s)   : %" PRIu32 " ms for %" PRIu32 " loops\n\n",
+					  end_counting, __DATE__, __TIME__, the_compiler, end_counting - start_counting, count);
+		  }
+	  }
+  }
+
+  {
+    int random_number = hardware_rand();
+
+    /* Initialize the seed of the stdlib rand() software implementation. */
+    srand((unsigned)random_number);
+    printf("rand() seeded by %" PRId32 " returned %" PRId32 "\n\n", (int32_t)random_number, (int32_t)rand());
+  }
+
+
+  /* Start getchar under interrupt. */
+  HAL_UART_Receive_IT(&CONSOLE_UART, (uint8_t *)&uart_buffer[0], 1);
+
+  /* Force no buffer for the getc() usage. */
+  setbuf(stdin, NULL);
   /* USER CODE END 2 */
 
   MX_ThreadX_Init();
@@ -893,7 +945,118 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+#if (defined(__GNUC__) && !defined(__ARMCC_VERSION))
+/**
+  * With GCC,
+  * small printf (option LD Linker->Libraries->Small printf set to 'Yes')
+  * calls __io_putchar()
+  */
+#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
 
+#elif defined(__ICCARM__)
+int iar_fputc(int ch);
+#define PUTCHAR_PROTOTYPE int iar_fputc(int ch)
+
+#elif defined(__ARMCC_VERSION)
+#ifdef __MICROLIB
+#define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
+#else
+int stdout_putchar(int ch);
+#define PUTCHAR_PROTOTYPE int stdout_putchar(int ch)
+int stderr_putchar(int ch) { return stdout_putchar(ch); }
+void ttywrch(int ch) { stdout_putchar(ch); }
+#endif /* __MICROLIB */
+#endif /* __GNUC__ */
+
+
+/**
+  * @brief  Retargets the C library printf function to the USART.
+  * @param  None
+  * @retval None
+  */
+PUTCHAR_PROTOTYPE
+{
+  /* Write a character to the USART1. */
+  HAL_UART_Transmit(&CONSOLE_UART, (uint8_t *)&ch, 1, 0xFFFF);
+
+  return ch;
+}
+
+
+#if defined(__ICCARM__)
+size_t __write(int file, unsigned char const *ptr, size_t len)
+{
+  size_t idx;
+  unsigned char const *pdata = ptr;
+
+  for (idx = 0; idx < len; idx++)
+  {
+    iar_fputc((int)*pdata);
+    pdata++;
+  }
+  return len;
+}
+#endif /* __ICCARM__ */
+
+
+#if (defined(__GNUC__) && !defined(__ARMCC_VERSION))
+#define GETCHAR_PROTOTYPE int __io_getchar(void)
+
+#elif defined(__ICCARM__)
+#define GETCHAR_PROTOTYPE int fgetc(FILE *f)
+
+#elif defined(__ARMCC_VERSION)
+#ifdef __MICROLIB
+#define GETCHAR_PROTOTYPE int fgetc(FILE *f)
+#else
+int stdin_getchar(void);
+#define GETCHAR_PROTOTYPE int stdin_getchar(void)
+#endif /* __MICROLIB */
+#endif /* __GNUC__ */
+
+/**
+  * @brief  Retargets the C library scanf function to the USART.
+  * @param  None
+  * @retval None
+  */
+GETCHAR_PROTOTYPE
+{
+  static uint32_t uart_read_idx = 0;
+  char ch;
+
+  while (uart_write_idx == uart_read_idx);
+
+  ch = uart_buffer[uart_read_idx++];
+  if (uart_read_idx == UART_BUFFER_SIZE)
+  {
+    uart_read_idx = 0;
+  }
+  return ch;
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart == &CONSOLE_UART)
+  {
+    uart_write_idx++;
+    if (uart_write_idx == UART_BUFFER_SIZE)
+    {
+      uart_write_idx = 0;
+    }
+    HAL_UART_Receive_IT(huart, (uint8_t *)&uart_buffer[uart_write_idx], 1);
+  }
+}
+
+/* Alternative to HAL_RNG_GenerateRandomNumber(). */
+/* MX_RNG_Init() MUST be called before usage of this function. */
+int hardware_rand(void)
+{
+  /* Wait for data ready. */
+  while ((hrng.Instance->SR & RNG_SR_DRDY) == 0);
+
+  /* Return the random number. */
+  return ((int)hrng.Instance->DR);
+}
 /* USER CODE END 4 */
 
 /**
