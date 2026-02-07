@@ -38,3 +38,8 @@ calculator: https://deepbluembedded.com/stm32-timer-calculator/
 ## usb
 
 - https://wiki.st.com/stm32mcu/wiki/Introduction_to_USB_with_STM32
+
+## interesting projects
+
+- https://www.eet-china.com/mp/a442814.html
+
