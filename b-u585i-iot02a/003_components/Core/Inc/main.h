@@ -187,8 +187,8 @@ int hardware_rand(void);
 #define USB_VBUS_SENSE_GPIO_Port GPIOF
 #define OCTOSPI_R_NCS_Pin GPIO_PIN_11
 #define OCTOSPI_R_NCS_GPIO_Port GPIOB
-#define WRLS_SPI2_NSS_Pin GPIO_PIN_12
-#define WRLS_SPI2_NSS_GPIO_Port GPIOB
+#define MXCHIP_NSS_Pin GPIO_PIN_12
+#define MXCHIP_NSS_GPIO_Port GPIOB
 #define USB_UCPD_CC2_Pin GPIO_PIN_15
 #define USB_UCPD_CC2_GPIO_Port GPIOB
 #define Mems_STSAFE_RESET_Pin GPIO_PIN_11
@@ -206,8 +206,8 @@ int hardware_rand(void);
 #define MXCHIP_RESET_Pin            WRLS_WKUP_W_Pin
 #define MXCHIP_RESET_GPIO_Port      WRLS_WKUP_W_GPIO_Port
 
-#define MXCHIP_NSS_Pin              WRLS_SPI2_NSS_Pin
-#define MXCHIP_NSS_GPIO_Port        WRLS_SPI2_NSS_GPIO_Port
+//#define MXCHIP_NSS_Pin              WRLS_SPI2_NSS_Pin
+//#define MXCHIP_NSS_GPIO_Port        WRLS_SPI2_NSS_GPIO_Port
 
 #define MXCHIP_NOTIFY_Pin           WRLS_NOTIFY_Pin
 #define MXCHIP_NOTIFY_GPIO_Port     WRLS_NOTIFY_GPIO_Port

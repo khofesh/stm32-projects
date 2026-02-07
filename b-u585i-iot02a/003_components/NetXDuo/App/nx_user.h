@@ -92,9 +92,7 @@
 
 /* NX_PHYSICAL_HEADER Specifies the size in bytes of the physical header of
    the frame. */
-/*
-#define NX_PHYSICAL_HEADER						16
-*/
+#define NX_PHYSICAL_HEADER                      44
 
 /* NX_PHYSICAL_TRAILER specifies the size in bytes of the physical packet
    trailer and is typically used to reserve storage for things like Ethernet
@@ -114,9 +112,7 @@
 /* Defined, this option enables deferred driver packet handling. This allows
    the driver to place a raw packet on the IP instance and have the driver's
    real processing routine called from the NetX internal IP helper thread. */
-/*
 #define NX_DRIVER_DEFERRED_PROCESSING
-*/
 
 /* Defined, the source address of incoming packet is checked. The default is
    disabled. */
@@ -156,9 +152,7 @@
    socket events, such as TCP connection and disconnect completion.
    These extended notify functions are mainly used by the BSD wrapper.
    The default is this feature is disabled.  */
-/*
 #define NX_ENABLE_EXTENDED_NOTIFY_SUPPORT
-*/
 
 /* Defined, NetX Duo is built with NAT process. By default this option is not
    defined. This option can be defined only when NX_DISABLE_IPV4 is not selected. */
@@ -285,9 +279,7 @@
    interface. 127.0.0.1 loopback interface is enabled by default.
    Uncomment out the follow code to disable the loopback interface. */
 
-/*
 #define NX_DISABLE_LOOPBACK_INTERFACE
-*/
 
 /* Defined, this option disables the addition size checking on received packets. */
 /*
@@ -306,9 +298,7 @@
 
 /* Defined, NX_ENABLE_IP_RAW_PACKET_FILTER allows an application to install a
    filter for incoming raw packets. This feature is disabled by default. */
-/*
 #define NX_ENABLE_IP_RAW_PACKET_FILTER
-*/
 
 /* This define specifies the maximum number of RAW packets can be queued for
    receive. The default value is 20.  */
@@ -657,9 +647,7 @@
 /* Defined, enables the optional TCP immediate ACK response processing.
    Defining this symbol is equivalent to defining NX_TCP_ACK_EVERY_N_PACKETS
    to be 1. */
-/*
 #define NX_TCP_IMMEDIATE_ACK
-*/
 
 /* Specifies the number of TCP packets to receive before sending an ACK.
    Note if NX_TCP_IMMEDIATE_ACK is enabled but NX_TCP_ACK_EVERY_N_PACKETS is
@@ -1471,9 +1459,7 @@
 /* If defined and the Client IPv4 gateway address is non zero, the DNS Client
    sets the IPv4 gateway as the Client's primary DNS server. The default value
    is disabled. */
-/*
 #define NX_DNS_IP_GATEWAY_AND_DNS_SERVER
-*/
 
 /* This enables the DNS Client to let the application create and set the DNS
    Client packet pool. By default this option is disabled, and the DNS Client

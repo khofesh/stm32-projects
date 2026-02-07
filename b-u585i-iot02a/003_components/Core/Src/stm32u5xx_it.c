@@ -55,13 +55,15 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
+extern DMA_HandleTypeDef handle_GPDMA1_Channel5;
+extern DMA_HandleTypeDef handle_GPDMA1_Channel4;
 extern OSPI_HandleTypeDef hospi1;
 extern OSPI_HandleTypeDef hospi2;
 extern SPI_HandleTypeDef hspi2;
 extern UART_HandleTypeDef huart4;
 extern UART_HandleTypeDef huart1;
 extern PCD_HandleTypeDef hpcd_USB_OTG_FS;
-extern TIM_HandleTypeDef htim1;
+extern TIM_HandleTypeDef htim6;
 
 /* USER CODE BEGIN EV */
 
@@ -166,17 +168,45 @@ void DebugMon_Handler(void)
 /******************************************************************************/
 
 /**
-  * @brief This function handles TIM1 Update interrupt.
+  * @brief This function handles GPDMA1 Channel 4 global interrupt.
   */
-void TIM1_UP_IRQHandler(void)
+void GPDMA1_Channel4_IRQHandler(void)
 {
-  /* USER CODE BEGIN TIM1_UP_IRQn 0 */
+  /* USER CODE BEGIN GPDMA1_Channel4_IRQn 0 */
 
-  /* USER CODE END TIM1_UP_IRQn 0 */
-  HAL_TIM_IRQHandler(&htim1);
-  /* USER CODE BEGIN TIM1_UP_IRQn 1 */
+  /* USER CODE END GPDMA1_Channel4_IRQn 0 */
+  HAL_DMA_IRQHandler(&handle_GPDMA1_Channel4);
+  /* USER CODE BEGIN GPDMA1_Channel4_IRQn 1 */
 
-  /* USER CODE END TIM1_UP_IRQn 1 */
+  /* USER CODE END GPDMA1_Channel4_IRQn 1 */
+}
+
+/**
+  * @brief This function handles GPDMA1 Channel 5 global interrupt.
+  */
+void GPDMA1_Channel5_IRQHandler(void)
+{
+  /* USER CODE BEGIN GPDMA1_Channel5_IRQn 0 */
+
+  /* USER CODE END GPDMA1_Channel5_IRQn 0 */
+  HAL_DMA_IRQHandler(&handle_GPDMA1_Channel5);
+  /* USER CODE BEGIN GPDMA1_Channel5_IRQn 1 */
+
+  /* USER CODE END GPDMA1_Channel5_IRQn 1 */
+}
+
+/**
+  * @brief This function handles TIM6 global interrupt.
+  */
+void TIM6_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM6_IRQn 0 */
+
+  /* USER CODE END TIM6_IRQn 0 */
+  HAL_TIM_IRQHandler(&htim6);
+  /* USER CODE BEGIN TIM6_IRQn 1 */
+
+  /* USER CODE END TIM6_IRQn 1 */
 }
 
 /**
