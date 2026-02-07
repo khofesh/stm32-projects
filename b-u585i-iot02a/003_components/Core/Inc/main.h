@@ -44,6 +44,14 @@ extern "C" {
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "b_u585i_iot02a.h"
+#include "b_u585i_iot02a_bus.h"
+#include "b_u585i_iot02a_ospi.h"
+#include "b_u585i_iot02a_motion_sensors.h"
+#include "b_u585i_iot02a_env_sensors.h"
+#include "b_u585i_iot02a_light_sensor.h"
+#include "b_u585i_iot02a_ranging_sensor.h"
+#include "b_u585i_iot02a_audio.h"
+#include "b_u585i_iot02a_eeprom.h"
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/

@@ -69,7 +69,7 @@ extern "C" {
 /*#define HAL_PKA_MODULE_ENABLED */
 /*#define HAL_PSSI_MODULE_ENABLED */
 /*#define HAL_RAMCFG_MODULE_ENABLED */
-/*#define HAL_RNG_MODULE_ENABLED */
+#define HAL_RNG_MODULE_ENABLED
 /*#define HAL_RTC_MODULE_ENABLED */
 /*#define HAL_SAI_MODULE_ENABLED */
 /*#define HAL_SD_MODULE_ENABLED */
