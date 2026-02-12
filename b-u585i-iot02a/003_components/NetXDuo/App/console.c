@@ -194,7 +194,7 @@ static void history_cmd_add(char *cmd)
 
 	for (i = 0; i < HISTORY_SIZE; i++)
 	{
-		if ((history_cmd[i] != NULL) && (strcmp(history_cmd[i], cmd) == 0))
+		if ((history_cmd[i] != NULL) && (strncmp(history_cmd[i], cmd, MAX_INPUT_LINE) == 0))
 		{
 			if (i == 0)
 			{
@@ -343,7 +343,8 @@ static void mygets(char *s, const cmd_t cmd_list[])
 				MSG_INFO("%s", ConsolePrompt);
 				MSG_INFO("%s", history_cmd[history_count]);
 				i = strlen(history_cmd[history_count]);
-				strcpy(s, history_cmd[history_count]);
+				strncpy(s, history_cmd[history_count], MAX_INPUT_LINE - 1);
+				s[MAX_INPUT_LINE - 1] = '\0';
 				cursor_x = i;
 			}
 		}
@@ -365,7 +366,8 @@ static void mygets(char *s, const cmd_t cmd_list[])
 				MSG_INFO("%s", history_cmd[history_count]);
 				i = strlen(history_cmd[history_count]);
 				cursor_x = i;
-				strcpy(s, history_cmd[history_count]);
+				strncpy(s, history_cmd[history_count], MAX_INPUT_LINE - 1);
+				s[MAX_INPUT_LINE - 1] = '\0';
 			}
 		}
 		else if (ch == KEY_LEFT)
@@ -413,7 +415,8 @@ static void mygets(char *s, const cmd_t cmd_list[])
 			if (match == 1)
 			{
 				cmd = match_list[0];
-				strcpy(s, cmd->name);
+				strncpy(s, cmd->name, MAX_INPUT_LINE - 1);
+				s[MAX_INPUT_LINE - 1] = '\0';
 				MSG_INFO(TERM_LINE_ERASE);
 				MSG_INFO("%s", ConsolePrompt);
 				MSG_INFO("%s", s);
@@ -489,13 +492,14 @@ void get_cmd(char *s, const cmd_t cmd_list[])
 			int32_t n = atoi(&s[1]);
 			if ((n >= 0) && (((uint32_t)n) <= used_cmd_count))
 			{
-				strcpy(s, history_cmd[n]);
+				strncpy(s, history_cmd[n], MAX_INPUT_LINE - 1);
+				s[MAX_INPUT_LINE - 1] = '\0';
 				return;
 			}
 		}
 		else
 		{
-			if (strcmp(s, "history") == 0)
+			if (strncmp(s, "history", 7) == 0 && s[7] == '\0')
 			{
 				history_cmd_list();
 			}
@@ -533,7 +537,8 @@ void console(const char *prompt, const cmd_t cmd_list[])
 
 		if (s[0] != 0)
 		{
-			strcpy(scopy, s);
+			strncpy(scopy, s, MAX_INPUT_LINE - 1);
+			scopy[MAX_INPUT_LINE - 1] = '\0';
 			args[i] = strtok(s, " \n\t");
 
 			cmd = console_cmd_match(cmd_list, args[i]);

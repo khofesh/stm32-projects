@@ -25,6 +25,12 @@
 /* USER CODE BEGIN Includes */
 #include "app_azure_rtos.h"
 #include "msg.h"
+#include "console.h"
+#include "nxd_dhcp_client.h"
+#include "nxd_bsd.h"
+#include <stdbool.h>
+#include <inttypes.h>
+#include "io_pattern/mx_wifi_io.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/

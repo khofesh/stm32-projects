@@ -61,6 +61,25 @@
 
 /* USER CODE BEGIN 1 */
 
+/* #define NX_DEBUG */
+#define NX_BSD_ENABLE_NATIVE_API
+#define DEFAULT_MEMORY_SIZE                  1024
+#define NETX_IP_THREAD_STACK_SIZE            (5 * DEFAULT_MEMORY_SIZE)
+#define NETX_IP_THREAD_PRIORITY              10
+
+#if defined(NX_DEBUG)
+#include <stdbool.h>
+#include <stdio.h>
+#define NX_DEBUG_DRIVER_SOURCE_LOG(...) \
+  do                                    \
+  {                                     \
+    (void) printf(__VA_ARGS__);         \
+  } while(false) /* ; */
+#endif /* NX_DEBUG */
+
+extern int hardware_rand(void);
+#define NX_RAND                         hardware_rand
+
 /* USER CODE END 1 */
 
 /* Define various build options for the NetX Duo port. The application should
@@ -2406,6 +2425,16 @@
 #endif
 
 /* USER CODE BEGIN 2 */
+#if defined(NX_DEBUG)
+/* Can help to know which thread owns the package, in case of package leak. */
+#define NX_ENABLE_PACKET_DEBUG_INFO
+#endif /* NX_DEBUG */
+
+#define NX_ENABLE_IP_RAW_PACKET_ALL_STACK
+
+#define NX_BSD_TIMER_RATE                       (NX_IP_PERIODIC_RATE/5)
+
+#define NX_DRIVER_STACK_SIZE                    3072
 
 /* USER CODE END 2 */
 
