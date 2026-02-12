@@ -31,6 +31,11 @@
 #define MSG_LOCK()
 #define MSG_UNLOCK()
 
+#define ENABLE_IOT_INFO
+#define ENABLE_IOT_WARNING
+#define ENABLE_IOT_ERROR
+#define ENABLE_IOT_DEBUG
+
 #ifdef ENABLE_IOT_INFO
 #define MSG_INFO_ON
 #endif /* ENABLE_IOT_INFO */

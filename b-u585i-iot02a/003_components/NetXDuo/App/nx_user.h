@@ -62,6 +62,14 @@
 /* USER CODE BEGIN 1 */
 
 /* #define NX_DEBUG */
+/*
+ * because of NX_BSD_ENABLE_NATIVE_API is defined,
+ * the standard BSD names (sockaddr, socket, setsockopt, etc.) are NOT aliased.
+ * The code must use the nx_bsd_ prefixed names.
+ * check ping.c
+ * for example:
+ * `struct sockaddr -> struct nx_bsd_sockaddr`
+ */
 #define NX_BSD_ENABLE_NATIVE_API
 #define DEFAULT_MEMORY_SIZE                  1024
 #define NETX_IP_THREAD_STACK_SIZE            (5 * DEFAULT_MEMORY_SIZE)
