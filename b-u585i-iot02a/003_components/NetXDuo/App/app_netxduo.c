@@ -50,7 +50,11 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
+static TX_THREAD AppMainThread;
+static CHAR AppMainThreadName[] = "App Main thread";
 
+/* Global byte pool pointer for ping and other modules */
+TX_BYTE_POOL *AppBytePool = NULL;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -68,7 +72,8 @@ UINT MX_NetXDuo_Init(VOID *memory_ptr)
   UINT ret = NX_SUCCESS;
   TX_BYTE_POOL *byte_pool = (TX_BYTE_POOL*)memory_ptr;
    /* USER CODE BEGIN App_NetXDuo_MEM_POOL */
-  (void)byte_pool;
+  /* Store byte pool pointer for use by ping and other modules */
+  AppBytePool = byte_pool;
   /* USER CODE END App_NetXDuo_MEM_POOL */
   /* USER CODE BEGIN 0 */
 
