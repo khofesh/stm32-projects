@@ -75,6 +75,7 @@
 - [ ] Linear Temperature
 - [ ] Ultrasonic Ranger
 - [ ] 4-digit LED Display
+- [ ] https://github.com/MaJerle/lwesp
 
 USB development:
 
@@ -87,4 +88,3 @@ STM32 features:
 - [ ] CORDIC
 - [ ] FMAC
 - [ ] zigbee
-
