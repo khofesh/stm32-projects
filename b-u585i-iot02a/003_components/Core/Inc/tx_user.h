@@ -72,6 +72,9 @@
 
 /* USER CODE BEGIN 1 */
 
+/* Required for NetX Duo BSD socket layer - adds bsd_errno to TX_THREAD struct */
+#define TX_THREAD_USER_EXTENSION    ULONG bsd_errno;
+
 /* USER CODE END 1 */
 
 /* Define various build options for the ThreadX port.  The application should either make changes
