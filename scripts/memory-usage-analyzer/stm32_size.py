@@ -17,6 +17,7 @@ CHIPS = {
     "STM32WB55RG": {"flash": 1024 * 1024, "ram": 256 * 1024},
     "STM32H743ZI": {"flash": 2048 * 1024, "ram": 1024 * 1024},
     "STM32L552ZE": {"flash": 512 * 1024, "ram": 256 * 1024},
+    "STM32U585AI": {"flash": 2048 * 1024, "ram": 786 * 1024},
 }
 
 def parse_size_output(text):
