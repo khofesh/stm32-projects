@@ -176,12 +176,13 @@ int main(void)
   {
     Error_Handler();
   }
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
   /* Enable USART2 interrupt for command reception */
   HAL_NVIC_SetPriority(USART2_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(USART2_IRQn);
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
   if (camera_init() != HAL_OK) {
       printf("Camera initialization failed!\r\n");
       BSP_LED_On(LED_RED);
