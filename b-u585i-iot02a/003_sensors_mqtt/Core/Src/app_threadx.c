@@ -35,9 +35,10 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define TEMPERATURE_THREAD_STACK_SIZE    1024
+#define ENV_SENS_THREAD_STACK_SIZE    1024
 #define MOTION_THREAD_STACK_SIZE         1024
-#define TEMPERATURE_THREAD_PRIORITY      10
+#define TOF_GESTURE_THREAD_STACK_SIZE 	 1024
+#define ENV_SENS_THREAD_PRIORITY      10
 #define MOTION_THREAD_PRIORITY           11
 #define THREAD_SYNC_EVENT                0x01
 /* USER CODE END PD */
@@ -49,18 +50,19 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
-static TX_THREAD temperature_thread;
+static TX_THREAD env_sens_thread;
 static TX_THREAD motion_thread;
 static TX_EVENT_FLAGS_GROUP sync_event_flags;
 
-static UCHAR temperature_thread_stack[TEMPERATURE_THREAD_STACK_SIZE];
+static UCHAR env_sens_thread_stack[ENV_SENS_THREAD_STACK_SIZE];
 static UCHAR motion_thread_stack[MOTION_THREAD_STACK_SIZE];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN PFP */
-static void temperature_thread_entry(ULONG thread_input);
+static void env_sens_thread_entry(ULONG thread_input);
 static void motion_thread_entry(ULONG thread_input);
+//static void tof_gesture_entry(ULONG thread_input);
 static int32_t sensors_init(void);
 /* USER CODE END PFP */
 
@@ -93,14 +95,14 @@ UINT App_ThreadX_Init(VOID *memory_ptr)
   }
 
   /* Create Temperature Thread (higher priority, runs first) */
-  ret = tx_thread_create(&temperature_thread,
+  ret = tx_thread_create(&env_sens_thread,
                          "Temperature Thread",
-                         temperature_thread_entry,
+						 env_sens_thread_entry,
                          0,
-                         temperature_thread_stack,
-                         TEMPERATURE_THREAD_STACK_SIZE,
-                         TEMPERATURE_THREAD_PRIORITY,
-                         TEMPERATURE_THREAD_PRIORITY,
+						 env_sens_thread_stack,
+						 ENV_SENS_THREAD_STACK_SIZE,
+						 ENV_SENS_THREAD_PRIORITY,
+						 ENV_SENS_THREAD_PRIORITY,
                          TX_NO_TIME_SLICE,
                          TX_AUTO_START);
   if (ret != TX_SUCCESS)
@@ -157,8 +159,8 @@ static int32_t sensors_init(void)
 {
   int32_t ret = 0;
 
-  /* Initialize HTS221 for temperature (Instance 0) */
-  ret = BSP_ENV_SENSOR_Init(0, ENV_TEMPERATURE);
+  /* Initialize HTS221 for temperature and humidity (Instance 0) */
+  ret = BSP_ENV_SENSOR_Init(0, ENV_TEMPERATURE | ENV_HUMIDITY);
   if (ret != BSP_ERROR_NONE)
   {
     printf("HTS221 init failed: %ld\r\n", ret);
@@ -169,7 +171,39 @@ static int32_t sensors_init(void)
   ret = BSP_ENV_SENSOR_Enable(0, ENV_TEMPERATURE);
   if (ret != BSP_ERROR_NONE)
   {
-    printf("HTS221 enable failed: %ld\r\n", ret);
+    printf("HTS221 temperature enable failed: %ld\r\n", ret);
+    return ret;
+  }
+
+  /* Enable humidity on HTS221 */
+  ret = BSP_ENV_SENSOR_Enable(0, ENV_HUMIDITY);
+  if (ret != BSP_ERROR_NONE)
+  {
+    printf("HTS221 humidity enable failed: %ld\r\n", ret);
+    return ret;
+  }
+
+  /* Initialize LPS22HH for pressure (Instance 1) */
+  ret = BSP_ENV_SENSOR_Init(1, ENV_TEMPERATURE | ENV_PRESSURE);
+  if (ret != BSP_ERROR_NONE)
+  {
+    printf("LPS22HH init failed: %ld\r\n", ret);
+    return ret;
+  }
+
+  /* Enable pressure on LPS22HH */
+  ret = BSP_ENV_SENSOR_Enable(1, ENV_PRESSURE);
+  if (ret != BSP_ERROR_NONE)
+  {
+    printf("LPS22HH pressure enable failed: %ld\r\n", ret);
+    return ret;
+  }
+
+  /* Enable temp on LPS22HH */
+  ret = BSP_ENV_SENSOR_Enable(1, ENV_TEMPERATURE);
+  if (ret != BSP_ERROR_NONE)
+  {
+    printf("LPS22HH temperature enable failed: %ld\r\n", ret);
     return ret;
   }
 
@@ -201,28 +235,53 @@ static int32_t sensors_init(void)
 }
 
 /**
-  * @brief  Temperature Thread entry function
+  * @brief  environment Thread entry function
   * @param  thread_input: not used
   * @retval None
   */
-static void temperature_thread_entry(ULONG thread_input)
+static void env_sens_thread_entry(ULONG thread_input)
 {
   (void)thread_input;
   float temperature_value = 0.0f;
+  float humidity_value = 0.0f;
+  float pressure_value = 0.0f;
+  float lps22hh_temp = 0.0f;
 
   printf("\r\n=== Sensor Threads Started ===\r\n");
 
   while (1)
   {
+    /* Note: Both HTS221 and LPS22HH on-board temperature sensors read ~10C higher
+     * than ambient due to self-heating from the STM32U585 MCU and board components.
+     * For accurate ambient temperature, use an external sensor or apply a calibration offset.
+     */
+
     /* Read temperature from HTS221 (Instance 0) */
-    if (BSP_ENV_SENSOR_GetValue(0, ENV_TEMPERATURE, &temperature_value) == BSP_ERROR_NONE)
-    {
-      printf("[Thread 1] Temperature: %.2f C\r\n", temperature_value);
-    }
-    else
+    if (BSP_ENV_SENSOR_GetValue(0, ENV_TEMPERATURE, &temperature_value) != BSP_ERROR_NONE)
     {
       printf("[Thread 1] Temperature read error\r\n");
     }
+
+    /* Read humidity from HTS221 (Instance 0) */
+    if (BSP_ENV_SENSOR_GetValue(0, ENV_HUMIDITY, &humidity_value) != BSP_ERROR_NONE)
+    {
+      printf("[Thread 1] Humidity read error\r\n");
+    }
+
+    /* Read pressure from LPS22HH (Instance 1) */
+    if (BSP_ENV_SENSOR_GetValue(1, ENV_PRESSURE, &pressure_value) != BSP_ERROR_NONE)
+    {
+      printf("[Thread 1] Pressure read error\r\n");
+    }
+
+    /* Read temperature from LPS22HH (Instance 1) */
+    if (BSP_ENV_SENSOR_GetValue(1, ENV_TEMPERATURE, &lps22hh_temp) != BSP_ERROR_NONE)
+    {
+      printf("[Thread 1] LPS22HH Temp read error\r\n");
+    }
+
+    printf("[Thread 1] temp: %.2f C, hum: %.2f %%RH, press: %.2f hPa\r\n", temperature_value, humidity_value, pressure_value);
+    printf("[Thread 1] lps22hh_temp: %.2f C\r\n", lps22hh_temp);
 
     /* Set event flag to signal motion thread */
     tx_event_flags_set(&sync_event_flags, THREAD_SYNC_EVENT, TX_OR);
@@ -243,6 +302,18 @@ static void motion_thread_entry(ULONG thread_input)
   ULONG actual_flags;
   BSP_MOTION_SENSOR_Axes_t gyro_axes;
   BSP_MOTION_SENSOR_Axes_t accel_axes;
+
+  /*
+  mg (milli-g): Unit for accelerometer output
+  - 1g = Earth's gravitational acceleration (~9.81 m/s²)
+  - 1 mg = 0.001g = ~0.00981 m/s²
+  - At rest, you'd expect ~0 mg on X/Y axes and ~1000 mg on Z axis (if board is flat)
+
+  mdps (milli-degrees per second): Unit for gyroscope output
+  - Measures angular velocity (rotation speed)
+  - 1 mdps = 0.001 degrees/second
+  - At rest, values should be near 0; when rotating, you'll see larger values
+   */
 
   while (1)
   {
@@ -275,4 +346,8 @@ static void motion_thread_entry(ULONG thread_input)
   }
 }
 
+//static void tof_gesture_entry(ULONG thread_input)
+//{
+//
+//}
 /* USER CODE END 1 */
