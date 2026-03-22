@@ -35,11 +35,14 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define ENV_SENS_THREAD_STACK_SIZE    1024
+#define ENV_SENS_THREAD_STACK_SIZE       1024
 #define MOTION_THREAD_STACK_SIZE         1024
 #define TOF_GESTURE_THREAD_STACK_SIZE 	 1024
-#define ENV_SENS_THREAD_PRIORITY      10
+#define LIGHT_THREAD_STACK_SIZE			 1024 // light sensor
+#define ENV_SENS_THREAD_PRIORITY      	 10
 #define MOTION_THREAD_PRIORITY           11
+#define TOF_GESTURE_THREAD_PRIORITY      12
+#define LIGHT_THREAD_PRIORITY			 13
 #define THREAD_SYNC_EVENT                0x01
 /* USER CODE END PD */
 
@@ -52,17 +55,22 @@
 /* USER CODE BEGIN PV */
 static TX_THREAD env_sens_thread;
 static TX_THREAD motion_thread;
+static TX_THREAD tof_gesture_thread;
+static TX_THREAD light_thread;
 static TX_EVENT_FLAGS_GROUP sync_event_flags;
 
 static UCHAR env_sens_thread_stack[ENV_SENS_THREAD_STACK_SIZE];
 static UCHAR motion_thread_stack[MOTION_THREAD_STACK_SIZE];
+static UCHAR tof_gesture_thread_stack[TOF_GESTURE_THREAD_STACK_SIZE];
+static UCHAR light_thread_stack[LIGHT_THREAD_STACK_SIZE];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN PFP */
 static void env_sens_thread_entry(ULONG thread_input);
 static void motion_thread_entry(ULONG thread_input);
-//static void tof_gesture_entry(ULONG thread_input);
+static void tof_gesture_entry(ULONG thread_input);
+static void light_sensor_entry(ULONG thread_input);
 static int32_t sensors_init(void);
 /* USER CODE END PFP */
 
@@ -124,6 +132,38 @@ UINT App_ThreadX_Init(VOID *memory_ptr)
   if (ret != TX_SUCCESS)
   {
     return ret;
+  }
+
+  /* create TOF & gesture thread */
+  ret = tx_thread_create(&tof_gesture_thread,
+		  "TOF Gesture Thread",
+		  tof_gesture_entry,
+		  0,
+		  tof_gesture_thread_stack,
+		  TOF_GESTURE_THREAD_STACK_SIZE,
+		  TOF_GESTURE_THREAD_PRIORITY,
+		  TOF_GESTURE_THREAD_PRIORITY,
+		  TX_NO_TIME_SLICE,
+		  TX_AUTO_START);
+  if (ret != TX_SUCCESS)
+  {
+	  return ret;
+  }
+
+  /* create light sensor thread */
+  ret = tx_thread_create(&light_thread,
+		  "Light Sensor Thread",
+		  light_sensor_entry,
+		  0,
+		  light_thread_stack,
+		  LIGHT_THREAD_STACK_SIZE,
+		  LIGHT_THREAD_PRIORITY,
+		  LIGHT_THREAD_PRIORITY,
+		  TX_NO_TIME_SLICE,
+		  TX_AUTO_START);
+  if (ret != TX_SUCCESS)
+  {
+	  return ret;
   }
 
   /* USER CODE END App_ThreadX_Init */
@@ -346,8 +386,13 @@ static void motion_thread_entry(ULONG thread_input)
   }
 }
 
-//static void tof_gesture_entry(ULONG thread_input)
-//{
-//
-//}
+static void tof_gesture_entry(ULONG thread_input)
+{
+
+}
+
+static void light_sensor_entry(ULONG thread_input)
+{
+
+}
 /* USER CODE END 1 */

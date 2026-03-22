@@ -25,6 +25,7 @@
 extern "C" {
 #endif
 
+// my board has BU585IIO2A$GTx on it
 #define USE_B_U585I_IOT02A_U585AI_REVD
 
 /* Includes ------------------------------------------------------------------*/
