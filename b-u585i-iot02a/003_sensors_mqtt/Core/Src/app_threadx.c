@@ -26,6 +26,8 @@
 #include <stdio.h>
 #include "b_u585i_iot02a_env_sensors.h"
 #include "b_u585i_iot02a_motion_sensors.h"
+#include "b_u585i_iot02a_light_sensor.h"
+#include "b_u585i_iot02a_ranging_sensor.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -37,8 +39,8 @@
 /* USER CODE BEGIN PD */
 #define ENV_SENS_THREAD_STACK_SIZE       1024
 #define MOTION_THREAD_STACK_SIZE         1024
-#define TOF_GESTURE_THREAD_STACK_SIZE 	 1024
-#define LIGHT_THREAD_STACK_SIZE			 1024 // light sensor
+#define TOF_GESTURE_THREAD_STACK_SIZE 	 4096  /* VL53L5CX requires more stack */
+#define LIGHT_THREAD_STACK_SIZE			 1024
 #define ENV_SENS_THREAD_PRIORITY      	 10
 #define MOTION_THREAD_PRIORITY           11
 #define TOF_GESTURE_THREAD_PRIORITY      12
@@ -271,6 +273,68 @@ static int32_t sensors_init(void)
     return ret;
   }
 
+  /* Initialize VEML6030 Light Sensor (Instance 0) */
+  ret = BSP_LIGHT_SENSOR_Init(0);
+  if (ret != BSP_ERROR_NONE)
+  {
+    printf("Light sensor init failed: %ld\r\n", ret);
+    return ret;
+  }
+
+  /* Set exposure time and gain for light sensor */
+  ret = BSP_LIGHT_SENSOR_SetExposureTime(0, LIGHT_SENSOR_EXPOSURE_TIME_100);
+  if (ret != BSP_ERROR_NONE)
+  {
+    printf("Light sensor exposure time set failed: %ld\r\n", ret);
+    return ret;
+  }
+
+  ret = BSP_LIGHT_SENSOR_SetGain(0, LIGHT_SENSOR_ALS_CHANNEL, LIGHT_SENSOR_GAIN_1);
+  if (ret != BSP_ERROR_NONE)
+  {
+    printf("Light sensor gain set failed: %ld\r\n", ret);
+    return ret;
+  }
+
+  /* Start light sensor in continuous mode */
+  ret = BSP_LIGHT_SENSOR_Start(0, LIGHT_SENSOR_MODE_CONTINUOUS);
+  if (ret != BSP_ERROR_NONE)
+  {
+    printf("Light sensor start failed: %ld\r\n", ret);
+    return ret;
+  }
+
+  /* Initialize VL53L5CX TOF Ranging Sensor (center device) */
+  ret = BSP_RANGING_SENSOR_Init(VL53L5A1_DEV_CENTER);
+  if (ret != BSP_ERROR_NONE)
+  {
+    printf("Ranging sensor init failed: %ld\r\n", ret);
+    return ret;
+  }
+
+  /* Configure TOF sensor profile */
+  RANGING_SENSOR_ProfileConfig_t tof_config;
+  tof_config.RangingProfile = RS_PROFILE_4x4_CONTINUOUS;
+  tof_config.TimingBudget = 30; /* 30 ms */
+  tof_config.Frequency = 5;     /* 5 Hz */
+  tof_config.EnableAmbient = 1;
+  tof_config.EnableSignal = 1;
+
+  ret = BSP_RANGING_SENSOR_ConfigProfile(VL53L5A1_DEV_CENTER, &tof_config);
+  if (ret != BSP_ERROR_NONE)
+  {
+    printf("Ranging sensor config failed: %ld\r\n", ret);
+    return ret;
+  }
+
+  /* Start TOF sensor */
+  ret = BSP_RANGING_SENSOR_Start(VL53L5A1_DEV_CENTER, RS_MODE_BLOCKING_CONTINUOUS);
+  if (ret != BSP_ERROR_NONE)
+  {
+    printf("Ranging sensor start failed: %ld\r\n", ret);
+    return ret;
+  }
+
   return 0;
 }
 
@@ -386,13 +450,95 @@ static void motion_thread_entry(ULONG thread_input)
   }
 }
 
+/**
+  * @brief  TOF Gesture Thread entry function (VL53L5CX ranging sensor)
+  * @param  thread_input: not used
+  * @retval None
+  */
 static void tof_gesture_entry(ULONG thread_input)
 {
+  (void)thread_input;
+  RANGING_SENSOR_Result_t tof_result;
+  uint32_t i;
 
+  /*
+   * VL53L5CX TOF (Time-of-Flight) Sensor:
+   * - Configured in 4x4 mode: 16 zones measuring distance
+   * - Distance in millimeters (mm)
+   * - Can detect gestures by analyzing distance changes across zones
+   */
+
+  while (1)
+  {
+    /* Get distance data from TOF sensor */
+    if (BSP_RANGING_SENSOR_GetDistance(VL53L5A1_DEV_CENTER, &tof_result) == BSP_ERROR_NONE)
+    {
+      printf("[Thread 3] TOF Zones: %lu\r\n", tof_result.NumberOfZones);
+
+      /* Print distance for each zone (4x4 grid) */
+      for (i = 0; i < tof_result.NumberOfZones; i++)
+      {
+        if (tof_result.ZoneResult[i].NumberOfTargets > 0)
+        {
+          /* Status 5 = valid measurement */
+          if (tof_result.ZoneResult[i].Status[0] == 5)
+          {
+            printf("  Zone[%lu]: %lu mm\r\n", i, tof_result.ZoneResult[i].Distance[0]);
+          }
+          else
+          {
+            printf("  Zone[%lu]: -- (status %lu)\r\n", i, tof_result.ZoneResult[i].Status[0]);
+          }
+        }
+        else
+        {
+          printf("  Zone[%lu]: no target\r\n", i);
+        }
+      }
+    }
+    else
+    {
+      printf("[Thread 3] TOF read error\r\n");
+    }
+
+    /* Sleep for 500ms */
+    tx_thread_sleep(TX_TIMER_TICKS_PER_SECOND / 2);
+  }
 }
 
+/**
+  * @brief  Light Sensor Thread entry function (VEML6030)
+  * @param  thread_input: not used
+  * @retval None
+  */
 static void light_sensor_entry(ULONG thread_input)
 {
+  (void)thread_input;
+  uint32_t light_values[LIGHT_SENSOR_MAX_CHANNELS];
 
+  /*
+   * VEML6030 Ambient Light Sensor:
+   * - Channel 0 (ALS): Ambient Light Sensor - measures visible light in lux
+   * - Channel 1 (WHITE): White channel - measures broader spectrum including IR
+   * - Values are raw counts, can be converted to lux using gain/integration time
+   */
+
+  while (1)
+  {
+    /* Get light sensor values */
+    if (BSP_LIGHT_SENSOR_GetValues(0, light_values) == BSP_ERROR_NONE)
+    {
+      printf("[Thread 4] Light ALS: %lu, White: %lu\r\n",
+             light_values[LIGHT_SENSOR_ALS_CHANNEL],
+             light_values[LIGHT_SENSOR_WHITE_CHANNEL]);
+    }
+    else
+    {
+      printf("[Thread 4] Light sensor read error\r\n");
+    }
+
+    /* Sleep for 1 second */
+    tx_thread_sleep(TX_TIMER_TICKS_PER_SECOND);
+  }
 }
 /* USER CODE END 1 */
