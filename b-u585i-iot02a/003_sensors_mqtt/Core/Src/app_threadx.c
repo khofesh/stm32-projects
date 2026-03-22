@@ -42,10 +42,11 @@
 #define TOF_GESTURE_THREAD_STACK_SIZE 	 4096  /* VL53L5CX requires more stack */
 #define LIGHT_THREAD_STACK_SIZE			 1024
 #define ENV_SENS_THREAD_PRIORITY      	 10
-#define MOTION_THREAD_PRIORITY           11
-#define TOF_GESTURE_THREAD_PRIORITY      12
-#define LIGHT_THREAD_PRIORITY			 13
-#define THREAD_SYNC_EVENT                0x01
+#define MOTION_THREAD_PRIORITY           10
+#define TOF_GESTURE_THREAD_PRIORITY      10
+#define LIGHT_THREAD_PRIORITY			 10
+#define THREAD_SYNC_EVENT_1_2            0x01  /* Thread 1 -> Thread 2 */
+#define THREAD_SYNC_EVENT_2_4            0x02  /* Thread 2 -> Thread 4 */
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -57,21 +58,22 @@
 /* USER CODE BEGIN PV */
 static TX_THREAD env_sens_thread;
 static TX_THREAD motion_thread;
-static TX_THREAD tof_gesture_thread;
 static TX_THREAD light_thread;
 static TX_EVENT_FLAGS_GROUP sync_event_flags;
+static TX_MUTEX i2c2_mutex;  /* Mutex to protect I2C2 bus access */
 
 static UCHAR env_sens_thread_stack[ENV_SENS_THREAD_STACK_SIZE];
 static UCHAR motion_thread_stack[MOTION_THREAD_STACK_SIZE];
-static UCHAR tof_gesture_thread_stack[TOF_GESTURE_THREAD_STACK_SIZE];
 static UCHAR light_thread_stack[LIGHT_THREAD_STACK_SIZE];
+
+/* Sensor availability flags */
+static uint8_t light_sensor_available = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN PFP */
 static void env_sens_thread_entry(ULONG thread_input);
 static void motion_thread_entry(ULONG thread_input);
-static void tof_gesture_entry(ULONG thread_input);
 static void light_sensor_entry(ULONG thread_input);
 static int32_t sensors_init(void);
 /* USER CODE END PFP */
@@ -96,6 +98,14 @@ UINT App_ThreadX_Init(VOID *memory_ptr)
     return TX_NOT_DONE;
   }
   printf("Sensors initialized successfully\r\n");
+
+  /* Create mutex for I2C2 bus protection */
+  ret = tx_mutex_create(&i2c2_mutex, "I2C2 Mutex", TX_NO_INHERIT);
+  if (ret != TX_SUCCESS)
+  {
+    printf("I2C2 mutex create failed\r\n");
+    return ret;
+  }
 
   /* Create event flags group for thread synchronization */
   ret = tx_event_flags_create(&sync_event_flags, "Sync Event Flags");
@@ -137,20 +147,20 @@ UINT App_ThreadX_Init(VOID *memory_ptr)
   }
 
   /* create TOF & gesture thread */
-  ret = tx_thread_create(&tof_gesture_thread,
-		  "TOF Gesture Thread",
-		  tof_gesture_entry,
-		  0,
-		  tof_gesture_thread_stack,
-		  TOF_GESTURE_THREAD_STACK_SIZE,
-		  TOF_GESTURE_THREAD_PRIORITY,
-		  TOF_GESTURE_THREAD_PRIORITY,
-		  TX_NO_TIME_SLICE,
-		  TX_AUTO_START);
-  if (ret != TX_SUCCESS)
-  {
-	  return ret;
-  }
+//  ret = tx_thread_create(&tof_gesture_thread,
+//		  "TOF Gesture Thread",
+//		  tof_gesture_entry,
+//		  0,
+//		  tof_gesture_thread_stack,
+//		  TOF_GESTURE_THREAD_STACK_SIZE,
+//		  TOF_GESTURE_THREAD_PRIORITY,
+//		  TOF_GESTURE_THREAD_PRIORITY,
+//		  TX_NO_TIME_SLICE,
+//		  TX_AUTO_START);
+//  if (ret != TX_SUCCESS)
+//  {
+//	  return ret;
+//  }
 
   /* create light sensor thread */
   ret = tx_thread_create(&light_thread,
@@ -273,67 +283,7 @@ static int32_t sensors_init(void)
     return ret;
   }
 
-  /* Initialize VEML6030 Light Sensor (Instance 0) */
-  ret = BSP_LIGHT_SENSOR_Init(0);
-  if (ret != BSP_ERROR_NONE)
-  {
-    printf("Light sensor init failed: %ld\r\n", ret);
-    return ret;
-  }
-
-  /* Set exposure time and gain for light sensor */
-  ret = BSP_LIGHT_SENSOR_SetExposureTime(0, LIGHT_SENSOR_EXPOSURE_TIME_100);
-  if (ret != BSP_ERROR_NONE)
-  {
-    printf("Light sensor exposure time set failed: %ld\r\n", ret);
-    return ret;
-  }
-
-  ret = BSP_LIGHT_SENSOR_SetGain(0, LIGHT_SENSOR_ALS_CHANNEL, LIGHT_SENSOR_GAIN_1);
-  if (ret != BSP_ERROR_NONE)
-  {
-    printf("Light sensor gain set failed: %ld\r\n", ret);
-    return ret;
-  }
-
-  /* Start light sensor in continuous mode */
-  ret = BSP_LIGHT_SENSOR_Start(0, LIGHT_SENSOR_MODE_CONTINUOUS);
-  if (ret != BSP_ERROR_NONE)
-  {
-    printf("Light sensor start failed: %ld\r\n", ret);
-    return ret;
-  }
-
-  /* Initialize VL53L5CX TOF Ranging Sensor (center device) */
-  ret = BSP_RANGING_SENSOR_Init(VL53L5A1_DEV_CENTER);
-  if (ret != BSP_ERROR_NONE)
-  {
-    printf("Ranging sensor init failed: %ld\r\n", ret);
-    return ret;
-  }
-
-  /* Configure TOF sensor profile */
-  RANGING_SENSOR_ProfileConfig_t tof_config;
-  tof_config.RangingProfile = RS_PROFILE_4x4_CONTINUOUS;
-  tof_config.TimingBudget = 30; /* 30 ms */
-  tof_config.Frequency = 5;     /* 5 Hz */
-  tof_config.EnableAmbient = 1;
-  tof_config.EnableSignal = 1;
-
-  ret = BSP_RANGING_SENSOR_ConfigProfile(VL53L5A1_DEV_CENTER, &tof_config);
-  if (ret != BSP_ERROR_NONE)
-  {
-    printf("Ranging sensor config failed: %ld\r\n", ret);
-    return ret;
-  }
-
-  /* Start TOF sensor */
-  ret = BSP_RANGING_SENSOR_Start(VL53L5A1_DEV_CENTER, RS_MODE_BLOCKING_CONTINUOUS);
-  if (ret != BSP_ERROR_NONE)
-  {
-    printf("Ranging sensor start failed: %ld\r\n", ret);
-    return ret;
-  }
+  /* Light sensor init moved to Thread 4 (needs RTOS scheduler for HAL timing) */
 
   return 0;
 }
@@ -360,6 +310,9 @@ static void env_sens_thread_entry(ULONG thread_input)
      * For accurate ambient temperature, use an external sensor or apply a calibration offset.
      */
 
+    /* Acquire I2C2 mutex before reading sensors */
+    tx_mutex_get(&i2c2_mutex, TX_WAIT_FOREVER);
+
     /* Read temperature from HTS221 (Instance 0) */
     if (BSP_ENV_SENSOR_GetValue(0, ENV_TEMPERATURE, &temperature_value) != BSP_ERROR_NONE)
     {
@@ -384,11 +337,14 @@ static void env_sens_thread_entry(ULONG thread_input)
       printf("[Thread 1] LPS22HH Temp read error\r\n");
     }
 
+    /* Release I2C2 mutex */
+    tx_mutex_put(&i2c2_mutex);
+
     printf("[Thread 1] temp: %.2f C, hum: %.2f %%RH, press: %.2f hPa\r\n", temperature_value, humidity_value, pressure_value);
     printf("[Thread 1] lps22hh_temp: %.2f C\r\n", lps22hh_temp);
 
-    /* Set event flag to signal motion thread */
-    tx_event_flags_set(&sync_event_flags, THREAD_SYNC_EVENT, TX_OR);
+    /* Set event flag to signal motion thread (Thread 2) */
+    tx_event_flags_set(&sync_event_flags, THREAD_SYNC_EVENT_1_2, TX_OR);
 
     /* Sleep for 1 second */
     tx_thread_sleep(TX_TIMER_TICKS_PER_SECOND);
@@ -421,8 +377,11 @@ static void motion_thread_entry(ULONG thread_input)
 
   while (1)
   {
-    /* Wait for temperature thread to complete */
-    tx_event_flags_get(&sync_event_flags, THREAD_SYNC_EVENT, TX_AND_CLEAR, &actual_flags, TX_WAIT_FOREVER);
+    /* Wait for env sensor thread (Thread 1) to complete */
+    tx_event_flags_get(&sync_event_flags, THREAD_SYNC_EVENT_1_2, TX_AND_CLEAR, &actual_flags, TX_WAIT_FOREVER);
+
+    /* Acquire I2C2 mutex before reading sensors */
+    tx_mutex_get(&i2c2_mutex, TX_WAIT_FOREVER);
 
     /* Read gyroscope from ISM330DHCX (Instance 0) */
     if (BSP_MOTION_SENSOR_GetAxes(0, MOTION_GYRO, &gyro_axes) == BSP_ERROR_NONE)
@@ -446,63 +405,10 @@ static void motion_thread_entry(ULONG thread_input)
       printf("[Thread 2] Accelerometer read error\r\n");
     }
 
+    /* Release I2C2 mutex */
+    tx_mutex_put(&i2c2_mutex);
+
     printf("---\r\n");
-  }
-}
-
-/**
-  * @brief  TOF Gesture Thread entry function (VL53L5CX ranging sensor)
-  * @param  thread_input: not used
-  * @retval None
-  */
-static void tof_gesture_entry(ULONG thread_input)
-{
-  (void)thread_input;
-  RANGING_SENSOR_Result_t tof_result;
-  uint32_t i;
-
-  /*
-   * VL53L5CX TOF (Time-of-Flight) Sensor:
-   * - Configured in 4x4 mode: 16 zones measuring distance
-   * - Distance in millimeters (mm)
-   * - Can detect gestures by analyzing distance changes across zones
-   */
-
-  while (1)
-  {
-    /* Get distance data from TOF sensor */
-    if (BSP_RANGING_SENSOR_GetDistance(VL53L5A1_DEV_CENTER, &tof_result) == BSP_ERROR_NONE)
-    {
-      printf("[Thread 3] TOF Zones: %lu\r\n", tof_result.NumberOfZones);
-
-      /* Print distance for each zone (4x4 grid) */
-      for (i = 0; i < tof_result.NumberOfZones; i++)
-      {
-        if (tof_result.ZoneResult[i].NumberOfTargets > 0)
-        {
-          /* Status 5 = valid measurement */
-          if (tof_result.ZoneResult[i].Status[0] == 5)
-          {
-            printf("  Zone[%lu]: %lu mm\r\n", i, tof_result.ZoneResult[i].Distance[0]);
-          }
-          else
-          {
-            printf("  Zone[%lu]: -- (status %lu)\r\n", i, tof_result.ZoneResult[i].Status[0]);
-          }
-        }
-        else
-        {
-          printf("  Zone[%lu]: no target\r\n", i);
-        }
-      }
-    }
-    else
-    {
-      printf("[Thread 3] TOF read error\r\n");
-    }
-
-    /* Sleep for 500ms */
-    tx_thread_sleep(TX_TIMER_TICKS_PER_SECOND / 2);
   }
 }
 
@@ -515,6 +421,7 @@ static void light_sensor_entry(ULONG thread_input)
 {
   (void)thread_input;
   uint32_t light_values[LIGHT_SENSOR_MAX_CHANNELS];
+  int32_t ret;
 
   /*
    * VEML6030 Ambient Light Sensor:
@@ -523,17 +430,72 @@ static void light_sensor_entry(ULONG thread_input)
    * - Values are raw counts, can be converted to lux using gain/integration time
    */
 
+  printf("[Thread 4] Initializing light sensor...\r\n");
+
+  /* Acquire I2C2 mutex for initialization */
+  tx_mutex_get(&i2c2_mutex, TX_WAIT_FOREVER);
+
+  /* Initialize VEML6030 Light Sensor */
+  ret = BSP_LIGHT_SENSOR_Init(0);
+  if (ret != BSP_ERROR_NONE)
+  {
+    tx_mutex_put(&i2c2_mutex);
+    printf("[Thread 4] Light sensor init failed: %ld, thread suspended\r\n", ret);
+    light_sensor_available = 0;
+    tx_thread_suspend(tx_thread_identify());
+    return;
+  }
+
+  ret = BSP_LIGHT_SENSOR_SetExposureTime(0, LIGHT_SENSOR_EXPOSURE_TIME_100);
+  if (ret != BSP_ERROR_NONE)
+  {
+    tx_mutex_put(&i2c2_mutex);
+    printf("[Thread 4] Light sensor config failed: %ld, thread suspended\r\n", ret);
+    light_sensor_available = 0;
+    tx_thread_suspend(tx_thread_identify());
+    return;
+  }
+
+  ret = BSP_LIGHT_SENSOR_SetGain(0, LIGHT_SENSOR_ALS_CHANNEL, LIGHT_SENSOR_GAIN_1);
+  if (ret != BSP_ERROR_NONE)
+  {
+    tx_mutex_put(&i2c2_mutex);
+    printf("[Thread 4] Light sensor config failed: %ld, thread suspended\r\n", ret);
+    light_sensor_available = 0;
+    tx_thread_suspend(tx_thread_identify());
+    return;
+  }
+
+  ret = BSP_LIGHT_SENSOR_Start(0, LIGHT_SENSOR_MODE_CONTINUOUS);
+  if (ret != BSP_ERROR_NONE)
+  {
+    tx_mutex_put(&i2c2_mutex);
+    printf("[Thread 4] Light sensor start failed: %ld, thread suspended\r\n", ret);
+    light_sensor_available = 0;
+    tx_thread_suspend(tx_thread_identify());
+    return;
+  }
+
+  tx_mutex_put(&i2c2_mutex);
+  light_sensor_available = 1;
+  printf("[Thread 4] Light sensor initialized successfully\r\n");
+
   while (1)
   {
+    /* Acquire I2C2 mutex before reading sensor */
+    tx_mutex_get(&i2c2_mutex, TX_WAIT_FOREVER);
+
     /* Get light sensor values */
     if (BSP_LIGHT_SENSOR_GetValues(0, light_values) == BSP_ERROR_NONE)
     {
+      tx_mutex_put(&i2c2_mutex);
       printf("[Thread 4] Light ALS: %lu, White: %lu\r\n",
              light_values[LIGHT_SENSOR_ALS_CHANNEL],
              light_values[LIGHT_SENSOR_WHITE_CHANNEL]);
     }
     else
     {
+      tx_mutex_put(&i2c2_mutex);
       printf("[Thread 4] Light sensor read error\r\n");
     }
 
