@@ -430,6 +430,47 @@ static void light_sensor_entry(ULONG thread_input)
    * - Values are raw counts, can be converted to lux using gain/integration time
    */
 
+  /*
+   * ● The VEML6030 is an ambient light sensor with two channels:
+
+  ALS (Ambient Light Sensor) - value: 3842
+  - Measures visible light intensity
+  - Mimics human eye sensitivity (peaks around 550nm - green/yellow)
+  - Raw counts, not lux directly
+
+  White Channel - value: 4866
+  - Measures broader spectrum including some infrared (IR)
+  - Less filtered than ALS
+  - Always higher than ALS because it captures more wavelengths
+
+  Converting to Lux:
+  The raw counts depend on gain and integration time settings. With your settings (gain=1, exposure=100ms):
+
+  Lux ≈ ALS_raw × 0.0576
+
+  So 3842 × 0.0576 ≈ 221 lux — typical indoor lighting (office/home).
+
+  Reference lux values:
+
+  ┌─────────────────┬─────────┐
+  │   Environment   │   Lux   │
+  ├─────────────────┼─────────┤
+  │ Moonlight       │ 0.1     │
+  ├─────────────────┼─────────┤
+  │ Street lighting │ 10-50   │
+  ├─────────────────┼─────────┤
+  │ Home/office     │ 100-500 │
+  ├─────────────────┼─────────┤
+  │ Overcast day    │ 1,000   │
+  ├─────────────────┼─────────┤
+  │ Direct sunlight │ 100,000 │
+  └─────────────────┴─────────┘
+
+  Why White > ALS?
+  White channel includes IR from incandescent bulbs, sunlight, and heat sources. The ratio White/ALS can help identify light type (LED vs incandescent vs sunlight).
+   *
+   */
+
   printf("[Thread 4] Initializing light sensor...\r\n");
 
   /* Acquire I2C2 mutex for initialization */
