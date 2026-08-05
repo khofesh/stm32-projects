@@ -378,11 +378,21 @@ static uint8_t aht30_setup(void)
   DRIVER_AHT30_LINK_DELAY_MS(&g_aht30, aht30_interface_delay_ms);
   DRIVER_AHT30_LINK_DEBUG_PRINT(&g_aht30, aht30_interface_debug_print);
 
-  return aht30_init(&g_aht30);
+  if (aht30_init(&g_aht30) != 0)
+  {
+    return 1;
+  }
+
+  /* AHT30 needs time to finish its internal calibration before the first read */
+  aht30_interface_delay_ms(2000);
+
+  return 0;
 }
 
 static uint8_t oled_setup(void)
 {
+  uint8_t res;
+
   DRIVER_SSD1315_LINK_INIT(&g_oled, ssd1315_handle_t);
   DRIVER_SSD1315_LINK_IIC_INIT(&g_oled, ssd1315_interface_iic_init);
   DRIVER_SSD1315_LINK_IIC_DEINIT(&g_oled, ssd1315_interface_iic_deinit);
@@ -407,16 +417,43 @@ static uint8_t oled_setup(void)
   {
     return 1;
   }
+
+  /* ssd1315_init() only wires up the callbacks and toggles reset - it sends no
+     panel commands, so the whole configuration sequence has to be issued here.
+     Without set_charge_pump() the panel has no high-voltage rail and stays dark. */
   if (ssd1315_init(&g_oled) != 0)
   {
     return 1;
   }
-  if (ssd1315_clear(&g_oled) != 0)
-  {
-    return 1;
-  }
 
-  return ssd1315_set_display(&g_oled, SSD1315_DISPLAY_ON);
+  res  = ssd1315_set_display(&g_oled, SSD1315_DISPLAY_OFF);
+  res |= ssd1315_set_column_address_range(&g_oled, 0x00, 0x7F);
+  res |= ssd1315_set_page_address_range(&g_oled, 0x00, 0x07);
+  res |= ssd1315_set_low_column_start_address(&g_oled, 0x00);
+  res |= ssd1315_set_high_column_start_address(&g_oled, 0x00);
+  res |= ssd1315_set_display_start_line(&g_oled, 0x00);
+  res |= ssd1315_set_fade_blinking_mode(&g_oled, SSD1315_FADE_BLINKING_MODE_DISABLE, 0x00);
+  res |= ssd1315_deactivate_scroll(&g_oled);
+  res |= ssd1315_set_zoom_in(&g_oled, SSD1315_ZOOM_IN_DISABLE);
+  res |= ssd1315_set_contrast(&g_oled, 0x7F);
+  res |= ssd1315_set_segment_remap(&g_oled, SSD1315_SEGMENT_COLUMN_ADDRESS_127);
+  res |= ssd1315_set_scan_direction(&g_oled, SSD1315_SCAN_DIRECTION_COMN_1_START);
+  res |= ssd1315_set_display_mode(&g_oled, SSD1315_DISPLAY_MODE_NORMAL);
+  res |= ssd1315_set_multiplex_ratio(&g_oled, 0x3F);
+  res |= ssd1315_set_display_offset(&g_oled, 0x00);
+  res |= ssd1315_set_display_clock(&g_oled, 0x08, 0x00);
+  res |= ssd1315_set_precharge_period(&g_oled, 0x01, 0x0F);
+  res |= ssd1315_set_iref(&g_oled, SSD1315_IREF_ENABLE, SSD1315_IREF_VALUE_19UA_150UA);
+  res |= ssd1315_set_com_pins_hardware_conf(&g_oled, SSD1315_PIN_CONF_ALTERNATIVE,
+                                            SSD1315_LEFT_RIGHT_REMAP_DISABLE);
+  res |= ssd1315_set_deselect_level(&g_oled, SSD1315_DESELECT_LEVEL_0P77);
+  res |= ssd1315_set_memory_addressing_mode(&g_oled, SSD1315_MEMORY_ADDRESSING_MODE_PAGE);
+  res |= ssd1315_set_charge_pump(&g_oled, SSD1315_CHARGE_PUMP_ENABLE, SSD1315_CHARGE_PUMP_MODE_7P5V);
+  res |= ssd1315_set_entire_display(&g_oled, SSD1315_ENTIRE_DISPLAY_OFF);
+  res |= ssd1315_set_display(&g_oled, SSD1315_DISPLAY_ON);
+  res |= ssd1315_clear(&g_oled);
+
+  return (res != 0) ? 1 : 0;
 }
 
 static uint8_t oled_show(float t, uint8_t h)
