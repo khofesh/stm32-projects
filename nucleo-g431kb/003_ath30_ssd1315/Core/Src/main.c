@@ -21,7 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "driver_aht30_interface.h"
+#include "driver_ssd1315_interface.h"
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,7 +34,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define SLEEP_PERIOD_S   60U
+#define OLED_W           128U
+#define OLED_H           64U
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -47,8 +52,12 @@ I2C_HandleTypeDef hi2c1;
 DMA_HandleTypeDef hdma_i2c1_rx;
 DMA_HandleTypeDef hdma_i2c1_tx;
 
-/* USER CODE BEGIN PV */
+RTC_HandleTypeDef hrtc;
 
+/* USER CODE BEGIN PV */
+static aht30_handle_t g_aht30;
+static ssd1315_handle_t g_oled;
+static volatile uint8_t g_wakeup;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -56,8 +65,12 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_RTC_Init(void);
 /* USER CODE BEGIN PFP */
-
+static uint8_t aht30_setup(void);
+static uint8_t oled_setup(void);
+static uint8_t oled_show(float t, uint8_t h);
+static void enter_stop(uint32_t seconds);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -96,8 +109,16 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_I2C1_Init();
+  MX_RTC_Init();
   /* USER CODE BEGIN 2 */
-
+  if (oled_setup() != 0)
+  {
+    Error_Handler();
+  }
+  if (aht30_setup() != 0)
+  {
+    Error_Handler();
+  }
   /* USER CODE END 2 */
 
   /* Initialize leds */
@@ -122,6 +143,17 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    uint32_t t_raw;
+    uint32_t h_raw;
+    float t_s;
+    uint8_t h_s;
+
+    if (aht30_read_temperature_humidity(&g_aht30, &t_raw, &t_s, &h_raw, &h_s) == 0)
+    {
+      (void)oled_show(t_s, h_s);
+    }
+
+    enter_stop(SLEEP_PERIOD_S);
   }
   /* USER CODE END 3 */
 }
@@ -142,8 +174,9 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI|RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV6;
@@ -220,6 +253,79 @@ static void MX_I2C1_Init(void)
 }
 
 /**
+  * @brief RTC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_RTC_Init(void)
+{
+
+  /* USER CODE BEGIN RTC_Init 0 */
+
+  /* USER CODE END RTC_Init 0 */
+
+  RTC_TimeTypeDef sTime = {0};
+  RTC_DateTypeDef sDate = {0};
+
+  /* USER CODE BEGIN RTC_Init 1 */
+
+  /* USER CODE END RTC_Init 1 */
+
+  /** Initialize RTC Only
+  */
+  hrtc.Instance = RTC;
+  hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
+  hrtc.Init.AsynchPrediv = 127;
+  hrtc.Init.SynchPrediv = 249;
+  hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
+  hrtc.Init.OutPutRemap = RTC_OUTPUT_REMAP_NONE;
+  hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
+  hrtc.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
+  hrtc.Init.OutPutPullUp = RTC_OUTPUT_PULLUP_NONE;
+  if (HAL_RTC_Init(&hrtc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /* USER CODE BEGIN Check_RTC_BKUP */
+
+  /* USER CODE END Check_RTC_BKUP */
+
+  /** Initialize RTC and set the Time and Date
+  */
+  sTime.Hours = 0x0;
+  sTime.Minutes = 0x0;
+  sTime.Seconds = 0x0;
+  sTime.SubSeconds = 0x0;
+  sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+  sTime.StoreOperation = RTC_STOREOPERATION_RESET;
+  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sDate.WeekDay = RTC_WEEKDAY_MONDAY;
+  sDate.Month = RTC_MONTH_JANUARY;
+  sDate.Date = 0x1;
+  sDate.Year = 0x0;
+
+  if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Enable the WakeUp
+  */
+  if (HAL_RTCEx_SetWakeUpTimer_IT(&hrtc, 0, RTC_WAKEUPCLOCK_RTCCLK_DIV16) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN RTC_Init 2 */
+
+  /* USER CODE END RTC_Init 2 */
+
+}
+
+/**
   * Enable DMA controller clock
   */
 static void MX_DMA_Init(void)
@@ -262,13 +368,131 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+static uint8_t aht30_setup(void)
+{
+  DRIVER_AHT30_LINK_INIT(&g_aht30, aht30_handle_t);
+  DRIVER_AHT30_LINK_IIC_INIT(&g_aht30, aht30_interface_iic_init);
+  DRIVER_AHT30_LINK_IIC_DEINIT(&g_aht30, aht30_interface_iic_deinit);
+  DRIVER_AHT30_LINK_IIC_READ_CMD(&g_aht30, aht30_interface_iic_read_cmd);
+  DRIVER_AHT30_LINK_IIC_WRITE_CMD(&g_aht30, aht30_interface_iic_write_cmd);
+  DRIVER_AHT30_LINK_DELAY_MS(&g_aht30, aht30_interface_delay_ms);
+  DRIVER_AHT30_LINK_DEBUG_PRINT(&g_aht30, aht30_interface_debug_print);
+
+  return aht30_init(&g_aht30);
+}
+
+static uint8_t oled_setup(void)
+{
+  DRIVER_SSD1315_LINK_INIT(&g_oled, ssd1315_handle_t);
+  DRIVER_SSD1315_LINK_IIC_INIT(&g_oled, ssd1315_interface_iic_init);
+  DRIVER_SSD1315_LINK_IIC_DEINIT(&g_oled, ssd1315_interface_iic_deinit);
+  DRIVER_SSD1315_LINK_IIC_WRITE(&g_oled, ssd1315_interface_iic_write);
+  DRIVER_SSD1315_LINK_SPI_INIT(&g_oled, ssd1315_interface_spi_init);
+  DRIVER_SSD1315_LINK_SPI_DEINIT(&g_oled, ssd1315_interface_spi_deinit);
+  DRIVER_SSD1315_LINK_SPI_WRITE_COMMAND(&g_oled, ssd1315_interface_spi_write_cmd);
+  DRIVER_SSD1315_LINK_SPI_COMMAND_DATA_GPIO_INIT(&g_oled, ssd1315_interface_spi_cmd_data_gpio_init);
+  DRIVER_SSD1315_LINK_SPI_COMMAND_DATA_GPIO_DEINIT(&g_oled, ssd1315_interface_spi_cmd_data_gpio_deinit);
+  DRIVER_SSD1315_LINK_SPI_COMMAND_DATA_GPIO_WRITE(&g_oled, ssd1315_interface_spi_cmd_data_gpio_write);
+  DRIVER_SSD1315_LINK_RESET_GPIO_INIT(&g_oled, ssd1315_interface_reset_gpio_init);
+  DRIVER_SSD1315_LINK_RESET_GPIO_DEINIT(&g_oled, ssd1315_interface_reset_gpio_deinit);
+  DRIVER_SSD1315_LINK_RESET_GPIO_WRITE(&g_oled, ssd1315_interface_reset_gpio_write);
+  DRIVER_SSD1315_LINK_DELAY_MS(&g_oled, ssd1315_interface_delay_ms);
+  DRIVER_SSD1315_LINK_DEBUG_PRINT(&g_oled, ssd1315_interface_debug_print);
+
+  if (ssd1315_set_interface(&g_oled, SSD1315_INTERFACE_IIC) != 0)
+  {
+    return 1;
+  }
+  if (ssd1315_set_addr_pin(&g_oled, SSD1315_ADDR_SA0_0) != 0)
+  {
+    return 1;
+  }
+  if (ssd1315_init(&g_oled) != 0)
+  {
+    return 1;
+  }
+  if (ssd1315_clear(&g_oled) != 0)
+  {
+    return 1;
+  }
+
+  return ssd1315_set_display(&g_oled, SSD1315_DISPLAY_ON);
+}
+
+static uint8_t oled_show(float t, uint8_t h)
+{
+  char line[24];
+  int32_t n;
+
+  if (ssd1315_gram_fill_rect(&g_oled, 0, 0, OLED_W - 1U, OLED_H - 1U, 0) != 0)
+  {
+    return 1;
+  }
+
+  /* integer formatting: newlib-nano printf has no float support by default */
+  int32_t tenths = (int32_t)((t * 10.0f) + (t >= 0.0f ? 0.5f : -0.5f));
+  n = snprintf(line, sizeof(line), "T %ld.%ld C", (long)(tenths / 10), (long)(tenths % 10 < 0 ? -(tenths % 10) : tenths % 10));
+  if (ssd1315_gram_write_string(&g_oled, 0, 8, line, (uint16_t)n, 1, SSD1315_FONT_16) != 0)
+  {
+    return 1;
+  }
+
+  n = snprintf(line, sizeof(line), "H %u %%", (unsigned int)h);
+  if (ssd1315_gram_write_string(&g_oled, 0, 32, line, (uint16_t)n, 1, SSD1315_FONT_16) != 0)
+  {
+    return 1;
+  }
+
+  return ssd1315_gram_update(&g_oled);
+}
+
+/* Stop 1: RAM and peripheral registers retained, RTC wakeup timer running on LSI.
+   The SSD1315 keeps its own GRAM powered, so the last reading stays on screen. */
+static void enter_stop(uint32_t seconds)
+{
+  g_wakeup = 0;
+
+  if (HAL_RTCEx_DeactivateWakeUpTimer(&hrtc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_RTCEx_SetWakeUpTimer_IT(&hrtc, seconds - 1U, RTC_WAKEUPCLOCK_CK_SPRE_16BITS) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  HAL_SuspendTick();
+
+  do
+  {
+    HAL_PWREx_EnterSTOP1Mode(PWR_STOPENTRY_WFI);
+  } while (g_wakeup == 0U);
+
+  /* HSE and PLL are stopped on Stop entry; SYSCLK comes back on HSI16 */
+  SystemClock_Config();
+  HAL_ResumeTick();
+
+  if (HAL_RTCEx_DeactivateWakeUpTimer(&hrtc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+void HAL_RTCEx_WakeUpTimerEventCallback(RTC_HandleTypeDef *hrtc_cb)
+{
+  if (hrtc_cb->Instance == RTC)
+  {
+    g_wakeup = 1;
+  }
+}
+
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
-  * File Name          :
-  * Description        :
+  * @file           : main.c
+  * @brief          : Main program body
   ******************************************************************************
   * @attention
   *
