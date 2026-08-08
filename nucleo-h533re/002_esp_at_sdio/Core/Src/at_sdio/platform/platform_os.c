@@ -1,7 +1,7 @@
-#include "FreeRTOS.h"
-#include "task.h"
+#include "stm32h5xx_hal.h"
+#include "platform_os.h"
 
 void platform_os_delay(uint32_t milliseconds)
 {
-    vTaskDelay(milliseconds);
+    HAL_Delay(milliseconds);
 }

@@ -260,7 +260,10 @@ static void MX_SDMMC1_SD_Init(void)
 {
 
   /* USER CODE BEGIN SDMMC1_Init 0 */
-
+  /* SDMMC1 is used in SDIO mode (ESP-AT slave), not as an SD card. The SD card
+     identification below would fail and trap in Error_Handler(); the peripheral
+     is brought up by sdio_driver_init() instead. */
+  return;
   /* USER CODE END SDMMC1_Init 0 */
 
   /* USER CODE BEGIN SDMMC1_Init 1 */

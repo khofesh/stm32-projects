@@ -22,6 +22,7 @@
 #include "stm32h5xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "sdio.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -218,7 +219,9 @@ void EXTI13_IRQHandler(void)
 void SDMMC1_IRQHandler(void)
 {
   /* USER CODE BEGIN SDMMC1_IRQn 0 */
-
+  /* SDMMC1 is driven in SDIO mode by the ESP-AT port, not as an SD card */
+  SdioPortIrqHandler();
+  return;
   /* USER CODE END SDMMC1_IRQn 0 */
   HAL_SD_IRQHandler(&hsd1);
   /* USER CODE BEGIN SDMMC1_IRQn 1 */
