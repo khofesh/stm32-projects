@@ -21,7 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <string.h>
+#include "sdio_host_transport.h"
+#include "sdio_host_reg.h"
+#include "sdio_host_log.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,7 +34,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define AT_CMD_BUF_LEN   256U   /* one AT command line from the console */
+#define AT_RSP_BUF_LEN   4096U  /* one AT response chunk from the slave */
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -48,7 +52,14 @@ DCACHE_HandleTypeDef hdcache1;
 SD_HandleTypeDef hsd1;
 
 /* USER CODE BEGIN PV */
+/* CMD53 buffers: the SDIO port requires 4-byte alignment */
+static uint8_t at_cmd_buf[AT_CMD_BUF_LEN] __attribute__((aligned(4)));
+static uint8_t at_rsp_buf[AT_RSP_BUF_LEN] __attribute__((aligned(4)));
 
+static volatile uint16_t at_cmd_len;
+static volatile uint8_t  at_cmd_ready;
+static uint16_t at_cmd_idx;
+static uint8_t  at_console_char;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -123,14 +134,96 @@ int main(void)
     Error_Handler();
   }
 
-  /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  BSP_COM_SelectLogPort(COM1);
+
+  printf("\r\nhost ready, start initializing slave...\r\n");
+  if (sdio_host_init() != SDIO_SUCCESS)
+  {
+    printf("SDIO init error\r\n");
+    Error_Handler();
+  }
+  printf("Sdio init done\r\n");
+  BSP_LED_On(LED_GREEN);
+
+  /* Console echoes AT commands typed by the user into the SDIO link */
+  if (HAL_UART_Receive_IT(&hcom_uart[COM1], &at_console_char, 1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /* Infinite loop */
   while (1)
   {
-
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    if (at_cmd_ready != 0U)
+    {
+      sdio_err_t err = sdio_host_send_packet(at_cmd_buf, at_cmd_len);
+
+      if (err == ERR_TIMEOUT)
+      {
+        printf("send timeout\r\n");
+      }
+      else if (err != SDIO_SUCCESS)
+      {
+        printf("send error: %d\r\n", (int)err);
+      }
+      at_cmd_ready = 0U;
+    }
+
+    /* Slave pulls D1 low when it has a packet for us */
+    if (sdio_host_wait_int(10U) != SDIO_SUCCESS)
+    {
+      continue;
+    }
+
+    uint32_t intr_raw = 0U;
+    uint32_t intr_st = 0U;
+
+    if (sdio_host_get_intr(&intr_raw, &intr_st) != SDIO_SUCCESS)
+    {
+      continue;
+    }
+    if (intr_st == 0U)
+    {
+      continue;
+    }
+    if (sdio_host_clear_intr(intr_raw) != SDIO_SUCCESS)
+    {
+      continue;
+    }
+
+    if ((intr_raw & HOST_SLC0_RX_NEW_PACKET_INT_ST) != 0U)
+    {
+      while (1)
+      {
+        size_t size_read = AT_RSP_BUF_LEN;
+        sdio_err_t err = sdio_host_get_packet(at_rsp_buf, AT_RSP_BUF_LEN, &size_read, 50U);
+
+        if (err == ERR_NOT_FOUND)
+        {
+          printf("interrupt but no data can be read\r\n");
+          break;
+        }
+        if ((err != SDIO_SUCCESS) && (err != ERR_NOT_FINISHED))
+        {
+          printf("rx packet error: %d\r\n", (int)err);
+          break;
+        }
+
+        if (size_read != 0U)
+        {
+          (void)HAL_UART_Transmit(&hcom_uart[COM1], at_rsp_buf, (uint16_t)size_read, 1000U);
+        }
+
+        if (err == SDIO_SUCCESS)
+        {
+          break;
+        }
+      }
+    }
   }
   /* USER CODE END 3 */
 }
@@ -307,7 +400,36 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+/**
+  * @brief  Console RX: accumulate one CRLF-terminated AT command, then hand it
+  *         to the main loop. Kept short - the SDIO transfer happens outside.
+  */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if (huart->Instance == hcom_uart[COM1].Instance)
+  {
+    /* Previous command not consumed yet, or line too long: drop and restart */
+    if ((at_cmd_ready != 0U) || (at_cmd_idx >= AT_CMD_BUF_LEN))
+    {
+      at_cmd_idx = 0U;
+    }
+    else
+    {
+      at_cmd_buf[at_cmd_idx] = at_console_char;
+      at_cmd_idx++;
 
+      if ((at_cmd_idx >= 2U) &&
+          (at_cmd_buf[at_cmd_idx - 1U] == '\n') && (at_cmd_buf[at_cmd_idx - 2U] == '\r'))
+      {
+        at_cmd_len = at_cmd_idx;
+        at_cmd_idx = 0U;
+        at_cmd_ready = 1U;
+      }
+    }
+
+    (void)HAL_UART_Receive_IT(&hcom_uart[COM1], &at_console_char, 1);
+  }
+}
 /* USER CODE END 4 */
 
  /* MPU Configuration */
