@@ -40,6 +40,12 @@ static volatile uint8_t esp_int_flag;
 /* CMD53 byte mode carries a 9-bit count, so a single transfer tops out at 512 */
 #define SDIO_PORT_MAX_BYTE_XFER 512U
 
+/* The ESP needs roughly a second from reset to bring its SDIO slave up, while
+   the STM32 is ready in milliseconds. SDIO_InitCard() sends CMD5 exactly once,
+   so enumeration is retried here instead of losing that race on every boot. */
+#define SDIO_INIT_RETRY_COUNT   25U
+#define SDIO_INIT_RETRY_MS      200U
+
 /* CCCR Bus Interface Control (function 0, register 0x07) */
 #define SDIO_CCCR_BUS_IF_CTRL   0x07U
 #define SDIO_CCCR_BUS_WIDTH_MSK 0x03U
@@ -203,6 +209,8 @@ static sdio_err_t SdioSetBusWidth4(void)
 sdio_err_t sdio_driver_init(void)
 {
     uint32_t kernel_clk;
+    uint32_t retry;
+    HAL_StatusTypeDef status = HAL_ERROR;
 
     if (SdioKernelClockConfig() != HAL_OK) {
         SDIO_LOGE(TAG, "SDMMC1 kernel clock config failed");
@@ -232,14 +240,31 @@ sdio_err_t sdio_driver_init(void)
               (unsigned long)(hsdio1.Init.ClockDiv ? kernel_clk / (2U * hsdio1.Init.ClockDiv)
                                                    : kernel_clk));
 
-    /* Runs the CMD0/CMD5/CMD3/CMD7 enumeration and sets the CCCR bus width */
-    if (HAL_SDIO_Init(&hsdio1) != HAL_OK) {
+    /* Runs the CMD0/CMD5/CMD3/CMD7 enumeration and sets the CCCR bus width.
+       A failed attempt leaves State back at RESET, so re-calling it is a clean
+       restart of the whole sequence. */
+    for (retry = 0U; retry < SDIO_INIT_RETRY_COUNT; retry++) {
+        status = HAL_SDIO_Init(&hsdio1);
+        if (status == HAL_OK) {
+            break;
+        }
+        HAL_Delay(SDIO_INIT_RETRY_MS);
+    }
+
+    if (status != HAL_OK) {
         /* SDIO_InitCard() returns HAL_ERROR without recording an ErrorCode, so
            re-probe CMD0/CMD5 here to say which half of the link is at fault. */
-        SDIO_LOGE(TAG, "HAL_SDIO_Init failed, err=0x%08lx",
+        SDIO_LOGE(TAG, "HAL_SDIO_Init failed after %lu attempts, err=0x%08lx",
+                  (unsigned long)SDIO_INIT_RETRY_COUNT,
                   (unsigned long)HAL_SDIO_GetError(&hsdio1));
         SdioProbeSlave();
         return FAILURE;
+    }
+
+    if (retry > 0U) {
+        SDIO_LOGI(TAG, "slave enumerated after %lu retries (%lu ms)",
+                  (unsigned long)retry,
+                  (unsigned long)(retry * SDIO_INIT_RETRY_MS));
     }
 
 #if (SDIO_PORT_BUS_WIDTH == HAL_SDIO_4_WIRES_MODE)
