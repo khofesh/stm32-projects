@@ -20,14 +20,13 @@ extern "C" {
 #include "stm32h5xx_hal.h"
 
 /* Bring-up configuration ----------------------------------------------------*/
-/* Start at 1 wire / 400 kHz. Move to 4 wires and a higher clock only once the
-   CCCR reads in the ESP-AT log come back non-zero.
-   Note for 4 wires: HAL_SDIO_Init() writes the slave CCCR bus width from
-   Init.BusWide compared against HAL_SDIO_4_WIRES_MODE (1), but Init.BusWide
-   holds an SDMMC_BUS_WIDE_* register value, so the comparison never matches
-   and the slave is left in 1-bit mode. Write CCCR 0x07 bit1 yourself with
-   HAL_SDIO_WriteDirect() after init when switching to 4 wires. */
-#define SDIO_PORT_BUS_WIDTH   HAL_SDIO_1_WIRE_MODE
+/* Enumeration always runs at 1 wire / 400 kHz; SDIO_PORT_BUS_WIDTH only selects
+   what the link is widened to afterwards.
+   HAL_SDIO_Init() writes the slave CCCR bus width from Init.BusWide compared
+   against HAL_SDIO_4_WIRES_MODE (1), but Init.BusWide holds an SDMMC_BUS_WIDE_*
+   register value, so the comparison never matches and the slave would be left
+   in 1-bit mode - sdio_driver_init() writes CCCR 0x07 itself instead. */
+#define SDIO_PORT_BUS_WIDTH   HAL_SDIO_4_WIRES_MODE
 #define SDIO_PORT_CLOCK_HZ    400000U
 
 /* Function 1 is the ESP slave data function */

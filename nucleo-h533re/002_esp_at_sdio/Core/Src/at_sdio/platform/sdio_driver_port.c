@@ -40,6 +40,11 @@ static volatile uint8_t esp_int_flag;
 /* CMD53 byte mode carries a 9-bit count, so a single transfer tops out at 512 */
 #define SDIO_PORT_MAX_BYTE_XFER 512U
 
+/* CCCR Bus Interface Control (function 0, register 0x07) */
+#define SDIO_CCCR_BUS_IF_CTRL   0x07U
+#define SDIO_CCCR_BUS_WIDTH_MSK 0x03U
+#define SDIO_CCCR_BUS_WIDTH_4B  0x02U
+
 /**
   * @brief Slave raised its function-1 interrupt (D1 held low).
   *
@@ -54,19 +59,29 @@ static void EspIoInterruptCallback(SDIO_HandleTypeDef *hsdio, uint32_t func)
     esp_int_flag = 1U;
 }
 
-void HAL_SDIO_MspInit(SDIO_HandleTypeDef *hsdio)
+/**
+  * @brief Select PLL1Q as the SDMMC1 kernel clock.
+  *
+  * HAL_RCC_OscConfig() only enables the PLL1 P output, so PLL1Q is still off
+  * after SystemClock_Config() and the kernel clock frequency reads back as 0.
+  * HAL_RCCEx_PeriphCLKConfig() is what turns PLL1Q on, so it has to run before
+  * the frequency is queried - i.e. before HAL_SDIO_Init(), not from MspInit.
+  */
+static HAL_StatusTypeDef SdioKernelClockConfig(void)
 {
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
     RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
-
-    if (hsdio->Instance != SDMMC1) {
-        return;
-    }
 
     PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_SDMMC1;
     PeriphClkInitStruct.Sdmmc1ClockSelection = RCC_SDMMC1CLKSOURCE_PLL1Q;
-    if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK) {
-        SDIO_LOGE(TAG, "SDMMC1 kernel clock config failed");
+
+    return HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct);
+}
+
+void HAL_SDIO_MspInit(SDIO_HandleTypeDef *hsdio)
+{
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+    if (hsdio->Instance != SDMMC1) {
         return;
     }
 
@@ -113,9 +128,86 @@ void SdioPortIrqHandler(void)
     HAL_SDIO_IRQHandler(&hsdio1);
 }
 
+/**
+  * @brief Re-run the first two enumeration steps and report each one.
+  *
+  * Distinguishes "slave is silent" (CMD5 timeout - no SDIO AT firmware, or a
+  * wiring/pull-up fault) from "slave answered but a later step failed".
+  */
+static void SdioProbeSlave(void)
+{
+    uint32_t err;
+    uint32_t resp4 = 0U;
+
+    if (SDMMC_GetPowerState(hsdio1.Instance) == 0U) {
+        SDIO_LOGE(TAG, "probe: SDMMC1 power state is off");
+        return;
+    }
+
+    err = SDMMC_CmdGoIdleState(hsdio1.Instance);
+    SDIO_LOGE(TAG, "probe: CMD0 err=0x%08lx", (unsigned long)err);
+
+    err = SDMMC_CmdSendOperationcondition(hsdio1.Instance, 0U, &resp4);
+    SDIO_LOGE(TAG, "probe: CMD5 err=0x%08lx resp=0x%08lx nbr_of_func=%lu",
+              (unsigned long)err, (unsigned long)resp4,
+              (unsigned long)((resp4 & 0x70000000U) >> 28U));
+
+    if (err != 0U) {
+        SDIO_LOGE(TAG, "probe: slave did not answer CMD5 - check that the ESP is "
+                       "running SDIO AT firmware, the CMD/D0-D3 pull-ups, and GND");
+    } else if (((resp4 & 0x70000000U) >> 28U) == 0U) {
+        SDIO_LOGE(TAG, "probe: CMD5 answered but reports 0 IO functions");
+    } else {
+        SDIO_LOGE(TAG, "probe: CMD5 OK - failure is later in enumeration (CMD3/CMD7)");
+    }
+}
+
+#if (SDIO_PORT_BUS_WIDTH == HAL_SDIO_4_WIRES_MODE)
+/**
+  * @brief Widen the link to 4 bits once enumeration has completed.
+  *
+  * HAL_SDIO_Init() compares hsdio->Init.BusWide (an SDMMC_BUS_WIDE_* register
+  * value) against HAL_SDIO_4_WIRES_MODE (1), so it always writes 1-bit into
+  * CCCR 0x07. Enumeration therefore runs in 1-bit and the switch is done here:
+  * CMD52 travels on CMD only, so it is unaffected by the width, and CLKCR is
+  * moved to 4-bit only after the slave has acknowledged the new setting.
+  */
+static sdio_err_t SdioSetBusWidth4(void)
+{
+    uint8_t val;
+
+    if (sdio_driver_read_byte(0U, SDIO_CCCR_BUS_IF_CTRL, &val) != SDIO_SUCCESS) {
+        SDIO_LOGE(TAG, "CCCR 0x07 read failed");
+        return FAILURE;
+    }
+
+    val = (uint8_t)((val & ~SDIO_CCCR_BUS_WIDTH_MSK) | SDIO_CCCR_BUS_WIDTH_4B);
+    if (sdio_driver_write_byte(0U, SDIO_CCCR_BUS_IF_CTRL, val, &val) != SDIO_SUCCESS) {
+        SDIO_LOGE(TAG, "CCCR 0x07 write failed");
+        return FAILURE;
+    }
+
+    if ((val & SDIO_CCCR_BUS_WIDTH_MSK) != SDIO_CCCR_BUS_WIDTH_4B) {
+        SDIO_LOGE(TAG, "slave refused 4-bit, CCCR 0x07 = 0x%02x", (unsigned int)val);
+        return FAILURE;
+    }
+
+    MODIFY_REG(hsdio1.Instance->CLKCR, SDMMC_CLKCR_WIDBUS, SDMMC_BUS_WIDE_4B);
+    hsdio1.Init.BusWide = SDMMC_BUS_WIDE_4B;
+
+    SDIO_LOGI(TAG, "bus width switched to 4-bit");
+    return SDIO_SUCCESS;
+}
+#endif /* SDIO_PORT_BUS_WIDTH == HAL_SDIO_4_WIRES_MODE */
+
 sdio_err_t sdio_driver_init(void)
 {
     uint32_t kernel_clk;
+
+    if (SdioKernelClockConfig() != HAL_OK) {
+        SDIO_LOGE(TAG, "SDMMC1 kernel clock config failed");
+        return FAILURE;
+    }
 
     kernel_clk = HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SDMMC1);
     if (kernel_clk == 0U) {
@@ -126,8 +218,8 @@ sdio_err_t sdio_driver_init(void)
     hsdio1.Instance = SDMMC1;
     hsdio1.Init.ClockEdge = SDMMC_CLOCK_EDGE_RISING;
     hsdio1.Init.ClockPowerSave = SDMMC_CLOCK_POWER_SAVE_DISABLE;
-    hsdio1.Init.BusWide = (SDIO_PORT_BUS_WIDTH == HAL_SDIO_4_WIRES_MODE)
-                          ? SDMMC_BUS_WIDE_4B : SDMMC_BUS_WIDE_1B;
+    /* Enumerate in 1-bit; SdioSetBusWidth4() widens the link afterwards */
+    hsdio1.Init.BusWide = SDMMC_BUS_WIDE_1B;
     hsdio1.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_DISABLE;
     /* SDMMC_CK = kernel_clk / (2 * ClockDiv); ClockDiv is 10 bits */
     hsdio1.Init.ClockDiv = kernel_clk / (2U * SDIO_PORT_CLOCK_HZ);
@@ -142,10 +234,19 @@ sdio_err_t sdio_driver_init(void)
 
     /* Runs the CMD0/CMD5/CMD3/CMD7 enumeration and sets the CCCR bus width */
     if (HAL_SDIO_Init(&hsdio1) != HAL_OK) {
+        /* SDIO_InitCard() returns HAL_ERROR without recording an ErrorCode, so
+           re-probe CMD0/CMD5 here to say which half of the link is at fault. */
         SDIO_LOGE(TAG, "HAL_SDIO_Init failed, err=0x%08lx",
                   (unsigned long)HAL_SDIO_GetError(&hsdio1));
+        SdioProbeSlave();
         return FAILURE;
     }
+
+#if (SDIO_PORT_BUS_WIDTH == HAL_SDIO_4_WIRES_MODE)
+    if (SdioSetBusWidth4() != SDIO_SUCCESS) {
+        return FAILURE;
+    }
+#endif
 
     if (HAL_SDIO_RegisterIOFunctionCallback(&hsdio1, SDIO_PORT_FUNCTION,
                                             EspIoInterruptCallback) != HAL_OK) {
