@@ -1,7 +1,10 @@
 # SDIO bring-up
 
-Status: **the pull-up fault is fixed and the slave now answers CMD5. The
-response comes back shifted by 3 bits.** See
+Status: **the pull-up fault is fixed, the slave answers CMD5 correctly, and the
+interconnect is glitching the slave's clock.** The ESP32 reports `NF=1` and a
+valid OCR; 2-3 CK edges are lost per response at CMD transitions, so the frame
+arrives short and enumeration fails. Fix is wiring - grounds, CK/CMD separation,
+a series resistor on CK. See
 [Stage 2](#stage-2-cmd5-answered-but-the-frame-is-misaligned). Everything from
 [Stage 1](#stage-1-cmd-and-d0-d3-tied-hard-to-3v3-closed) down is the earlier,
 closed problem.
@@ -100,17 +103,116 @@ Combined with wire capacitance that is exactly what produces edges bad enough to
 lose CMD5 on one boot and shift it on the next. "Wiring looks sane from the host
 side" means DC continuity only.
 
-### Next on the bench
+### The matrix: reproducible, slew-dependent, clock-independent
 
-1. Reflash and read the matrix, then classify with the table above.
-2. Reflow the CMD, CK and GND joints regardless - they are the only three nets
-   CMD5 uses - and re-seat the jumpers.
-3. If the shift comes back at `8/8`: 33-100 Ohm in series with CK at the STM32
-   end, wires under 10 cm, and a ground return running alongside CK rather than
-   a single shared ground at one corner.
-4. Cross-check by holding the ESP32 in reset (EN low) and re-running: CMD5 must
-   read `err=0x00000004` in every cell. If a response still appears with the
-   slave dead, it is a host-side artefact and the CK theory is wrong.
+```
+pads=vhigh div=312  answered=0/8
+pads=vhigh div=1023 answered=0/8
+pads=high  div=312  answered=8/8 respcmd=0x3e resp=0x03fff807   -> 3 edges lost
+pads=high  div=1023 answered=8/8 respcmd=0x3e resp=0x03fff807   -> 3
+pads=med   div=312  answered=8/8 respcmd=0x3e resp=0x03fff807   -> 3
+pads=med   div=1023 answered=8/8 respcmd=0x3e resp=0x03fff807   -> 3
+pads=low   div=312  answered=8/8 respcmd=0x3f resp=0x01fffc03   -> 2
+pads=low   div=1023 answered=8/8 respcmd=0x3f resp=0x01fffc03   -> 2
+```
+
+Every cell is 0/8 or 8/8 and no cell reports `VARIES`, so this is not an
+intermittent joint. Both clocks give byte-identical results, so it is not a
+timing margin that a slower bus can buy back. The only variable that moves it is
+the host pad slew, monotonically.
+
+### The bits are lost at CMD transitions
+
+`respcmd` locates the drift. At `low` it reads `0x3F`, the correct R4 index
+field, while the payload is still 2 bits short - so the frame starts aligned and
+drifts during the payload. At `high`/`med` it reads `0x3E`: one bit had already
+gone missing inside the index field. This is not a start-bit misdetection.
+
+Lining the received payload up against R4 with `NF=1` and `OCR=0x7FFF00`:
+
+```
+true      0000 1 0000 111111111111111 00000000
+low slew  0000000     111111111111111 00000000 11
+          ^^ 2 bits gone              ^ 15 ones arrive intact
+```
+
+The OCR's 15-bit ones-run arrives at full length and the trailing 8 zeros are
+intact: nothing is lost across those 23 constant-level bits. Both missing bits
+fall inside the 9-bit leading field, which is the only stretch of the response
+where CMD actually toggles.
+
+### Root cause: the slave is counting CK edges the host never issued
+
+The host's shift register clocks exactly 32 times per response and physically
+cannot delete a bit, so a short frame means the ESP32 advanced its output early
+- it saw extra CK edges. About 2 per 46 clocks, only at CMD transitions, and
+more of them the faster the host pads switch. That is CMD-to-CK coupling and
+ground bounce on the interconnect.
+
+Two things follow:
+
+- **The slave is fine.** Reconstructed, it answers `NF=1`, `OCR=0x7FFF00`
+  (2.0-3.5 V), `C=0` (busy, which is correct for the first CMD5 with arg=0).
+  The ESP-AT SDIO slave enumerates properly. `nbr_of_func=0` was always an
+  artefact - NF is among the first bits pushed out of RESP1.
+- **Slowing the bus cannot fix it.** The glitches are edge-driven, not
+  frequency-driven, which is exactly what div=312 vs div=1023 showed.
+
+`SDIO_PORT_GPIO_SPEED` now defaults to `GPIO_SPEED_FREQ_LOW`, the best measured
+setting. It halves the problem but does not remove it; the rest is wiring.
+
+### After the interconnect rework: every cell answers, deficit unchanged
+
+```
+pads=vhigh div=312/1023  answered=8/8 respcmd=0x3e resp=0x03fff807  -> 3 edges
+pads=high  div=312/1023  answered=8/8 respcmd=0x3e resp=0x03fff807  -> 3
+pads=med   div=312/1023  answered=8/8 respcmd=0x3e resp=0x03fff807  -> 3
+pads=low   div=312/1023  answered=8/8 respcmd=0x3f resp=0x01fffc03  -> 2
+```
+
+The rework fixed the dropouts - VERY_HIGH went from 0/8 to 8/8 - and changed the
+edge deficit not at all. Note that
+
+```
+0x03FFF807 == (0x01FFFC03 << 1) | 1      and      0x3E == 0x3F slid one bit
+```
+
+so the fast-pad and slow-pad rows are the *same frame*, one bit further along,
+and both reconstruct to the same `OCR=0x7FFF00` from different shift values.
+Two independent shifts agreeing on the OCR is what makes the shift model
+trustworthy rather than curve-fitting.
+
+### It is not ringing on CK, and it is not the host
+
+At `GPIO_SPEED_FREQ_LOW` the pad edge is ~10-20 ns into a wire whose flight time
+is ~1 ns, so reflections are fully damped - and 2 edges are still lost. The
+deficit is also byte-identical across a 3.3x clock change. Nothing the host
+controls moves it by more than a single bit.
+
+A fixed count of extra edges, independent of host clock and nearly independent
+of host slew, means the aggressor's slew is not the host's: it is the ESP32's
+own CMD driver coupling into CK. That matches the losses sitting only where CMD
+toggles, and it matches the count staying pinned at 2-3.
+
+### Fix: attack the coupling, not the host settings
+
+1. **Separate CK from CMD along their whole run.** Adjacent jumpers in a bundle
+   are the coupling path; GPIO14 and GPIO15 are neighbours on the module, so
+   they are probably neighbours in the ribbon too. Put a ground wire between
+   them.
+2. **RC filter CK at the ESP32 input**: 100 Ohm in series plus 100 pF to GND at
+   the GPIO14 end. tau = 10 ns swallows a coupled glitch whole and is nothing at
+   400 kHz. This is the most direct fix - it filters the slave's clock input,
+   which is exactly where the extra edges are being counted.
+3. **Series resistor on CMD**, 100 Ohm, to slow the aggressor edge itself.
+   Unlike a resistor on CK this one damps the ESP-driven direction too.
+4. More ground: two or three short returns between the boards, one beside CK.
+
+### Falsification test - do this before any more rework
+
+Hold the ESP32 in reset (EN low) and re-run. Every cell must read
+`err=0x00000004`. If responses still appear with the slave dead, they are a
+host-side artefact and everything above is wrong. This has not been run yet.
 
 ## Stage 1: CMD and D0-D3 tied hard to 3V3 (closed)
 

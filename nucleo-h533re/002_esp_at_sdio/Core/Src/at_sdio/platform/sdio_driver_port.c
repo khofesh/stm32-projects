@@ -50,6 +50,7 @@ static volatile uint8_t esp_int_flag;
 #define SDIO_CCCR_BUS_IF_CTRL   0x07U
 #define SDIO_CCCR_BUS_WIDTH_MSK 0x03U
 #define SDIO_CCCR_BUS_WIDTH_4B  0x02U
+#define SDIO_OCR_3V3_WINDOW     0x00FF8000U
 
 /**
   * @brief Slave raised its function-1 interrupt (D1 held low).
@@ -106,7 +107,7 @@ void HAL_SDIO_MspInit(SDIO_HandleTypeDef *hsdio)
     GPIO_InitStruct.Pin = GPIO_PIN_2 | GPIO_PIN_13;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    GPIO_InitStruct.Speed = SDIO_PORT_GPIO_SPEED;
     GPIO_InitStruct.Alternate = GPIO_AF12_SDMMC1;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
@@ -134,16 +135,156 @@ void SdioPortIrqHandler(void)
     HAL_SDIO_IRQHandler(&hsdio1);
 }
 
+/* R4 carries no CRC and its command-index field is all ones, so a correctly
+   framed response always reads back RESPCMD = 0x3F. Any other value means the
+   CPSM latched the frame at the wrong bit position. */
+#define SDIO_R4_RESPCMD         0x3FU
+/* OCR bits 6:0 are reserved and always read 0 in a valid R4 */
+#define SDIO_R4_OCR_RSVD_MSK    0x0000007FU
+
+/* Every cell of the probe matrix repeats CMD5 this many times. A link that
+   answers some of the time is intermittent - a resistive joint or a marginal
+   jumper - which no single-shot test can tell apart from a dead one. */
+#define SDIO_PROBE_REPEAT       8U
+
+static const uint32_t sdio_probe_speed[] = {
+    GPIO_SPEED_FREQ_VERY_HIGH,
+    GPIO_SPEED_FREQ_HIGH,
+    GPIO_SPEED_FREQ_MEDIUM,
+    GPIO_SPEED_FREQ_LOW,
+};
+static const char *const sdio_probe_speed_name[] = { "vhigh", "high", "med", "low" };
+#define SDIO_PROBE_SPEED_COUNT  (sizeof(sdio_probe_speed) / sizeof(sdio_probe_speed[0]))
+
 /**
-  * @brief Re-run the first two enumeration steps and report each one.
+  * @brief Re-mux the six SDMMC nets with a different output slew rate.
+  */
+static void SdioSetPadSpeed(uint32_t speed)
+{
+    GPIO_InitTypeDef gpio = {0};
+
+    gpio.Mode = GPIO_MODE_AF_PP;
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Speed = speed;
+    gpio.Alternate = GPIO_AF12_SDMMC1;
+
+    gpio.Pin = GPIO_PIN_2 | GPIO_PIN_13;
+    HAL_GPIO_Init(GPIOB, &gpio);
+    gpio.Pin = GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12;
+    HAL_GPIO_Init(GPIOC, &gpio);
+}
+
+/**
+  * @brief Frame-alignment verdict on one R4.
   *
-  * Distinguishes "slave is silent" (CMD5 timeout - no SDIO AT firmware, or a
-  * wiring/pull-up fault) from "slave answered but a later step failed".
+  * The host's shift register always clocks exactly 32 times, so it cannot lose
+  * bits: a response that arrives short means the slave advanced its output
+  * early, i.e. it saw CK edges the host never issued. RESPCMD says whether the
+  * drift had already started by the index field (0x3F = still aligned there),
+  * and the trailing reserved ones shifted into the bottom of RESP1 say how many
+  * clocks were lost by the end.
+  *
+  * The NF field is not usable as a verdict - it is one of the first bits to be
+  * pushed out, which is why a glitching bus reads as "0 IO functions".
+  */
+static void SdioReportAlignment(uint32_t resp4, uint32_t respcmd)
+{
+    uint32_t k;
+
+    if ((respcmd == SDIO_R4_RESPCMD) && ((resp4 & SDIO_R4_OCR_RSVD_MSK) == 0U)) {
+        SDIO_LOGE(TAG, "    frame aligned, nf=%lu, OCR=0x%06lx",
+                  (unsigned long)((resp4 & 0x70000000U) >> 28U),
+                  (unsigned long)(resp4 & 0x00FFFFFFU));
+        return;
+    }
+
+    for (k = 1U; k < 8U; k++) {
+        if (((resp4 & ((1UL << k) - 1UL)) == ((1UL << k) - 1UL)) &&
+            (((resp4 >> k) & SDIO_R4_OCR_RSVD_MSK) == 0U)) {
+            SDIO_LOGE(TAG, "    slave saw %lu extra CK edge(s) during the "
+                           "response (resp = R4<<%lu); OCR=0x%06lx recovered, "
+                           "NF lost off the top, index field %s",
+                      (unsigned long)k, (unsigned long)k,
+                      (unsigned long)((resp4 >> k) & 0x00FFFFFFU),
+                      (respcmd == SDIO_R4_RESPCMD) ? "still intact (drift began "
+                                                     "in the payload)"
+                                                   : "already short (drift began "
+                                                     "before the payload)");
+            return;
+        }
+    }
+    SDIO_LOGE(TAG, "    corrupt - no single clock count fits the frame");
+}
+
+/**
+  * @brief One matrix cell: SDIO_PROBE_REPEAT x CMD5 at a fixed slew and CLKDIV.
+  */
+static void SdioProbeCmd5(uint32_t clkdiv, uint32_t arg, const char *speed_name)
+{
+    uint32_t i;
+    uint32_t resp4 = 0U;
+    uint32_t first = 0U;
+    uint32_t last = 0U;
+    uint32_t respcmd = 0U;
+    uint32_t answered = 0U;
+    uint32_t varies = 0U;
+
+    MODIFY_REG(hsdio1.Instance->CLKCR, SDMMC_CLKCR_CLKDIV, clkdiv);
+    HAL_Delay(2U);
+    (void)SDMMC_CmdGoIdleState(hsdio1.Instance);
+    HAL_Delay(2U);
+
+    for (i = 0U; i < SDIO_PROBE_REPEAT; i++) {
+        resp4 = 0U;
+        if (SDMMC_CmdSendOperationcondition(hsdio1.Instance, arg, &resp4) == 0U) {
+            if (answered == 0U) {
+                first = resp4;
+                respcmd = hsdio1.Instance->RESPCMD & 0x3FU;
+            } else if (resp4 != first) {
+                varies = 1U;
+            }
+            last = resp4;
+            answered++;
+        }
+        HAL_Delay(1U);
+    }
+
+    SDIO_LOGE(TAG, "  pads=%-5s div=%-4lu arg=0x%08lx answered=%lu/%u "
+                   "respcmd=0x%02lx resp=0x%08lx",
+              speed_name, (unsigned long)clkdiv, (unsigned long)arg,
+              (unsigned long)answered, (unsigned int)SDIO_PROBE_REPEAT,
+              (unsigned long)respcmd, (unsigned long)first);
+
+    /* With a voltage window in the argument the card leaves busy part way
+       through the batch and legitimately answers differently, so a changing
+       response is only a fault indication when the argument is 0. */
+    if (varies != 0U) {
+        SDIO_LOGE(TAG, "    last=0x%08lx - response changed during the batch%s",
+                  (unsigned long)last,
+                  (arg != 0U) ? " (expected: card leaving busy)"
+                              : " (with arg=0 this is a fault - unstable link)");
+    }
+
+    if (answered != 0U) {
+        SdioReportAlignment(first, respcmd);
+    }
+}
+
+/**
+  * @brief Sweep pad slew rate x bus clock, repeating CMD5 in every cell.
+  *
+  * Three outcomes are worth separating and none of them is visible from a
+  * single CMD5: nothing ever answers (slave silent, or a dead net), some tries
+  * answer (intermittent connection - a resistive joint, not a missing one), or
+  * every try answers with a shifted frame (bus timing).
   */
 static void SdioProbeSlave(void)
 {
+    GPIO_InitTypeDef gpio = {0};
     uint32_t err;
-    uint32_t resp4 = 0U;
+    uint32_t speed;
+    uint32_t base_div = hsdio1.Instance->CLKCR & SDMMC_CLKCR_CLKDIV;
+    GPIO_PinState cmd_level;
 
     if (SDMMC_GetPowerState(hsdio1.Instance) == 0U) {
         SDIO_LOGE(TAG, "probe: SDMMC1 power state is off");
@@ -152,21 +293,235 @@ static void SdioProbeSlave(void)
 
     err = SDMMC_CmdGoIdleState(hsdio1.Instance);
     SDIO_LOGE(TAG, "probe: CMD0 err=0x%08lx", (unsigned long)err);
+    SDIO_LOGE(TAG, "probe: CMD5 matrix, slew rate x clock (div 0x3ff = slowest)");
 
-    err = SDMMC_CmdSendOperationcondition(hsdio1.Instance, 0U, &resp4);
-    SDIO_LOGE(TAG, "probe: CMD5 err=0x%08lx resp=0x%08lx nbr_of_func=%lu",
-              (unsigned long)err, (unsigned long)resp4,
-              (unsigned long)((resp4 & 0x70000000U) >> 28U));
-
-    if (err != 0U) {
-        SDIO_LOGE(TAG, "probe: slave did not answer CMD5 - check that the ESP is "
-                       "running SDIO AT firmware, the CMD/D0-D3 pull-ups, and GND");
-    } else if (((resp4 & 0x70000000U) >> 28U) == 0U) {
-        SDIO_LOGE(TAG, "probe: CMD5 answered but reports 0 IO functions");
-    } else {
-        SDIO_LOGE(TAG, "probe: CMD5 OK - failure is later in enumeration (CMD3/CMD7)");
+    for (speed = 0U; speed < SDIO_PROBE_SPEED_COUNT; speed++) {
+        SdioSetPadSpeed(sdio_probe_speed[speed]);
+        SdioProbeCmd5(base_div, 0U, sdio_probe_speed_name[speed]);
+        SdioProbeCmd5(0x3FFU, 0U, sdio_probe_speed_name[speed]);
     }
+
+    SdioSetPadSpeed(SDIO_PORT_GPIO_SPEED);
+    SdioProbeCmd5(base_div, SDIO_OCR_3V3_WINDOW, "cfg");
+    MODIFY_REG(hsdio1.Instance->CLKCR, SDMMC_CLKCR_CLKDIV, base_div);
+
+    gpio.Pin = GPIO_PIN_2;
+    gpio.Mode = GPIO_MODE_INPUT;
+    gpio.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(GPIOB, &gpio);
+    cmd_level = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_2);
+    SDIO_LOGE(TAG, "probe: CMD pin level after timeout: %s",
+              (cmd_level == GPIO_PIN_SET) ? "high" : "low");
+
+    gpio.Mode = GPIO_MODE_AF_PP;
+    gpio.Speed = SDIO_PORT_GPIO_SPEED;
+    gpio.Alternate = GPIO_AF12_SDMMC1;
+    HAL_GPIO_Init(GPIOB, &gpio);
+
+    SDIO_LOGE(TAG, "probe: 'answered=0/8' everywhere is a silent slave or a dead "
+                   "net; a mix of 0/8 and 8/8 is an intermittent joint; 8/8 with "
+                   "a constant edge count on every row is CMD-to-CK coupling, "
+                   "which no host setting can fix - separate CK from CMD, and "
+                   "filter CK at the slave input");
 }
+
+#if (SDIO_PORT_PIN_DIAG != 0)
+typedef struct {
+    const char   *name;
+    GPIO_TypeDef *port;
+    uint16_t      pin;
+    uint8_t       has_pullup;   /* the board fits a 10k pull-up on this net */
+} SdioPinDesc;
+
+static const SdioPinDesc sdio_pins[] = {
+    { "CMD(PB2)",  GPIOB, GPIO_PIN_2,  1U },
+    { "D0(PB13)",  GPIOB, GPIO_PIN_13, 1U },
+    { "D1(PC9)",   GPIOC, GPIO_PIN_9,  1U },
+    { "D2(PC10)",  GPIOC, GPIO_PIN_10, 1U },
+    { "D3(PC11)",  GPIOC, GPIO_PIN_11, 1U },
+    { "CK(PC12)",  GPIOC, GPIO_PIN_12, 0U },
+};
+#define SDIO_PIN_COUNT (sizeof(sdio_pins) / sizeof(sdio_pins[0]))
+
+/* Control: LD1, nothing external on the net. If this one also fails to read
+   back what the output driver puts on it, the diagnostic itself is wrong. */
+static const SdioPinDesc sdio_ctrl_pin = { "CTRL(PA5)", GPIOA, GPIO_PIN_5, 0U };
+
+static void SdioPinMode(const SdioPinDesc *p, uint32_t mode, uint32_t pull)
+{
+    GPIO_InitTypeDef gpio = {0};
+
+    gpio.Pin = p->pin;
+    gpio.Mode = mode;
+    gpio.Pull = pull;
+    gpio.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(p->port, &gpio);
+}
+
+static GPIO_PinState SdioPinRead(const SdioPinDesc *p, uint32_t pull)
+{
+    SdioPinMode(p, GPIO_MODE_INPUT, pull);
+    HAL_Delay(2U);
+    return HAL_GPIO_ReadPin(p->port, p->pin);
+}
+
+/**
+  * @brief Electrical check of the six SDMMC nets, before any AF is muxed on.
+  *
+  * Two passes, neither of which needs a scope:
+  *
+  * 1. Pull-up census. Read each pin with the internal pull-down engaged (~40k);
+  *    an external 10k to 3V3 wins, so high means "the pull-up, and therefore the
+  *    wire it sits on, is really there". Low means the net is floating - a
+  *    missing pull-up or an open jumper - which is exactly what makes CMD5 time
+  *    out. CK carries no pull-up, so it is only driven, not censused.
+  * 2. Short matrix. Drive one pin low while the other five are inputs with
+  *    internal pull-ups; anything that follows shares copper with it. Catches
+  *    shorted or swapped jumpers, and a pin that cannot be pulled low by its own
+  *    output driver is shorted to 3V3.
+  */
+static uint32_t SdioPinDiag(void)
+{
+    uint32_t i;
+    uint32_t j;
+    uint32_t floating = 0U;
+    uint32_t stuck = 0U;
+
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+
+    /* Validate the method itself on a net with nothing attached */
+    SdioPinMode(&sdio_ctrl_pin, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+    HAL_Delay(2U);
+    i = (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_5) == GPIO_PIN_RESET) ? 1U : 0U;
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+    HAL_Delay(2U);
+    j = (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_5) == GPIO_PIN_SET) ? 1U : 0U;
+    SDIO_LOGE(TAG, "pin diag: control %s drive0=%s drive1=%s%s", sdio_ctrl_pin.name,
+              (i != 0U) ? "ok" : "FAIL", (j != 0U) ? "ok" : "FAIL",
+              ((i & j) != 0U) ? "" : " - readback method is broken, ignore the rest");
+    SdioPinMode(&sdio_ctrl_pin, GPIO_MODE_INPUT, GPIO_NOPULL);
+
+    SDIO_LOGE(TAG, "pin diag: pull-up census (expect 'high' on CMD and D0-D3)");
+    for (i = 0U; i < SDIO_PIN_COUNT; i++) {
+        GPIO_PinState with_pd;
+        GPIO_PinState with_pu;
+
+        if (sdio_pins[i].has_pullup == 0U) {
+            continue;
+        }
+
+        with_pd = SdioPinRead(&sdio_pins[i], GPIO_PULLDOWN);
+        with_pu = SdioPinRead(&sdio_pins[i], GPIO_PULLUP);
+
+        if (with_pd == GPIO_PIN_SET) {
+            /* A hard short to 3V3 reads the same here; the matrix separates them */
+            SDIO_LOGE(TAG, "  %s: high  (something pulls this net up)",
+                      sdio_pins[i].name);
+        } else if (with_pu == GPIO_PIN_SET) {
+            floating++;
+            SDIO_LOGE(TAG, "  %s: FLOAT (no external pull-up - open wire or "
+                           "missing resistor)", sdio_pins[i].name);
+        } else {
+            SDIO_LOGE(TAG, "  %s: LOW   (net shorted to GND)", sdio_pins[i].name);
+        }
+    }
+
+    SDIO_LOGE(TAG, "pin diag: short matrix");
+    for (i = 0U; i < SDIO_PIN_COUNT; i++) {
+        for (j = 0U; j < SDIO_PIN_COUNT; j++) {
+            if (j != i) {
+                SdioPinMode(&sdio_pins[j], GPIO_MODE_INPUT, GPIO_PULLUP);
+            }
+        }
+
+        SdioPinMode(&sdio_pins[i], GPIO_MODE_OUTPUT_PP, GPIO_NOPULL);
+        HAL_GPIO_WritePin(sdio_pins[i].port, sdio_pins[i].pin, GPIO_PIN_RESET);
+        HAL_Delay(2U);
+
+        if (HAL_GPIO_ReadPin(sdio_pins[i].port, sdio_pins[i].pin) != GPIO_PIN_RESET) {
+            uint32_t pos = (uint32_t)(31 - __CLZ((uint32_t)sdio_pins[i].pin));
+
+            stuck++;
+            /* Separate "the pad is really being driven and loses" from "the
+               config write never landed" (GTZC/SECCFGR, missing clock, LCKR) */
+            SDIO_LOGE(TAG, "  %s: driven low but reads high - MODER=%lu ODR=%lu "
+                           "OTYPER=%lu PUPDR=%lu",
+                      sdio_pins[i].name,
+                      (unsigned long)((sdio_pins[i].port->MODER >> (2U * pos)) & 3U),
+                      (unsigned long)((sdio_pins[i].port->ODR >> pos) & 1U),
+                      (unsigned long)((sdio_pins[i].port->OTYPER >> pos) & 1U),
+                      (unsigned long)((sdio_pins[i].port->PUPDR >> (2U * pos)) & 3U));
+        }
+
+        for (j = 0U; j < SDIO_PIN_COUNT; j++) {
+            if ((j != i) &&
+                (HAL_GPIO_ReadPin(sdio_pins[j].port, sdio_pins[j].pin) == GPIO_PIN_RESET)) {
+                SDIO_LOGE(TAG, "  %s shorted to %s", sdio_pins[i].name, sdio_pins[j].name);
+            }
+        }
+
+        HAL_GPIO_WritePin(sdio_pins[i].port, sdio_pins[i].pin, GPIO_PIN_SET);
+        HAL_Delay(2U);
+    }
+
+    /* Leave everything as a plain input; HAL_SDIO_MspInit() muxes the AF back on */
+    for (i = 0U; i < SDIO_PIN_COUNT; i++) {
+        SdioPinMode(&sdio_pins[i], GPIO_MODE_INPUT, GPIO_NOPULL);
+    }
+
+    if (stuck != 0U) {
+        /* MODER=1/ODR=0/OTYPER=0 in the lines above means the pad really is a
+           push-pull output driving low, so only a low impedance path to 3V3 can
+           hold the net high - a bridged or mis-wired pull-up, not a 10k one.
+           The host cannot assert CMD in this state, which is the CMD5 timeout. */
+        SDIO_LOGE(TAG, "pin diag: %lu net(s) tied hard to 3V3 - the host cannot "
+                       "drive them at all; rework the pull-ups before blaming "
+                       "the slave", (unsigned long)stuck);
+    } else if (floating != 0U) {
+        SDIO_LOGE(TAG, "pin diag: %lu net(s) floating - fix the wiring before "
+                       "reading anything into the CMD5 timeout",
+                  (unsigned long)floating);
+    } else {
+        SDIO_LOGE(TAG, "pin diag: wiring looks sane from the host side");
+    }
+
+    return stuck + floating;
+}
+#endif /* SDIO_PORT_PIN_DIAG */
+
+#if (SDIO_PORT_CK_TOGGLE_MS != 0)
+/**
+  * @brief Square wave on CK, slow enough for a multimeter or an LED.
+  *
+  * Proves the host really drives PC12 and that the far end (ESP32 GPIO14) sees
+  * it, which the SDMMC at 400 kHz cannot demonstrate without an analyser.
+  */
+static void SdioToggleCk(void)
+{
+    GPIO_InitTypeDef gpio = {0};
+    uint32_t end;
+
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+    gpio.Pin = GPIO_PIN_12;
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOC, &gpio);
+
+    SDIO_LOGE(TAG, "toggling CK(PC12) at 2 Hz for %u ms - measure at the ESP32 "
+                   "GPIO14 end of the jumper", (unsigned int)SDIO_PORT_CK_TOGGLE_MS);
+
+    end = HAL_GetTick() + SDIO_PORT_CK_TOGGLE_MS;
+    while (HAL_GetTick() < end) {
+        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_12);
+        HAL_Delay(250U);
+    }
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_RESET);
+}
+#endif /* SDIO_PORT_CK_TOGGLE_MS */
 
 #if (SDIO_PORT_BUS_WIDTH == HAL_SDIO_4_WIRES_MODE)
 /**
@@ -211,6 +566,16 @@ sdio_err_t sdio_driver_init(void)
     uint32_t kernel_clk;
     uint32_t retry;
     HAL_StatusTypeDef status = HAL_ERROR;
+
+#if (SDIO_PORT_PIN_DIAG != 0)
+    /* No point clocking the bus when the host cannot even assert CMD */
+    if (SdioPinDiag() != 0U) {
+        return FAILURE;
+    }
+#endif
+#if (SDIO_PORT_CK_TOGGLE_MS != 0)
+    SdioToggleCk();
+#endif
 
     if (SdioKernelClockConfig() != HAL_OK) {
         SDIO_LOGE(TAG, "SDMMC1 kernel clock config failed");

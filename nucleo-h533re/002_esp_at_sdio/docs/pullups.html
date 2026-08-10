@@ -182,8 +182,8 @@
   <section>
     <h2>Correct topology</h2>
     <p>
-      Five 10 kΩ resistors, one per net: CMD and D0–D3. CK gets none — it is driven by the host
-      only, and never released.
+      Five 10 kΩ pull-ups, one per net: CMD and D0–D3. CK gets no pull-up because it is driven by
+      the host only; add one 22–100 Ω series resistor in the CK wire, close to the STM32 pin.
     </p>
     <figure>
       <div class="fig">
@@ -278,13 +278,16 @@
 
           <!-- CK -->
           <g>
-            <line class="wire" x1="114" y1="630" x2="706" y2="630"/>
+            <line class="wire" x1="114" y1="630" x2="192" y2="630"/>
+            <rect class="body" x="192" y="620" width="46" height="20" rx="1"/>
+            <line class="wire" x1="238" y1="630" x2="706" y2="630"/>
             <rect class="pad" x="96" y="621" width="18" height="18" rx="1"/>
             <rect class="pad" x="706" y="621" width="18" height="18" rx="1"/>
             <text x="88" y="635" text-anchor="end">PC12</text>
             <text x="732" y="635">GPIO14</text>
             <text class="t-dim" x="200" y="618">CK</text>
-            <text class="t-dim" x="410" y="618" text-anchor="middle">no pull-up fitted</text>
+            <text class="t-dim" x="215" y="658" text-anchor="middle">22–100 Ω</text>
+            <text class="t-dim" x="450" y="618" text-anchor="middle">no pull-up fitted</text>
           </g>
 
           <!-- GND -->
@@ -304,7 +307,7 @@
 
     <div class="tbl-wrap">
       <table>
-        <caption>Bill of materials — five identical resistors, nothing else.</caption>
+        <caption>Bill of materials — five pull-ups plus one CK damping resistor.</caption>
         <thead>
           <tr>
             <th>Ref</th><th>Value</th><th>Between</th><th>and</th><th>Signal</th>
@@ -316,10 +319,47 @@
           <tr><td class="mono">R3</td><td class="mono">10 kΩ</td><td class="mono">3V3</td><td class="mono">PC9 ↔ GPIO4</td><td>D1</td></tr>
           <tr><td class="mono">R4</td><td class="mono">10 kΩ</td><td class="mono">3V3</td><td class="mono">PC10 ↔ GPIO12</td><td>D2</td></tr>
           <tr><td class="mono">R5</td><td class="mono">10 kΩ</td><td class="mono">3V3</td><td class="mono">PC11 ↔ GPIO13</td><td>D3</td></tr>
-          <tr><td class="mono">—</td><td class="mono">—</td><td class="mono">—</td><td class="mono">PC12 ↔ GPIO14</td><td>CK (none)</td></tr>
+          <tr><td class="mono">R6</td><td class="mono">22–100 Ω</td><td class="mono">PC12</td><td class="mono">GPIO14</td><td>CK series, close to STM32</td></tr>
         </tbody>
       </table>
     </div>
+  </section>
+
+  <section>
+    <h2>CK series resistor</h2>
+    <p>
+      Cut only the CK wire. Put the resistor in series with CK, with one lead at STM32 PC12 and the
+      other lead continuing to ESP32 GPIO14. Keep the PC12-to-resistor length short.
+    </p>
+    <figure>
+      <div class="fig">
+        <svg viewBox="0 0 720 260" role="img" aria-label="CK series resistor placement: STM32 PC12 connects to a 22 to 100 ohm resistor placed close to the STM32, then the wire continues to ESP32 GPIO14.">
+          <text class="t-head" x="44" y="42">NUCLEO-H533RE</text>
+          <text class="t-head" x="676" y="42" text-anchor="end">ESP32-WROOM-32</text>
+
+          <rect class="pad" x="80" y="116" width="24" height="24" rx="1"/>
+          <text x="68" y="133" text-anchor="end">PC12</text>
+          <line class="wire" x1="104" y1="128" x2="170" y2="128"/>
+          <rect class="body" x="170" y="114" width="64" height="28" rx="1"/>
+          <line class="wire" x1="234" y1="128" x2="616" y2="128"/>
+          <rect class="pad" x="616" y="116" width="24" height="24" rx="1"/>
+          <text x="652" y="133">GPIO14</text>
+
+          <text class="t-dim" x="202" y="102" text-anchor="middle">R6  22–100 Ω</text>
+          <path class="lead" d="M 202 148 L 202 184 L 118 184 L 118 148"/>
+          <text class="t-rail" x="202" y="208" text-anchor="middle">place here: close to STM32</text>
+
+          <line class="wire" x1="104" y1="210" x2="616" y2="210"/>
+          <text x="68" y="215" text-anchor="end">GND</text>
+          <text x="652" y="215">GND</text>
+          <text class="t-dim" x="360" y="198" text-anchor="middle">common ground next to the SDIO wires</text>
+        </svg>
+      </div>
+      <figcaption>
+        This is not a pull-up. It is a small resistor in line with the clock driver to damp CK edge
+        ringing and reduce CK-to-CMD coupling at the ESP32 input.
+      </figcaption>
+    </figure>
   </section>
 
   <section>
