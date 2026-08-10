@@ -14,6 +14,7 @@
 git clone --recursive https://github.com/espressif/esp-at.git
 cd esp-at
 HAS_IDF_PREREQUISITES=1 ./build.py install
+. ./esp-idf/export.sh
 ./build.py menuconfig
 # enable sdio
 ./build.py build
@@ -42,8 +43,13 @@ it has to be wired even though it is not needed for 1-bit data.
 ### pull-ups
 
 10 kOhm to 3.3 V on CMD, D0, D1, D2 and D3, as the esp-at example specifies. CK
-needs none. These are soldered in place, so the two strapping consequences below
-are permanent.
+needs none.
+
+`SDIO_PORT_PIN_DIAG` in `Core/Src/at_sdio/platform/include/sdio.h` checks these
+at every boot and `sdio_driver_init()` stops before clocking the bus if a net is
+floating or cannot be driven low. It currently passes; the slave answers CMD5
+but the response comes back bit-shifted, see `docs/ERROR.md`. The resistors are
+soldered in place, so the two strapping consequences below are permanent.
 
 ### ESP32 strapping pins
 
