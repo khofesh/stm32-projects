@@ -25,8 +25,13 @@ extern "C" {
    HAL_SDIO_Init() writes the slave CCCR bus width from Init.BusWide compared
    against HAL_SDIO_4_WIRES_MODE (1), but Init.BusWide holds an SDMMC_BUS_WIDE_*
    register value, so the comparison never matches and the slave would be left
-   in 1-bit mode - sdio_driver_init() writes CCCR 0x07 itself instead. */
-#define SDIO_PORT_BUS_WIDTH   HAL_SDIO_4_WIRES_MODE
+   in 1-bit mode - sdio_driver_init() writes CCCR 0x07 itself instead.
+
+   Held at 1 wire for bring-up, as the esp-at example advises. No hardware
+   change is needed to switch: D1-D3 keep their pull-ups and stay wired, the
+   SDMMC just never drives them. 1 wire also keeps D2 off PC10, which the
+   NUCLEO-H533RE assigns to USB_FS_PWR_EN - see ERROR.md. */
+#define SDIO_PORT_BUS_WIDTH   HAL_SDIO_1_WIRE_MODE
 #define SDIO_PORT_CLOCK_HZ    400000U
 
 /* Function 1 is the ESP slave data function */
