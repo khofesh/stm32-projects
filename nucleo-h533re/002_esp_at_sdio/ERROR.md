@@ -95,14 +95,14 @@ host from a silent slave. This is the gap.
 
 Per the NUCLEO-H533RE pin function table:
 
-| Pin | Signal | Board function | Verdict |
-| --- | ------ | -------------- | ------- |
-| PB2 | CMD | plain IO | free |
-| PB13 | D0 | plain IO | free |
-| PC9 | D1 | `ARD_D10-SPIx_CS/TIM3_CH4` | free, also on the Arduino header |
-| PC10 | D2 | **`USB_FS_PWR_EN` / `USB_Disconnect`** | **conflict, see below** |
-| PC11 | D3 | plain IO | free |
-| PC12 | CK | plain IO | free |
+| Pin  | Signal | Board function                         | Verdict                          |
+| ---- | ------ | -------------------------------------- | -------------------------------- |
+| PB2  | CMD    | plain IO                               | free                             |
+| PB13 | D0     | plain IO                               | free                             |
+| PC9  | D1     | `ARD_D10-SPIx_CS/TIM3_CH4`             | free, also on the Arduino header |
+| PC10 | D2     | **`USB_FS_PWR_EN` / `USB_Disconnect`** | **conflict, see below**          |
+| PC11 | D3     | plain IO                               | free                             |
+| PC12 | CK     | plain IO                               | free                             |
 
 **CK, CMD and GND — the only three wires involved in the CMD5 failure — are all
 unencumbered.** So board routing does not explain the current symptom, and
@@ -116,17 +116,17 @@ on that net.
 There is **no alternative pin**. Per the CubeMX device database for
 `STM32H533RETx` (LQFP64), the complete set of SDMMC1-capable pins is:
 
-| Signal | Pins available on LQFP64 |
-| ------ | ------------------------ |
-| CMD | PB2, PD2 |
-| CK | PC12 |
-| D0 | PB13, PC8, PA10 |
-| D1 | PC9 |
-| **D2** | **PC10 only** |
-| D3 | PC11 |
-| CKIN / D4 | PB8 |
-| D0DIR / D6 | PC6 |
-| D123DIR / D7 | PC7 |
+| Signal       | Pins available on LQFP64 |
+| ------------ | ------------------------ |
+| CMD          | PB2, PD2                 |
+| CK           | PC12                     |
+| D0           | PB13, PC8, PA10          |
+| D1           | PC9                      |
+| **D2**       | **PC10 only**            |
+| D3           | PC11                     |
+| CKIN / D4    | PB8                      |
+| D0DIR / D6   | PC6                      |
+| D123DIR / D7 | PC7                      |
 
 So D2 cannot be relocated. The options are: confirm empirically whether PC10 is
 actually loaded (configure it as a GPIO output, toggle, and check it swings rail
@@ -158,3 +158,49 @@ comes up.
   `Core/Src/at_sdio/platform/include/sdio.h` switches this; 1-bit needs only
   CK, CMD, D0 and D1 wired.
 - README still records esp-at v4.1.1.0; the hardware reports v4.2.0.0.
+
+## AT init
+
+```shell
+13:24:08.159 -> ets Jul 29 2019 12:21:46
+13:24:08.159 ->
+13:24:08.159 -> rst:0x1 (POWERON_RESET),boot:0x3f (SPI_FAST_FLASH_BOOT)
+13:24:08.159 -> configsip: 0, SPIWP:0xee
+13:24:08.159 -> clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+13:24:08.159 -> mode:DIO, clock div:2
+13:24:08.159 -> load:0x3fff0030,len:5172
+13:24:08.159 -> load:0x40078000,len:15908
+13:24:08.159 -> load:0x40080400,len:4
+13:24:08.159 -> ho 8 tail 4 room 4
+13:24:08.159 -> load:0x40080404,len:3600
+13:24:08.159 -> entry 0x400805fc
+13:24:08.159 -> I (31) boot: ESP-IDF v5.4.4-dirty 2nd stage bootloader
+13:24:08.159 -> I (31) boot: compile time Aug  8 2026 22:42:51
+13:24:08.159 -> W (31) boot: Unicore bootloader
+13:24:08.159 -> I (33) boot: chip revision: v3.0
+13:24:08.223 -> I (35) boot.esp32: SPI Speed      : 40MHz
+13:24:08.223 -> I (39) boot.esp32: SPI Mode       : DIO
+13:24:08.223 -> I (43) boot.esp32: SPI Flash Size : 4MB
+13:24:08.223 -> I (46) boot: Enabling RNG early entropy source...
+13:24:08.223 -> I (51) boot: Partition Table:
+13:24:08.223 -> I (53) boot: ## Label            Usage          Type ST Offset   Length
+13:24:08.223 -> I (60) boot:  0 phy_init         RF data          01 01 0000f000 00001000
+13:24:08.223 -> I (66) boot:  1 otadata          OTA data         01 00 00010000 00002000
+13:24:08.223 -> I (73) boot:  2 nvs              WiFi data        01 02 00012000 0000e000
+13:24:08.255 -> I (79) boot:  3 at_customize     unknown          40 00 00020000 000e0000
+13:24:08.255 -> I (86) boot:  4 ota_0            OTA app          00 10 00100000 00180000
+13:24:08.255 -> I (92) boot:  5 ota_1            OTA app          00 11 00280000 00180000
+13:24:08.255 -> I (99) boot: End of partition table
+13:24:08.255 -> I (102) esp_image: segment 0: paddr=00100020 vaddr=3f400020 size=13e68h ( 81512) map
+13:24:08.320 -> I (137) esp_image: segment 1: paddr=00113e90 vaddr=3ffbdb60 size=05268h ( 21096) load
+13:24:08.320 -> I (145) esp_image: segment 2: paddr=00119100 vaddr=40080000 size=06f18h ( 28440) load
+13:24:08.320 -> I (157) esp_image: segment 3: paddr=00120020 vaddr=400d0020 size=13609ch (1269916) map
+13:24:08.739 -> I (589) esp_image: segment 4: paddr=002560c4 vaddr=40086f18 size=141bch ( 82364) load
+13:24:08.771 -> I (622) esp_image: segment 5: paddr=0026a288 vaddr=50000000 size=00094h (   148) load
+13:24:08.803 -> I (635) boot: Loaded app from partition at offset 0x100000
+13:24:08.803 -> I (635) boot: Disabling RNG early entropy source...
+13:24:09.030 -> I (913) at-init: at param mode: 1
+13:24:09.189 -> I (1032) at-init: module_name: WROOM-32
+13:24:09.189 -> I (1035) at-init: max tx power=78, ret=0
+13:24:09.189 -> I (1038) at-init: v4.2.0.0 (unknown)
+```

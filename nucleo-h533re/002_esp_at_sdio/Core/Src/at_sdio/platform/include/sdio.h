@@ -31,7 +31,7 @@ extern "C" {
    change is needed to switch: D1-D3 keep their pull-ups and stay wired, the
    SDMMC just never drives them. 1 wire also keeps D2 off PC10, which the
    NUCLEO-H533RE assigns to USB_FS_PWR_EN - see ERROR.md. */
-#define SDIO_PORT_BUS_WIDTH   HAL_SDIO_1_WIRE_MODE
+#define SDIO_PORT_BUS_WIDTH   HAL_SDIO_4_WIRES_MODE
 #define SDIO_PORT_CLOCK_HZ    400000U
 
 /* Function 1 is the ESP slave data function */

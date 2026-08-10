@@ -8,6 +8,18 @@
 - nucleo-H533RE
 - ESP32 with esp-at (master) - https://github.com/espressif/esp-at/blob/master/examples/at_sdio_host/README.md
 
+## building esp-at
+
+```shell
+git clone --recursive https://github.com/espressif/esp-at.git
+cd esp-at
+HAS_IDF_PREREQUISITES=1 ./build.py install
+./build.py menuconfig
+# enable sdio
+./build.py build
+./build.py -p /dev/ttyACM0 flash
+```
+
 ## pin mapping
 
 Host is SDMMC1 in SDIO mode. All six lines are wired; the bus is currently held
