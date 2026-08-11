@@ -1351,7 +1351,8 @@ sdio_err_t sdio_driver_init(void)
     return SDIO_SUCCESS;
 }
 
-sdio_err_t sdio_driver_read_byte(uint32_t function, uint32_t reg, uint8_t *out_byte)
+static sdio_err_t SdioReadByte(uint32_t function, uint32_t reg, uint8_t *out_byte,
+                               uint8_t log_error)
 {
     HAL_SDIO_DirectCmd_TypeDef cmd52;
 
@@ -1360,15 +1361,22 @@ sdio_err_t sdio_driver_read_byte(uint32_t function, uint32_t reg, uint8_t *out_b
     cmd52.IOFunctionNbr = function & 0x7U;
 
     if (HAL_SDIO_ReadDirect(&hsdio1, &cmd52, out_byte) != HAL_OK) {
-        SDIO_LOGE(TAG, "CMD52 read error, func %lu reg 0x%lx",
-                  (unsigned long)function, (unsigned long)reg);
+        if (log_error != 0U) {
+            SDIO_LOGE(TAG, "CMD52 read error, func %lu reg 0x%lx",
+                      (unsigned long)function, (unsigned long)reg);
+        }
         return FAILURE;
     }
     return SDIO_SUCCESS;
 }
 
-sdio_err_t sdio_driver_write_byte(uint32_t function, uint32_t reg, uint8_t in_byte,
-                                  uint8_t *out_byte)
+sdio_err_t sdio_driver_read_byte(uint32_t function, uint32_t reg, uint8_t *out_byte)
+{
+    return SdioReadByte(function, reg, out_byte, 1U);
+}
+
+static sdio_err_t SdioWriteByte(uint32_t function, uint32_t reg, uint8_t in_byte,
+                                uint8_t log_error)
 {
     HAL_SDIO_DirectCmd_TypeDef cmd52;
 
@@ -1377,8 +1385,19 @@ sdio_err_t sdio_driver_write_byte(uint32_t function, uint32_t reg, uint8_t in_by
     cmd52.IOFunctionNbr = function & 0x7U;
 
     if (HAL_SDIO_WriteDirect(&hsdio1, &cmd52, in_byte) != HAL_OK) {
-        SDIO_LOGE(TAG, "CMD52 write error, func %lu reg 0x%lx",
-                  (unsigned long)function, (unsigned long)reg);
+        if (log_error != 0U) {
+            SDIO_LOGE(TAG, "CMD52 write error, func %lu reg 0x%lx",
+                      (unsigned long)function, (unsigned long)reg);
+        }
+        return FAILURE;
+    }
+    return SDIO_SUCCESS;
+}
+
+sdio_err_t sdio_driver_write_byte(uint32_t function, uint32_t reg, uint8_t in_byte,
+                                  uint8_t *out_byte)
+{
+    if (SdioWriteByte(function, reg, in_byte, 1U) != SDIO_SUCCESS) {
         return FAILURE;
     }
 
@@ -1523,13 +1542,15 @@ static sdio_err_t SdioReadBytesCmd52(uint32_t function, uint32_t addr,
            defence: a single missed CMD52 here fails the whole word read, which
            for the length register at 0x60 aborts the receive drain. */
         for (retry = 0U; retry < SDIO_CMD52_BYTE_RETRY; retry++) {
-            if (sdio_driver_read_byte(function, addr + i, &buf[i]) == SDIO_SUCCESS) {
+            if (SdioReadByte(function, addr + i, &buf[i], 0U) == SDIO_SUCCESS) {
                 break;
             }
             HAL_Delay(1U);
         }
 
         if (retry >= SDIO_CMD52_BYTE_RETRY) {
+            SDIO_LOGE(TAG, "CMD52 read error, func %lu reg 0x%lx",
+                      (unsigned long)function, (unsigned long)(addr + i));
             return FAILURE;
         }
     }
@@ -1544,13 +1565,15 @@ static sdio_err_t SdioWriteBytesCmd52(uint32_t function, uint32_t addr,
 
     for (i = 0U; i < len; i++) {
         for (retry = 0U; retry < SDIO_CMD52_BYTE_RETRY; retry++) {
-            if (sdio_driver_write_byte(function, addr + i, buf[i], NULL) == SDIO_SUCCESS) {
+            if (SdioWriteByte(function, addr + i, buf[i], 0U) == SDIO_SUCCESS) {
                 break;
             }
             HAL_Delay(1U);
         }
 
         if (retry >= SDIO_CMD52_BYTE_RETRY) {
+            SDIO_LOGE(TAG, "CMD52 write error, func %lu reg 0x%lx",
+                      (unsigned long)function, (unsigned long)(addr + i));
             return FAILURE;
         }
     }
