@@ -13,6 +13,13 @@ static const char TAG[] = "sdio_transport";
 static uint32_t tx_sent_buffers = 0;    ///< Counter hold the amount of buffers already sent to sdio slave. Should be set to 0 when initialization.
 static uint32_t rx_got_bytes   = 0;       ///< Counter hold the amount of bytes already received from sdio slave. Should be set to 0 when initialization.
 
+/* Bounce buffer for the sub-block tail of a CMD53 transfer. Static, not on the
+ * stack: a local costs 512 bytes of frame in both the send and the receive
+ * path, and the Cortex-M33 traps the resulting overflow through MSPLIM as a
+ * UsageFault (CFSR.STKOF) that escalates to HardFault. Only ever touched from
+ * the main context - the SDMMC and console ISRs do not call in here. */
+static uint32_t sdio_tail_buf[512U / sizeof(uint32_t)];
+
 /******************  Init SDIO slave *********************/
 static sdio_err_t esp_slave_init_io(void)
 {
@@ -37,7 +44,11 @@ printf("esp_slave_init_io\r\n");
     SDIO_LOGD(TAG, "IOR: 0x%02x", ior);
 
     // enable function 1
+#if TARGET_ESP32
     ioe = 6;
+#else
+    ioe = 2;
+#endif
     err = sdio_driver_write_byte(0, SD_IO_CCCR_FN_ENABLE, ioe, &ioe);
 
     if (err != SDIO_SUCCESS) {
@@ -65,8 +76,12 @@ printf("esp_slave_init_io\r\n");
 
     SDIO_LOGD(TAG, "IE: 0x%02x", ie);
 
-    // enable interrupts for function 1&2 and master enable
+    // enable function interrupts and master enable
+#if TARGET_ESP32
     ie = 7;
+#else
+    ie = 3;
+#endif
     err = sdio_driver_write_byte(0, SD_IO_CCCR_INT_ENABLE, ie, &ie);
 
     if (err != SDIO_SUCCESS) {
@@ -114,6 +129,7 @@ printf("esp_slave_init_io\r\n");
 
     SDIO_LOGD(TAG, "Function 1 BSH: 0x%02x", func1_bsh);
 
+#if TARGET_ESP32
     uint8_t func2_bsl, func2_bsh;
 
     func2_bsl = 0;
@@ -125,13 +141,14 @@ printf("esp_slave_init_io\r\n");
     SDIO_LOGD(TAG, "Function 2 BSL: 0x%02x", func2_bsl);
 
     func2_bsh = 2;
-    err = sdio_driver_write_byte(0, 0x210, func2_bsh, &func2_bsh);
+    err = sdio_driver_write_byte(0, 0x211, func2_bsh, &func2_bsh);
 
     if (err != SDIO_SUCCESS) {
         return err;
     }
 
     SDIO_LOGD(TAG, "Function 2 BSH: 0x%02x", func2_bsh);
+#endif
 
     return SDIO_SUCCESS;
 }
@@ -185,19 +202,20 @@ sdio_err_t sdio_host_get_packet(void* out_data, size_t size, size_t* out_length,
 
     for (;;) {
         err = esp_sdio_slave_get_rx_data_size(&len);
-			  
-			  if(len > 4096){
-			      SDIO_LOGE(TAG, "Invalid size:%lu", (unsigned long)len);
-					  wait_time++;
-					  continue;
-			  }
-
-        if (err == SDIO_SUCCESS && len > 0) {
-            break;
-        }
 
         if (err != SDIO_SUCCESS) {
             return err;
+        }
+
+        if (len > 4096) {
+            /* Slave counter out of range - treat as no data rather than
+               spinning here forever without ever checking the timeout. */
+            SDIO_LOGE(TAG, "Invalid size:%lu", (unsigned long)len);
+            len = 0;
+        }
+
+        if (len > 0) {
+            break;
         }
 
         //not error and no data, retry ``timeout_cnt`` times.
@@ -214,9 +232,11 @@ sdio_err_t sdio_host_get_packet(void* out_data, size_t size, size_t* out_length,
     SDIO_LOGD(TAG, "get_packet: slave len=%lu, max read size=%u",
               (unsigned long)len, (unsigned int)size);
 
+    sdio_err_t truncated = SDIO_SUCCESS;
+
     if (len > size) {
         len = size;
-        err = ERR_NOT_FINISHED;
+        truncated = ERR_NOT_FINISHED;
     }
 
     uint32_t len_remain = len;
@@ -232,11 +252,18 @@ sdio_err_t sdio_host_get_packet(void* out_data, size_t size, size_t* out_length,
             len_to_send = block_n * block_size;
             err = sdio_driver_read_blocks(1, ESP_SLAVE_CMD53_END_ADDR - len_remain, start_ptr, len_to_send);
         } else {
-            uint32_t len_aligned;
+            /* The tail goes out as a whole block, not as a byte-mode CMD53.
+               This slave serves the packet window in block mode only: a byte
+               mode read of the same bytes is answered with R5 all clear and
+               then no data phase at all - DPSMACT stays set with DCOUNT never
+               moving - while the block read below returns the packet. Register
+               reads in function 1 are unaffected and stay in byte mode. */
             len_to_send = len_remain;
-            len_aligned = ((uint32_t)len_to_send + 3U) & ~3U;
-            err = sdio_driver_read_bytes(1, ESP_SLAVE_CMD53_END_ADDR - len_aligned,
-                                         start_ptr, len_aligned);
+            err = sdio_driver_read_blocks(1, ESP_SLAVE_CMD53_END_ADDR - block_size,
+                                          sdio_tail_buf, block_size);
+            if (err == SDIO_SUCCESS) {
+                memcpy(start_ptr, sdio_tail_buf, len_remain);
+            }
         }
 
         if (err != SDIO_SUCCESS) {
@@ -249,7 +276,8 @@ sdio_err_t sdio_host_get_packet(void* out_data, size_t size, size_t* out_length,
 
     *out_length = len;
     rx_got_bytes += len;
-    return SDIO_SUCCESS;
+    /* ERR_NOT_FINISHED tells the caller more of this packet is still queued */
+    return truncated;
 }
 
 sdio_err_t sdio_host_clear_intr(uint32_t intr_mask)
@@ -365,11 +393,14 @@ sdio_err_t sdio_host_send_packet(const void* start, size_t length)
             len_to_send = block_n * block_size;
             err = sdio_driver_write_blocks(1, ESP_SLAVE_CMD53_END_ADDR - len_remain, start_ptr, len_to_send);
         } else {
-            uint32_t len_aligned;
+            /* Same as the receive side: the packet window only answers block
+               mode. The address still carries the real length, so the slave
+               keeps len_remain bytes and discards the padding. */
             len_to_send = len_remain;
-            len_aligned = ((uint32_t)len_to_send + 3U) & ~3U;
-            err = sdio_driver_write_bytes(1, ESP_SLAVE_CMD53_END_ADDR - len_aligned,
-                                          start_ptr, len_aligned);
+            memset(sdio_tail_buf, 0, sizeof(sdio_tail_buf));
+            memcpy(sdio_tail_buf, start_ptr, len_remain);
+            err = sdio_driver_write_blocks(1, ESP_SLAVE_CMD53_END_ADDR - len_remain,
+                                           sdio_tail_buf, block_size);
         }
 
         if (err != SDIO_SUCCESS) {

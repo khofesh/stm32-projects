@@ -59,7 +59,6 @@ static uint8_t at_rsp_buf[AT_RSP_BUF_LEN] __attribute__((aligned(4)));
 static volatile uint16_t at_cmd_len;
 static volatile uint8_t  at_cmd_ready;
 static uint16_t at_cmd_idx;
-static uint8_t  at_console_char;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -114,7 +113,11 @@ int main(void)
   MX_ICACHE_Init();
   MX_SDMMC1_SD_Init();
   /* USER CODE BEGIN 2 */
-
+  /* Report MemManage/BusFault/UsageFault on their own vectors instead of
+     letting them escalate into an anonymous HardFault */
+  SCB->SHCSR |= SCB_SHCSR_USGFAULTENA_Msk |
+                SCB_SHCSR_BUSFAULTENA_Msk |
+                SCB_SHCSR_MEMFAULTENA_Msk;
   /* USER CODE END 2 */
 
   /* Initialize leds */
@@ -146,11 +149,17 @@ int main(void)
   printf("Sdio init done\r\n");
   BSP_LED_On(LED_GREEN);
 
-  /* Console echoes AT commands typed by the user into the SDIO link */
-  if (HAL_UART_Receive_IT(&hcom_uart[COM1], &at_console_char, 1) != HAL_OK)
-  {
-    Error_Handler();
-  }
+  /* Console echoes AT commands typed by the user into the SDIO link. RX is
+     driven off the registers in USART2_IRQHandler(), not HAL_UART_Receive_IT():
+     printf() blocks inside HAL_UART_Transmit() on the same handle and holds
+     huart->Lock, which would make every re-arm from the ISR fail with
+     HAL_UART_STATE_BUSY and silently kill the console. */
+  __HAL_UART_CLEAR_FLAG(&hcom_uart[COM1], UART_CLEAR_OREF | UART_CLEAR_FEF |
+                                          UART_CLEAR_NEF | UART_CLEAR_PEF);
+  SET_BIT(COM1_UART->CR1, USART_CR1_RXNEIE_RXFNEIE);
+
+  HAL_NVIC_SetPriority(USART2_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(USART2_IRQn);
 
   /* Infinite loop */
   while (1)
@@ -199,7 +208,7 @@ int main(void)
     {
       while (1)
       {
-        size_t size_read = AT_RSP_BUF_LEN;
+        size_t size_read = 0U;
         sdio_err_t err = sdio_host_get_packet(at_rsp_buf, AT_RSP_BUF_LEN, &size_read, 50U);
 
         if (err == ERR_NOT_FOUND)
@@ -401,34 +410,160 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 /**
-  * @brief  Console RX: accumulate one CRLF-terminated AT command, then hand it
-  *         to the main loop. Kept short - the SDIO transfer happens outside.
+  * @brief  Console RX: accumulate one AT command line, then hand it to the main
+  *         loop. Kept short - the SDIO transfer happens outside.
+  *
+  * Either CR or LF ends the line; the CRLF that ESP-AT expects is appended here
+  * so a terminal that sends only one of the two still works. Two bytes of head-
+  * room are always kept for it.
   */
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+void AtConsoleRxIrq(void)
 {
-  if (huart->Instance == hcom_uart[COM1].Instance)
+  uint32_t isr = COM1_UART->ISR;
+  uint8_t ch;
+
+  /* An uncleared ORE/FE/NE/PE would re-enter this handler forever */
+  if ((isr & (USART_ISR_ORE | USART_ISR_FE | USART_ISR_NE | USART_ISR_PE)) != 0U)
   {
-    /* Previous command not consumed yet, or line too long: drop and restart */
-    if ((at_cmd_ready != 0U) || (at_cmd_idx >= AT_CMD_BUF_LEN))
-    {
-      at_cmd_idx = 0U;
-    }
-    else
-    {
-      at_cmd_buf[at_cmd_idx] = at_console_char;
-      at_cmd_idx++;
-
-      if ((at_cmd_idx >= 2U) &&
-          (at_cmd_buf[at_cmd_idx - 1U] == '\n') && (at_cmd_buf[at_cmd_idx - 2U] == '\r'))
-      {
-        at_cmd_len = at_cmd_idx;
-        at_cmd_idx = 0U;
-        at_cmd_ready = 1U;
-      }
-    }
-
-    (void)HAL_UART_Receive_IT(&hcom_uart[COM1], &at_console_char, 1);
+    COM1_UART->ICR = USART_ICR_ORECF | USART_ICR_FECF |
+                     USART_ICR_NECF | USART_ICR_PECF;
   }
+
+  if ((isr & USART_ISR_RXNE_RXFNE) == 0U)
+  {
+    return;
+  }
+
+  ch = (uint8_t)COM1_UART->RDR;
+
+  /* Echo so the typed line is visible. Non-blocking on purpose: the SDIO
+     polling loops in the main context must not be stalled by this handler. */
+  if ((COM1_UART->ISR & USART_ISR_TXE_TXFNF) != 0U)
+  {
+    COM1_UART->TDR = ch;
+  }
+
+  /* Previous command not consumed yet: drop the byte rather than race main */
+  if (at_cmd_ready != 0U)
+  {
+    return;
+  }
+
+  if ((ch == '\r') || (ch == '\n'))
+  {
+    if (at_cmd_idx == 0U)
+    {
+      return;   /* empty line, or the second half of a CRLF pair */
+    }
+
+    at_cmd_buf[at_cmd_idx] = '\r';
+    at_cmd_buf[at_cmd_idx + 1U] = '\n';
+    at_cmd_len = at_cmd_idx + 2U;
+    at_cmd_idx = 0U;
+    at_cmd_ready = 1U;
+    return;
+  }
+
+  if ((ch == '\b') || (ch == 0x7FU))
+  {
+    if (at_cmd_idx != 0U)
+    {
+      at_cmd_idx--;
+    }
+    return;
+  }
+
+  /* Line too long: drop it and resynchronise on the next terminator */
+  if (at_cmd_idx >= (AT_CMD_BUF_LEN - 2U))
+  {
+    at_cmd_idx = 0U;
+    return;
+  }
+
+  at_cmd_buf[at_cmd_idx] = ch;
+  at_cmd_idx++;
+}
+
+/**
+  * @brief  Dump the fault status registers and the stacked exception frame.
+  *
+  * Writes straight to the USART data register: the HAL handle may be locked or
+  * mid-transfer at the point of the fault, and printf() must not be re-entered
+  * from a handler.
+  */
+static void FaultPutc(char c)
+{
+  while ((COM1_UART->ISR & USART_ISR_TXE_TXFNF) == 0U)
+  {
+  }
+  COM1_UART->TDR = (uint8_t)c;
+}
+
+static void FaultPuts(const char *s)
+{
+  while (*s != '\0')
+  {
+    FaultPutc(*s);
+    s++;
+  }
+}
+
+static void FaultHex(const char *label, uint32_t v)
+{
+  static const char digits[] = "0123456789ABCDEF";
+  int8_t i;
+
+  FaultPuts(label);
+  FaultPuts(" 0x");
+  for (i = 28; i >= 0; i -= 4)
+  {
+    FaultPutc(digits[(v >> (uint8_t)i) & 0xFU]);
+  }
+  FaultPuts("\r\n");
+}
+
+void FaultReport(const uint32_t *sp, const char *name)
+{
+  const uint32_t *frame = NULL;
+  uint32_t i;
+
+  FaultPuts("\r\n*** ");
+  FaultPuts(name);
+  FaultPuts(" ***\r\n");
+
+  FaultHex("CFSR ", SCB->CFSR);
+  FaultHex("HFSR ", SCB->HFSR);
+  FaultHex("MMFAR", SCB->MMFAR);
+  FaultHex("BFAR ", SCB->BFAR);
+
+  /* sp is the handler's SP after its own prologue, so walk up to the stacked
+     frame: PC in flash and the xPSR Thumb bit set identify it. */
+  for (i = 0U; i < 24U; i++)
+  {
+    uint32_t pc = sp[i + 6U];
+    uint32_t psr = sp[i + 7U];
+
+    if ((pc >= 0x08000000UL) && (pc < 0x08080000UL) && ((psr & 0x01000000UL) != 0U))
+    {
+      frame = &sp[i];
+      break;
+    }
+  }
+
+  if (frame == NULL)
+  {
+    FaultPuts("stack frame not found\r\n");
+    return;
+  }
+
+  FaultHex("R0   ", frame[0]);
+  FaultHex("R1   ", frame[1]);
+  FaultHex("R2   ", frame[2]);
+  FaultHex("R3   ", frame[3]);
+  FaultHex("R12  ", frame[4]);
+  FaultHex("LR   ", frame[5]);
+  FaultHex("PC   ", frame[6]);
+  FaultHex("xPSR ", frame[7]);
 }
 /* USER CODE END 4 */
 

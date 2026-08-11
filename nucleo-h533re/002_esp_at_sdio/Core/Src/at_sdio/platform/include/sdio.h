@@ -28,11 +28,21 @@ extern "C" {
    register value, so the comparison never matches and the slave would be left
    in 1-bit mode - sdio_driver_init() writes CCCR 0x07 itself instead.
 
-   Held at 1 wire for bring-up, as the esp-at example advises. No hardware
-   change is needed to switch: D1-D3 keep their pull-ups and stay wired, the
-   SDMMC just never drives them. 1 wire also keeps D2 off PC10, which the
-   NUCLEO-H533RE assigns to USB_FS_PWR_EN - see ERROR.md. */
-#define SDIO_PORT_BUS_WIDTH   HAL_SDIO_4_WIRES_MODE
+   Held at 1 wire, as the esp-at example advises. No hardware change is needed
+   to switch: D1-D3 keep their pull-ups and stay wired, the SDMMC just never
+   drives them.
+
+   4 wires is what the CMD53 data phase fails on. CMD52 travels on CMD alone and
+   is 100% reliable on this link, while every CMD53 - the first one after
+   enumeration included - comes back DATA_CRC_FAIL, then COM_CRC_FAILED once the
+   slave's data path is out of step. That is a data-line fault, and D2 is the
+   suspect: it can only be PC10 on this package, and the NUCLEO-H533RE assigns
+   PC10 to USB_FS_PWR_EN, so there is board circuitry sitting on the net (see
+   ERROR.md). 1 wire uses CK, CMD, D0 and D1 only, so D2 never carries data.
+
+   Before going back to 4 wires, prove PC10 swings rail to rail at the morpho
+   pin with the SDMMC muxed off. */
+#define SDIO_PORT_BUS_WIDTH   HAL_SDIO_1_WIRE_MODE
 #define SDIO_PORT_CLOCK_HZ    25000U
 
 /* Drop the SDMMC1 kernel clock from PLL1Q (250 MHz) to PLL2R (50 MHz).

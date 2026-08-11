@@ -39,6 +39,7 @@ static volatile uint8_t esp_int_flag;
 
 /* CMD53 byte mode carries a 9-bit count, so a single transfer tops out at 512 */
 #define SDIO_PORT_MAX_BYTE_XFER 512U
+#define SDIO_CMD53_RETRY_COUNT  32U
 
 /* ESP-AT can take several seconds to boot and enable its SDIO slave, while the
    STM32 is ready in milliseconds. SDIO_InitCard() sends CMD5 exactly once, so
@@ -49,6 +50,7 @@ static volatile uint8_t esp_int_flag;
 /* CCCR Bus Interface Control (function 0, register 0x07) */
 #define SDIO_CCCR_BUS_IF_CTRL   0x07U
 #define SDIO_CCCR_BUS_WIDTH_MSK 0x03U
+#define SDIO_CCCR_BUS_WIDTH_1B  0x00U
 #define SDIO_CCCR_BUS_WIDTH_4B  0x02U
 #define SDIO_OCR_3V3_WINDOW     0x00FF8000U
 
@@ -1013,18 +1015,29 @@ static void SdioToggleCk(void)
 }
 #endif /* SDIO_PORT_CK_TOGGLE_MS */
 
-#if (SDIO_PORT_BUS_WIDTH == HAL_SDIO_4_WIRES_MODE)
 /**
-  * @brief Widen the link to 4 bits once enumeration has completed.
+  * @brief Agree the data bus width with the slave once enumeration has completed.
   *
   * HAL_SDIO_Init() compares hsdio->Init.BusWide (an SDMMC_BUS_WIDE_* register
-  * value) against HAL_SDIO_4_WIRES_MODE (1), so it always writes 1-bit into
-  * CCCR 0x07. Enumeration therefore runs in 1-bit and the switch is done here:
-  * CMD52 travels on CMD only, so it is unaffected by the width, and CLKCR is
-  * moved to 4-bit only after the slave has acknowledged the new setting.
+  * value) against HAL_SDIO_4_WIRES_MODE (1), so what it writes into CCCR 0x07
+  * has nothing to do with the width actually asked for. The setting is made
+  * here instead: CMD52 travels on CMD only, so it is unaffected by the width,
+  * and CLKCR is moved only after the slave has acknowledged the new value.
+  *
+  * The 1-bit case is written out too rather than assumed. A slave that was left
+  * in 4-bit by a previous host session keeps that setting until it is reset, and
+  * a host that has meanwhile dropped to 1-bit would then read nothing but data
+  * CRC failures.
   */
-static sdio_err_t SdioSetBusWidth4(void)
+static sdio_err_t SdioSetBusWidth(void)
 {
+#if (SDIO_PORT_BUS_WIDTH == HAL_SDIO_4_WIRES_MODE)
+    const uint8_t want = SDIO_CCCR_BUS_WIDTH_4B;
+    const uint32_t widbus = SDMMC_BUS_WIDE_4B;
+#else
+    const uint8_t want = SDIO_CCCR_BUS_WIDTH_1B;
+    const uint32_t widbus = SDMMC_BUS_WIDE_1B;
+#endif
     uint8_t val;
 
     if (sdio_driver_read_byte(0U, SDIO_CCCR_BUS_IF_CTRL, &val) != SDIO_SUCCESS) {
@@ -1032,24 +1045,25 @@ static sdio_err_t SdioSetBusWidth4(void)
         return FAILURE;
     }
 
-    val = (uint8_t)((val & ~SDIO_CCCR_BUS_WIDTH_MSK) | SDIO_CCCR_BUS_WIDTH_4B);
+    val = (uint8_t)((val & ~SDIO_CCCR_BUS_WIDTH_MSK) | want);
     if (sdio_driver_write_byte(0U, SDIO_CCCR_BUS_IF_CTRL, val, &val) != SDIO_SUCCESS) {
         SDIO_LOGE(TAG, "CCCR 0x07 write failed");
         return FAILURE;
     }
 
-    if ((val & SDIO_CCCR_BUS_WIDTH_MSK) != SDIO_CCCR_BUS_WIDTH_4B) {
-        SDIO_LOGE(TAG, "slave refused 4-bit, CCCR 0x07 = 0x%02x", (unsigned int)val);
+    if ((val & SDIO_CCCR_BUS_WIDTH_MSK) != want) {
+        SDIO_LOGE(TAG, "slave refused %u-bit, CCCR 0x07 = 0x%02x",
+                  (want == SDIO_CCCR_BUS_WIDTH_4B) ? 4U : 1U, (unsigned int)val);
         return FAILURE;
     }
 
-    MODIFY_REG(hsdio1.Instance->CLKCR, SDMMC_CLKCR_WIDBUS, SDMMC_BUS_WIDE_4B);
-    hsdio1.Init.BusWide = SDMMC_BUS_WIDE_4B;
+    MODIFY_REG(hsdio1.Instance->CLKCR, SDMMC_CLKCR_WIDBUS, widbus);
+    hsdio1.Init.BusWide = widbus;
 
-    SDIO_LOGI(TAG, "bus width switched to 4-bit");
+    SDIO_LOGI(TAG, "bus width set to %u-bit",
+              (want == SDIO_CCCR_BUS_WIDTH_4B) ? 4U : 1U);
     return SDIO_SUCCESS;
 }
-#endif /* SDIO_PORT_BUS_WIDTH == HAL_SDIO_4_WIRES_MODE */
 
 /* CMD5 argument: 3.2-3.3V window, no 1.8V switch request */
 #define SDIO_IDENT_OCR_VDD_32_33  (1UL << 20U)
@@ -1274,19 +1288,17 @@ sdio_err_t sdio_driver_init(void)
        frame during identification, and a single miss here used to fail the whole
        init even though enumeration had succeeded. Same answer as there: retry
        the command rather than the sequence. */
-#if (SDIO_PORT_BUS_WIDTH == HAL_SDIO_4_WIRES_MODE)
     for (retry = 0U; retry < SDIO_IDENT_CMD_RETRY; retry++) {
-        if (SdioSetBusWidth4() == SDIO_SUCCESS) {
+        if (SdioSetBusWidth() == SDIO_SUCCESS) {
             break;
         }
         HAL_Delay(2U);
     }
 
     if (retry >= SDIO_IDENT_CMD_RETRY) {
-        SDIO_LOGE(TAG, "set 4-bit bus width failed");
+        SDIO_LOGE(TAG, "set bus width failed");
         return FAILURE;
     }
-#endif
 
     if (HAL_SDIO_RegisterIOFunctionCallback(&hsdio1, SDIO_PORT_FUNCTION,
                                             EspIoInterruptCallback) != HAL_OK) {
@@ -1373,11 +1385,82 @@ sdio_err_t sdio_driver_write_byte(uint32_t function, uint32_t reg, uint8_t in_by
     return SDIO_SUCCESS;
 }
 
+static HAL_StatusTypeDef SdioByteReadBlockMode(uint32_t function, uint32_t addr,
+                                               uint8_t *buf, uint32_t len,
+                                               uint32_t timeout_ms);
+static uint32_t SdioCmd53RetryableError(uint32_t err);
+
+/**
+  * @brief Put both ends of a failed CMD53 back to a known state.
+  *
+  * A data phase that ends in DCRCFAIL/DTIMEOUT leaves the slave's function-1
+  * data path mid-transfer: it keeps waiting for the bytes it never got, and
+  * answers the next CMD53 with COM_CRC_ERROR in R5 rather than the transfer.
+  * That is the cascade in the log - one DATA_CRC_FAIL followed by an unbroken
+  * run of err=0x1000 - and retrying the command alone can never clear it.
+  *
+  * CCCR 0x06 (I/O Abort, written by HAL_SDIO_AbortIOFunction) is the defined way
+  * out: it aborts the function's transfer and frees the bus. The host side needs
+  * the same treatment, hence the FIFO reset and the flag clear.
+  */
+static void SdioRecoverAfterCmd53(uint32_t function)
+{
+    /* FIFORST is not self-clearing: left asserted it holds the receive FIFO in
+       reset, so the next transfer's DCOUNT never moves and every following
+       CMD53 times out. One failed transfer would otherwise take the link down
+       for good. */
+    MODIFY_REG(hsdio1.Instance->DCTRL, SDMMC_DCTRL_FIFORST, SDMMC_DCTRL_FIFORST);
+    CLEAR_BIT(hsdio1.Instance->DCTRL, SDMMC_DCTRL_FIFORST);
+    __SDMMC_CMDTRANS_DISABLE(hsdio1.Instance);
+    __HAL_SDIO_CLEAR_FLAG(&hsdio1, SDMMC_STATIC_FLAGS);
+    __HAL_SDIO_CLEAR_FLAG(&hsdio1, SDMMC_STATIC_DATA_FLAGS);
+
+    hsdio1.State = HAL_SDIO_STATE_READY;
+    hsdio1.Context = SDIO_CONTEXT_NONE;
+
+    (void)HAL_SDIO_AbortIOFunction(&hsdio1, function & 0x7U);
+}
+
+/* A register read is at most one word; anything longer is packet payload and
+   has to stay on CMD53 */
+#define SDIO_CMD52_FALLBACK_MAX 4U
+/* CMD53 attempts before the fallback is tried. The registers that need it fail
+   every single time, so waiting out all SDIO_CMD53_RETRY_COUNT of them would
+   cost ~60 ms per poll at this clock. */
+#define SDIO_CMD52_FALLBACK_AFTER 2U
+
+/**
+  * @brief Read a slave register a byte at a time with CMD52.
+  *
+  * Function 1 registers 0x44 (TOKEN_RDATA) and 0x48 answer a CMD53 with a data
+  * phase the host's CRC rejects - measured 0/20 good, while 0x40, 0x4c-0x60 are
+  * 20/20 and CMD52 returns the same bytes on every attempt. Without the token
+  * count the host never believes the slave has a free buffer, so every AT
+  * command typed at the console ends in "buffer is not enough: 0, 1 required".
+  *
+  * CMD52 carries its byte in the response on the CMD line and has no data
+  * phase at all, which is why it is unaffected.
+  */
+static sdio_err_t SdioReadBytesCmd52(uint32_t function, uint32_t addr,
+                                     uint8_t *buf, uint32_t len)
+{
+    uint32_t i;
+
+    for (i = 0U; i < len; i++) {
+        if (sdio_driver_read_byte(function, addr + i, &buf[i]) != SDIO_SUCCESS) {
+            return FAILURE;
+        }
+    }
+    return SDIO_SUCCESS;
+}
+
 static sdio_err_t SdioTransfer(uint32_t function, uint32_t addr, void *buffer,
                                uint32_t len, uint32_t block_mode, uint8_t is_write)
 {
     HAL_SDIO_ExtendedCmd_TypeDef cmd53;
     HAL_StatusTypeDef status;
+    uint32_t retry;
+    uint32_t err = HAL_SDIO_ERROR_NONE;
 
     if ((buffer == NULL) || (len == 0U)) {
         return ERR_INVALID_ARG;
@@ -1401,17 +1484,48 @@ static sdio_err_t SdioTransfer(uint32_t function, uint32_t addr, void *buffer,
     cmd53.Block_Mode = block_mode;
     cmd53.IOFunctionNbr = function & 0x7U;
 
-    if (is_write != 0U) {
-        status = HAL_SDIO_WriteExtended(&hsdio1, &cmd53, (uint8_t *)buffer, len, 1000U);
-    } else {
-        status = HAL_SDIO_ReadExtended(&hsdio1, &cmd53, (uint8_t *)buffer, len, 1000U);
+    const uint8_t cmd52_fallback = ((is_write == 0U) &&
+                                    (block_mode == HAL_SDIO_MODE_BYTE) &&
+                                    (len <= SDIO_CMD52_FALLBACK_MAX)) ? 1U : 0U;
+
+    for (retry = 0U; retry < SDIO_CMD53_RETRY_COUNT; retry++) {
+        if ((is_write == 0U) && (block_mode == HAL_SDIO_MODE_BYTE)) {
+            status = SdioByteReadBlockMode(function, addr, (uint8_t *)buffer, len, 1000U);
+        } else if (is_write != 0U) {
+            status = HAL_SDIO_WriteExtended(&hsdio1, &cmd53, (uint8_t *)buffer, len, 1000U);
+        } else {
+            status = HAL_SDIO_ReadExtended(&hsdio1, &cmd53, (uint8_t *)buffer, len, 1000U);
+        }
+
+        if (status == HAL_OK) {
+            return SDIO_SUCCESS;
+        }
+
+        /* Latched before the recovery below, whose CMD52 resets ErrorCode */
+        err = HAL_SDIO_GetError(&hsdio1);
+        SdioRecoverAfterCmd53(function);
+
+        if ((SdioCmd53RetryableError(err) == 0U) ||
+            ((retry + 1U) >= SDIO_CMD53_RETRY_COUNT) ||
+            ((cmd52_fallback != 0U) && ((retry + 1U) >= SDIO_CMD52_FALLBACK_AFTER))) {
+            break;
+        }
+        HAL_Delay(1U);
     }
 
-    if (status != HAL_OK) {
-        uint32_t err = HAL_SDIO_GetError(&hsdio1);
-        SDIO_LOGE(TAG, "CMD53 %s error, addr 0x%lx count %lu, err 0x%08lx%s%s%s%s%s",
+    if (cmd52_fallback != 0U) {
+        if (SdioReadBytesCmd52(function, addr, (uint8_t *)buffer, len) == SDIO_SUCCESS) {
+            return SDIO_SUCCESS;
+        }
+    }
+
+    {
+        SDIO_LOGE(TAG, "CMD53 %s error, addr 0x%lx count %lu, err 0x%08lx%s%s%s%s%s%s%s%s",
                   (is_write != 0U) ? "write" : "read", (unsigned long)addr,
                   (unsigned long)len, (unsigned long)err,
+                  ((err & SDMMC_ERROR_CMD_CRC_FAIL) != 0U) ? " CMD_CRC_FAIL" : "",
+                  ((err & SDMMC_ERROR_CMD_RSP_TIMEOUT) != 0U) ? " CMD_RSP_TIMEOUT" : "",
+                  ((err & SDMMC_ERROR_COM_CRC_FAILED) != 0U) ? " R5_COM_CRC" : "",
                   ((err & HAL_SDIO_ERROR_DATA_CRC_FAIL) != 0U) ? " DATA_CRC_FAIL" : "",
                   ((err & HAL_SDIO_ERROR_DATA_TIMEOUT) != 0U) ? " DATA_TIMEOUT" : "",
                   ((err & HAL_SDIO_ERROR_TX_UNDERRUN) != 0U) ? " TX_UNDERRUN" : "",
@@ -1419,7 +1533,173 @@ static sdio_err_t SdioTransfer(uint32_t function, uint32_t addr, void *buffer,
                   ((err & HAL_SDIO_ERROR_TIMEOUT) != 0U) ? " TIMEOUT" : "");
         return FAILURE;
     }
-    return SDIO_SUCCESS;
+}
+
+static uint32_t SdioCmd53RetryableError(uint32_t err)
+{
+    return ((err & (SDMMC_ERROR_CMD_CRC_FAIL |
+                   SDMMC_ERROR_COM_CRC_FAILED |
+                   SDMMC_ERROR_CMD_RSP_TIMEOUT |
+                   HAL_SDIO_ERROR_DATA_CRC_FAIL |
+                   HAL_SDIO_ERROR_DATA_TIMEOUT |
+                   HAL_SDIO_ERROR_TIMEOUT)) != 0U) ? 1U : 0U;
+}
+
+static uint32_t SdioCmd53Arg(uint32_t function, uint32_t addr, uint32_t len,
+                             uint32_t block_mode, uint8_t is_write)
+{
+    uint32_t arg = (is_write != 0U) ? (1UL << 31U) : 0U;
+
+    arg |= (function & 0x7U) << 28U;
+    arg |= (block_mode == HAL_SDIO_MODE_BLOCK) ? (1UL << 27U) : 0U;
+    arg |= 1UL << 26U;
+    arg |= (addr & 0x1FFFFU) << 9U;
+    arg |= len & 0x1FFU;
+
+    return arg;
+}
+
+static uint32_t SdioResp5Error(uint32_t r5)
+{
+    if ((r5 & SDMMC_SDIO_R5_OUT_OF_RANGE) != 0U) {
+        return SDMMC_ERROR_ADDR_OUT_OF_RANGE;
+    }
+    if ((r5 & SDMMC_SDIO_R5_INVALID_FUNCTION_NUMBER) != 0U) {
+        return SDMMC_ERROR_INVALID_PARAMETER;
+    }
+    if ((r5 & SDMMC_SDIO_R5_ILLEGAL_CMD) != 0U) {
+        return SDMMC_ERROR_ILLEGAL_CMD;
+    }
+    if ((r5 & SDMMC_SDIO_R5_COM_CRC_FAILED) != 0U) {
+        return SDMMC_ERROR_COM_CRC_FAILED;
+    }
+    if ((r5 & (SDMMC_SDIO_R5_ERROR | SDMMC_SDIO_R5_GENERAL_UNKNOWN_ERROR)) != 0U) {
+        return SDMMC_ERROR_GENERAL_UNKNOWN_ERR;
+    }
+    return SDMMC_ERROR_NONE;
+}
+
+static uint32_t SdioWaitResp5(uint32_t *out_resp)
+{
+    uint32_t sta;
+    uint32_t count = SDMMC_CMDTIMEOUT * (SystemCoreClock / 8U / 1000U);
+
+    do {
+        if (count-- == 0U) {
+            return SDMMC_ERROR_TIMEOUT;
+        }
+        sta = hsdio1.Instance->STA;
+    } while (((sta & (SDMMC_FLAG_CCRCFAIL | SDMMC_FLAG_CMDREND | SDMMC_FLAG_CTIMEOUT)) == 0U) ||
+             ((sta & SDMMC_FLAG_CMDACT) != 0U));
+
+    if ((sta & SDMMC_FLAG_CTIMEOUT) != 0U) {
+        __HAL_SDIO_CLEAR_FLAG(&hsdio1, SDMMC_FLAG_CTIMEOUT);
+        return SDMMC_ERROR_CMD_RSP_TIMEOUT;
+    }
+
+    if (out_resp != NULL) {
+        *out_resp = SDMMC_GetResponse(hsdio1.Instance, SDMMC_RESP1);
+    }
+
+    if (SDMMC_GetCommandResponse(hsdio1.Instance) != SDMMC_CMD_SDMMC_RW_EXTENDED) {
+        if ((sta & SDMMC_FLAG_CCRCFAIL) != 0U) {
+            __HAL_SDIO_CLEAR_FLAG(&hsdio1, SDMMC_FLAG_CCRCFAIL);
+        }
+        return SDMMC_ERROR_CMD_CRC_FAIL;
+    }
+
+    if ((sta & SDMMC_FLAG_CCRCFAIL) != 0U) {
+        uint32_t r5 = (out_resp != NULL) ? *out_resp : SDMMC_GetResponse(hsdio1.Instance, SDMMC_RESP1);
+        uint32_t r5_err = SdioResp5Error(r5);
+
+        __HAL_SDIO_CLEAR_FLAG(&hsdio1, SDMMC_FLAG_CCRCFAIL);
+        if (r5_err != SDMMC_ERROR_NONE) {
+            return r5_err;
+        }
+    }
+
+    __HAL_SDIO_CLEAR_FLAG(&hsdio1, SDMMC_STATIC_CMD_FLAGS);
+    return SdioResp5Error((out_resp != NULL) ? *out_resp : SDMMC_GetResponse(hsdio1.Instance, SDMMC_RESP1));
+}
+
+static HAL_StatusTypeDef SdioByteReadBlockMode(uint32_t function, uint32_t addr,
+                                               uint8_t *buf, uint32_t len,
+                                               uint32_t timeout_ms)
+{
+    SDMMC_DataInitTypeDef data = {0};
+    SDMMC_CmdInitTypeDef cmd = {0};
+    uint32_t err;
+    uint32_t resp = 0U;
+    uint32_t remain = len;
+    uint32_t start = HAL_GetTick();
+
+    hsdio1.ErrorCode = HAL_SDIO_ERROR_NONE;
+    /* Full write, so FIFORST left over from an aborted transfer goes with it */
+    hsdio1.Instance->DCTRL = (hsdio1.Instance->DCTRL & SDMMC_DCTRL_SDIOEN) ? SDMMC_DCTRL_SDIOEN : 0U;
+
+    data.DataTimeOut = SDMMC_DATATIMEOUT;
+    data.DataLength = len;
+    data.DataBlockSize = SDMMC_DATABLOCK_SIZE_1B;
+    data.TransferDir = SDMMC_TRANSFER_DIR_TO_SDMMC;
+    data.TransferMode = SDMMC_TRANSFER_MODE_SDIO;
+    data.DPSM = SDMMC_DPSM_DISABLE;
+    (void)SDMMC_ConfigData(hsdio1.Instance, &data);
+    __SDMMC_CMDTRANS_ENABLE(hsdio1.Instance);
+
+    cmd.Argument = SdioCmd53Arg(function, addr, len, HAL_SDIO_MODE_BYTE, 0U);
+    cmd.CmdIndex = SDMMC_CMD_SDMMC_RW_EXTENDED;
+    cmd.Response = SDMMC_RESPONSE_SHORT;
+    cmd.WaitForInterrupt = SDMMC_WAIT_NO;
+    cmd.CPSM = SDMMC_CPSM_ENABLE;
+    (void)SDMMC_SendCommand(hsdio1.Instance, &cmd);
+
+    err = SdioWaitResp5(&resp);
+    if (err != SDMMC_ERROR_NONE) {
+        hsdio1.ErrorCode |= err;
+        MODIFY_REG(hsdio1.Instance->DCTRL, SDMMC_DCTRL_FIFORST, SDMMC_DCTRL_FIFORST);
+        __HAL_SDIO_CLEAR_FLAG(&hsdio1, SDMMC_STATIC_FLAGS);
+        __HAL_SDIO_CLEAR_FLAG(&hsdio1, SDMMC_STATIC_DATA_FLAGS);
+        __SDMMC_CMDTRANS_DISABLE(hsdio1.Instance);
+        return HAL_ERROR;
+    }
+
+    while ((hsdio1.Instance->STA & (SDMMC_FLAG_RXOVERR | SDMMC_FLAG_DCRCFAIL |
+                                    SDMMC_FLAG_DTIMEOUT | SDMMC_FLAG_DATAEND)) == 0U) {
+        if (((hsdio1.Instance->STA & SDMMC_FLAG_RXFIFOE) == 0U) && (remain > 0U)) {
+            uint32_t v = SDMMC_ReadFIFO(hsdio1.Instance);
+            uint32_t i;
+
+            for (i = 0U; (i < 4U) && (remain > 0U); i++) {
+                *buf++ = (uint8_t)(v >> (i * 8U));
+                remain--;
+            }
+        }
+        if ((HAL_GetTick() - start) >= timeout_ms) {
+            SDIO_LOGD(TAG, "byte read timeout addr 0x%lx len %lu STA=0x%08lx DCTRL=0x%08lx DCOUNT=%lu resp=0x%08lx",
+                      (unsigned long)addr, (unsigned long)len,
+                      (unsigned long)hsdio1.Instance->STA,
+                      (unsigned long)hsdio1.Instance->DCTRL,
+                      (unsigned long)hsdio1.Instance->DCOUNT,
+                      (unsigned long)resp);
+            hsdio1.ErrorCode |= HAL_SDIO_ERROR_TIMEOUT;
+            __HAL_SDIO_CLEAR_FLAG(&hsdio1, SDMMC_STATIC_FLAGS);
+            __SDMMC_CMDTRANS_DISABLE(hsdio1.Instance);
+            return HAL_TIMEOUT;
+        }
+    }
+
+    __SDMMC_CMDTRANS_DISABLE(hsdio1.Instance);
+
+    if ((hsdio1.Instance->STA & SDMMC_FLAG_DTIMEOUT) != 0U) {
+        hsdio1.ErrorCode |= HAL_SDIO_ERROR_DATA_TIMEOUT;
+    } else if ((hsdio1.Instance->STA & SDMMC_FLAG_DCRCFAIL) != 0U) {
+        hsdio1.ErrorCode |= HAL_SDIO_ERROR_DATA_CRC_FAIL;
+    } else if ((hsdio1.Instance->STA & SDMMC_FLAG_RXOVERR) != 0U) {
+        hsdio1.ErrorCode |= HAL_SDIO_ERROR_RX_OVERRUN;
+    }
+
+    __HAL_SDIO_CLEAR_FLAG(&hsdio1, SDMMC_STATIC_FLAGS);
+    return (hsdio1.ErrorCode == HAL_SDIO_ERROR_NONE) ? HAL_OK : HAL_ERROR;
 }
 
 sdio_err_t sdio_driver_read_bytes(uint32_t function, uint32_t addr, void *buffer, uint32_t len)

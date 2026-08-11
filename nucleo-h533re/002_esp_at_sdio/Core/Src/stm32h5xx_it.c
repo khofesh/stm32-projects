@@ -47,7 +47,17 @@
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN PFP */
+void AtConsoleRxIrq(void);
+void FaultReport(const uint32_t *sp, const char *name);
 
+/* The stacked exception frame sits above the handler's own prologue, so the
+   reporter is handed the SP as it is on entry and scans upward for it. */
+#define FAULT_REPORT(nm)                                     \
+  do {                                                       \
+    uint32_t *sp_;                                           \
+    __asm volatile ("mov %0, sp" : "=r" (sp_));              \
+    FaultReport(sp_, (nm));                                  \
+  } while (0)
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -85,7 +95,7 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
-
+  FAULT_REPORT("HardFault");
   /* USER CODE END HardFault_IRQn 0 */
   while (1)
   {
@@ -100,7 +110,7 @@ void HardFault_Handler(void)
 void MemManage_Handler(void)
 {
   /* USER CODE BEGIN MemoryManagement_IRQn 0 */
-
+  FAULT_REPORT("MemManage");
   /* USER CODE END MemoryManagement_IRQn 0 */
   while (1)
   {
@@ -115,7 +125,7 @@ void MemManage_Handler(void)
 void BusFault_Handler(void)
 {
   /* USER CODE BEGIN BusFault_IRQn 0 */
-
+  FAULT_REPORT("BusFault");
   /* USER CODE END BusFault_IRQn 0 */
   while (1)
   {
@@ -130,7 +140,7 @@ void BusFault_Handler(void)
 void UsageFault_Handler(void)
 {
   /* USER CODE BEGIN UsageFault_IRQn 0 */
-
+  FAULT_REPORT("UsageFault");
   /* USER CODE END UsageFault_IRQn 0 */
   while (1)
   {
@@ -230,5 +240,17 @@ void SDMMC1_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+/**
+  * @brief Console RX.
+  *
+  * Driven straight off the USART registers instead of HAL_UART_IRQHandler():
+  * printf() reaches the same handle through the blocking HAL_UART_Transmit(),
+  * which holds huart->Lock, so a HAL_UART_Receive_IT() re-arm from this context
+  * returns HAL_BUSY and the console goes deaf for the rest of the run.
+  */
+void USART2_IRQHandler(void)
+{
+  AtConsoleRxIrq();
+}
 
 /* USER CODE END 1 */

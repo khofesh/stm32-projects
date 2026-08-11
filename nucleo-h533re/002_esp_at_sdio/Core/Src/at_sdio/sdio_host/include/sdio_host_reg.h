@@ -36,17 +36,23 @@
 
 #else
 
-#define ESP_SDIO_PKT_LEN            0x20
-#define ESP_SDIO_INT_CLR            0x30
-#define ESP_SDIO_INT_RAW            0x8
-#define ESP_SDIO_INT_ST             0x1C
-#define ESP_SDIO_TOKEN_RDATA        0x4
-#define ESP_SDIO_SEND_OFFSET        0
-#define ESP_SDIO_CONF               0x28
-#define ESP_SDIO_CONF_OFFSET        16
+/* ESP32-C6. Its SLCHOST block keeps the ESP32 offsets, checked against
+   esp-idf components/soc/esp32c6/register/soc/sdio_slc_host_reg.h:
+   TOKEN_RDATA 0x44, INT_RAW 0x50, INT_ST 0x58, PKT_LEN 0x60, INT_CLR 0xd4,
+   CONF_W7 0x8c. Upstream esp-at's non-ESP32 branch (0x04/0x08/0x1c/0x20/0x28)
+   is a different family and reads back 0 here - the token count never leaves 0
+   and the host can never find a buffer to send into. */
+#define ESP_SDIO_PKT_LEN            0x60
+#define ESP_SDIO_INT_CLR            0xD4
+#define ESP_SDIO_INT_RAW            0x50
+#define ESP_SDIO_INT_ST             0x58
+#define ESP_SDIO_TOKEN_RDATA        0x44
+#define ESP_SDIO_SEND_OFFSET        16
+#define ESP_SDIO_CONF               0x8C
+#define ESP_SDIO_CONF_OFFSET        0
 
-#define RX_BYTE_MAX                 0x10000000       // max
-#define RX_BYTE_MASK                0xFFFFFFF
+#define RX_BYTE_MAX                 0x100000
+#define RX_BYTE_MASK                0xFFFFF
 
 #endif
 
