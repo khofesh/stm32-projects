@@ -23,9 +23,11 @@ HAS_IDF_PREREQUISITES=1 ./build.py install
 
 ## pin mapping
 
-Host is SDMMC1 in SDIO mode. All six lines are wired; the bus is currently held
-at 1-bit for bring-up (see `### bus width`). The ESP32 SDIO slave pins are fixed
-by the chip and cannot be remapped.
+Host is SDMMC1 in SDIO mode. The bus is currently held at 1-bit for bring-up
+(see `### bus width`). In 1-bit mode only CK, CMD and D0 carry data; D1 is still
+needed for the SDIO interrupt. D2 and D3 may remain wired, but they are not used
+until 4-bit mode is enabled. The ESP32 SDIO slave pins are fixed by the chip and
+cannot be remapped.
 
 | Signal | STM32H533 | AF   | ESP32  | ESP32C6 |
 | ------ | --------- | ---- | ------ | ------- |
@@ -49,8 +51,12 @@ its own auto-reset, so the host must only ever pull down.
 
 see the sdio pins for esp32c6: https://docs.espressif.com/projects/esp-at/en/latest/esp32c6/Compile_and_Develop/How_to_implement_SDIO_AT.html#introduction
 
-D1 also carries the SDIO card interrupt the slave uses to signal the host, so
-it has to be wired even though it is not needed for 1-bit data.
+For ESP32-C6, D3 is **GPIO23 only**. Do not connect STM32 PC11/D3 to GPIO15. If
+GPIO15 is not connected on your Waveshare ESP32-C6 board, there is no GPIO15
+bridge to remove.
+
+D1 also carries the SDIO card interrupt the slave uses to signal the host, so it
+has to be wired even though it is not used for 1-bit data.
 
 ### pull-ups
 
@@ -128,9 +134,9 @@ latch, sampling phase, and CMD push-pull contention.
 limit. Shorten them, give each signal a ground return, then walk
 `SDIO_PORT_CLOCK_HZ` back up and set `SDIO_PORT_SLOW_KERNEL_CLK` to 0.
 
-Still outstanding: D3 (PC11) is bridged to the C6's GPIO15 as well as GPIO23.
-GPIO15 is the JTAG-source-select strap, so clear the bridge before trusting
-4-bit traffic.
+For 4-bit ESP32-C6 traffic, verify D3 before enabling it: STM32 PC11 must have
+continuity to ESP32-C6 GPIO23 and no continuity to GPIO15. GPIO15 is the
+JTAG-source-select strap and must not be tied to D3.
 
 ## if successful
 
