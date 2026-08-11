@@ -182,55 +182,48 @@ int main(void)
       at_cmd_ready = 0U;
     }
 
-    /* Slave pulls D1 low when it has a packet for us */
-    if (sdio_host_wait_int(10U) != SDIO_SUCCESS)
+    /* Slave pulls D1 low when it has a packet for us. The interrupt only
+       shortens the idle wait - it is never the thing that decides whether to
+       read, because it has to be cleared before the packet can be fetched. A
+       read that fails after that point (one transient CRC on the length
+       register is enough) leaves the queued packet with no edge left to
+       announce it: the host stops draining, the slave's send queue fills, its
+       token count stops advancing, and every later AT command ends in
+       "buffer is not enough: 0, 1 required" for good. So the queue is polled
+       on every pass and the interrupt is treated as a hint. */
+    if (sdio_host_wait_int(10U) == SDIO_SUCCESS)
     {
-      continue;
-    }
+      uint32_t intr_raw = 0U;
+      uint32_t intr_st = 0U;
 
-    uint32_t intr_raw = 0U;
-    uint32_t intr_st = 0U;
-
-    if (sdio_host_get_intr(&intr_raw, &intr_st) != SDIO_SUCCESS)
-    {
-      continue;
-    }
-    if (intr_st == 0U)
-    {
-      continue;
-    }
-    if (sdio_host_clear_intr(intr_raw) != SDIO_SUCCESS)
-    {
-      continue;
-    }
-
-    if ((intr_raw & HOST_SLC0_RX_NEW_PACKET_INT_ST) != 0U)
-    {
-      while (1)
+      if ((sdio_host_get_intr(&intr_raw, &intr_st) == SDIO_SUCCESS) && (intr_st != 0U))
       {
-        size_t size_read = 0U;
-        sdio_err_t err = sdio_host_get_packet(at_rsp_buf, AT_RSP_BUF_LEN, &size_read, 50U);
+        (void)sdio_host_clear_intr(intr_raw);
+      }
+    }
 
-        if (err == ERR_NOT_FOUND)
-        {
-          printf("interrupt but no data can be read\r\n");
-          break;
-        }
-        if ((err != SDIO_SUCCESS) && (err != ERR_NOT_FINISHED))
-        {
-          printf("rx packet error: %d\r\n", (int)err);
-          break;
-        }
+    /* Drain until the slave reports nothing queued. wait_ms = 1 makes
+       sdio_host_get_packet() check once and return ERR_TIMEOUT when empty. */
+    while (1)
+    {
+      size_t size_read = 0U;
+      sdio_err_t err = sdio_host_get_packet(at_rsp_buf, AT_RSP_BUF_LEN, &size_read, 1U);
 
-        if (size_read != 0U)
-        {
-          (void)HAL_UART_Transmit(&hcom_uart[COM1], at_rsp_buf, (uint16_t)size_read, 1000U);
-        }
+      if ((err == ERR_TIMEOUT) || (err == ERR_NOT_FOUND))
+      {
+        break;
+      }
+      if ((err != SDIO_SUCCESS) && (err != ERR_NOT_FINISHED))
+      {
+        /* Retried on the next pass rather than abandoned - the data is still
+           queued at the slave and nothing else will come back for it. */
+        printf("rx packet error: %d\r\n", (int)err);
+        break;
+      }
 
-        if (err == SDIO_SUCCESS)
-        {
-          break;
-        }
+      if (size_read != 0U)
+      {
+        (void)HAL_UART_Transmit(&hcom_uart[COM1], at_rsp_buf, (uint16_t)size_read, 1000U);
       }
     }
   }

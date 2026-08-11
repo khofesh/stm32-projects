@@ -254,12 +254,23 @@ sdio_err_t sdio_host_get_packet(void* out_data, size_t size, size_t* out_length,
         } else {
             /* The tail goes out as a whole block, not as a byte-mode CMD53.
                This slave serves the packet window in block mode only: a byte
-               mode read of the same bytes is answered with R5 all clear and
-               then no data phase at all - DPSMACT stays set with DCOUNT never
-               moving - while the block read below returns the packet. Register
-               reads in function 1 are unaffected and stay in byte mode. */
+               mode read there is answered with R5 all clear and then no data
+               phase at all - DPSMACT stays set with DCOUNT never moving -
+               whatever the count, measured again here at addr 0x1f7f4 count 12
+               after the CMD52 fallback was kept out of the window. Register
+               reads in function 1 are unaffected and stay in byte mode.
+
+               The address carries the real length, exactly as on the send
+               side. It has to: the slave reads the requested length back out
+               of the address as 0x1f800 - addr, and the protocol requires that
+               length to be no more than what it has queued. Asking from
+               END_ADDR - block_size instead requests 512 bytes for a packet
+               that is only len_remain long, which walks the slave's send DMA
+               off the end of the loaded descriptors - three short packets was
+               enough on the bench - and from there every CMD53 in both
+               directions times out. */
             len_to_send = len_remain;
-            err = sdio_driver_read_blocks(1, ESP_SLAVE_CMD53_END_ADDR - block_size,
+            err = sdio_driver_read_blocks(1, ESP_SLAVE_CMD53_END_ADDR - len_remain,
                                           sdio_tail_buf, block_size);
             if (err == SDIO_SUCCESS) {
                 memcpy(start_ptr, sdio_tail_buf, len_remain);
@@ -267,6 +278,14 @@ sdio_err_t sdio_host_get_packet(void* out_data, size_t size, size_t* out_length,
         }
 
         if (err != SDIO_SUCCESS) {
+            /* Give up on this packet, but credit it. The slave took the
+               requested length out of the CMD53 address and moved its send
+               FIFO on regardless of how the data phase ended, so bytes left
+               uncredited here are asked for again on the next poll, fail the
+               same way, and lock the link into a retry loop it never leaves -
+               one dropped frame on this bus otherwise costs every AT command
+               that follows it. */
+            rx_got_bytes += len;
             return err;
         }
 

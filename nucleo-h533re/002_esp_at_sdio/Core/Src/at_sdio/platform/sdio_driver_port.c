@@ -40,6 +40,11 @@ static volatile uint8_t esp_int_flag;
 /* CMD53 byte mode carries a 9-bit count, so a single transfer tops out at 512 */
 #define SDIO_PORT_MAX_BYTE_XFER 512U
 #define SDIO_CMD53_RETRY_COUNT  32U
+/* ...but a data phase that never starts is not worth 32 of them. CRC failures
+   are frames lost in flight and retry well; HAL_SDIO_ERROR_TIMEOUT means the
+   slave answered R5 and then sent nothing, which it will do again. Burning the
+   full count on it left the console dead for 32 s at a stretch. */
+#define SDIO_CMD53_TIMEOUT_RETRY 3U
 
 /* ESP-AT can take several seconds to boot and enable its SDIO slave, while the
    STM32 is ready in milliseconds. SDIO_InitCard() sends CMD5 exactly once, so
@@ -1403,8 +1408,70 @@ static uint32_t SdioCmd53RetryableError(uint32_t err);
   * out: it aborts the function's transfer and frees the bus. The host side needs
   * the same treatment, hence the FIFO reset and the flag clear.
   */
+/**
+  * @brief CCCR I/O Abort carrying CMDSTOP: stops the slave and the DPSM at once.
+  *
+  * A data phase that ends without DATAEND leaves DPSMACT set - the DPSM is still
+  * waiting for the bytes that never came - and while it is set, DCTRL and DLEN
+  * are read-only. Every transfer after it therefore inherits the stale
+  * programming and times out in turn, which is the "DCOUNT=508" (512 minus the
+  * four bytes that did arrive) in the failure logs: a 4-byte register read that
+  * was never able to load its own length. Rewriting DCTRL, pulsing FIFORST and
+  * clearing the flags do not touch it, and neither does a plain CMD52.
+  *
+  * CMDSTOP is what does: it tells the CPSM this command terminates the data
+  * transfer, so the DPSM is torn down with it. The frame it rides on is the
+  * CCCR 0x06 write that HAL_SDIO_AbortIOFunction() would have sent anyway, so
+  * the slave gets its I/O abort in the same breath. The response is not checked
+  * - a slave wedged mid-transfer may not send one, and it acts on the write
+  * either way.
+  */
+static void SdioAbortDataPath(uint32_t function)
+{
+    SDMMC_CmdInitTypeDef cmd = {0};
+    uint32_t tickstart;
+
+    __SDMMC_CMDSTOP_ENABLE(hsdio1.Instance);
+    __SDMMC_CMDTRANS_DISABLE(hsdio1.Instance);
+
+    /* R/W=1, function 0, RAW=0, address 0x06 (I/O Abort), data = function no. */
+    cmd.Argument         = 0x80000C00U | (function & 0x7U);
+    cmd.CmdIndex         = SDMMC_CMD_SDMMC_RW_DIRECT;
+    cmd.Response         = SDMMC_RESPONSE_SHORT;
+    cmd.WaitForInterrupt = SDMMC_WAIT_NO;
+    cmd.CPSM             = SDMMC_CPSM_ENABLE;
+    (void)SDMMC_SendCommand(hsdio1.Instance, &cmd);
+
+    tickstart = HAL_GetTick();
+    while (((hsdio1.Instance->STA & (SDMMC_FLAG_CMDREND | SDMMC_FLAG_CTIMEOUT |
+                                    SDMMC_FLAG_CCRCFAIL)) == 0U) &&
+           ((HAL_GetTick() - tickstart) < 20U)) {
+    }
+
+    __SDMMC_CMDSTOP_DISABLE(hsdio1.Instance);
+
+    tickstart = HAL_GetTick();
+    while (((hsdio1.Instance->STA & SDMMC_FLAG_DPSMACT) != 0U) &&
+           ((HAL_GetTick() - tickstart) < 20U)) {
+    }
+
+    if ((hsdio1.Instance->STA & SDMMC_FLAG_DPSMACT) != 0U) {
+        SDIO_LOGE(TAG, "DPSM still active after abort, STA=0x%08lx DCOUNT=%lu",
+                  (unsigned long)hsdio1.Instance->STA,
+                  (unsigned long)hsdio1.Instance->DCOUNT);
+    }
+}
+
 static void SdioRecoverAfterCmd53(uint32_t function)
 {
+    /* Data path first: nothing below can be reprogrammed until DPSMACT drops */
+    SdioAbortDataPath(function);
+
+    /* Now DCTRL is writable again. DTEN and the block size go with the rewrite;
+       SDIOEN is the only bit worth keeping. */
+    hsdio1.Instance->DCTRL = ((hsdio1.Instance->DCTRL & SDMMC_DCTRL_SDIOEN) != 0U)
+                             ? SDMMC_DCTRL_SDIOEN : 0U;
+
     /* FIFORST is not self-clearing: left asserted it holds the receive FIFO in
        reset, so the next transfer's DCOUNT never moves and every following
        CMD53 times out. One failed transfer would otherwise take the link down
@@ -1417,17 +1484,25 @@ static void SdioRecoverAfterCmd53(uint32_t function)
 
     hsdio1.State = HAL_SDIO_STATE_READY;
     hsdio1.Context = SDIO_CONTEXT_NONE;
-
-    (void)HAL_SDIO_AbortIOFunction(&hsdio1, function & 0x7U);
 }
 
 /* A register read is at most one word; anything longer is packet payload and
    has to stay on CMD53 */
 #define SDIO_CMD52_FALLBACK_MAX 4U
+/* ...and only a register may take it at all. In the packet window at
+   ESP_SLAVE_CMD53_END_ADDR the address *is* the transfer length, so splitting a
+   read into four CMD52s does not read four bytes of one packet - it asks the
+   slave for four different lengths and destroys the queue. Every function-1
+   register this driver touches (0x44, 0x50, 0x58, 0x60, 0xd4) is below 0x1000;
+   the window is at 0x1f4xx-0x1f800. */
+#define SDIO_CMD52_FALLBACK_MAX_ADDR 0x1000U
 /* CMD53 attempts before the fallback is tried. The registers that need it fail
    every single time, so waiting out all SDIO_CMD53_RETRY_COUNT of them would
    cost ~60 ms per poll at this clock. */
 #define SDIO_CMD52_FALLBACK_AFTER 2U
+/* Attempts per byte inside the fallback itself. Kept short - each miss costs a
+   CMD52 timeout and a log line, and the fallback only runs on a register. */
+#define SDIO_CMD52_BYTE_RETRY     4U
 
 /**
   * @brief Read a slave register a byte at a time with CMD52.
@@ -1445,13 +1520,41 @@ static sdio_err_t SdioReadBytesCmd52(uint32_t function, uint32_t addr,
                                      uint8_t *buf, uint32_t len)
 {
     uint32_t i;
+    uint32_t retry;
 
     for (i = 0U; i < len; i++) {
-        if (sdio_driver_read_byte(function, addr + i, &buf[i]) != SDIO_SUCCESS) {
+        /* The link drops the occasional frame, and this is the last line of
+           defence: a single missed CMD52 here fails the whole word read, which
+           for the length register at 0x60 aborts the receive drain. */
+        for (retry = 0U; retry < SDIO_CMD52_BYTE_RETRY; retry++) {
+            if (sdio_driver_read_byte(function, addr + i, &buf[i]) == SDIO_SUCCESS) {
+                break;
+            }
+            HAL_Delay(1U);
+        }
+
+        if (retry >= SDIO_CMD52_BYTE_RETRY) {
             return FAILURE;
         }
     }
     return SDIO_SUCCESS;
+}
+
+/**
+  * @brief Wall-clock budget for one CMD53, from what the transfer must take.
+  *
+  * A flat second is both too long and too short: at SDIO_PORT_CLOCK_HZ a
+  * 512-byte block needs ~164 ms, so a stall costs six times what it should to
+  * notice, while a full 4 kB packet legitimately needs more than a second and
+  * would be failed while it was still running. Three times the theoretical
+  * time, plus a fixed floor for the command and turnaround.
+  */
+static uint32_t SdioXferTimeoutMs(uint32_t len)
+{
+    /* 8 clocks per byte on one data line; a 4-bit bus only finishes sooner */
+    uint32_t ms = ((len * 8U) / (SDIO_PORT_CLOCK_HZ / 1000U));
+
+    return 50U + (ms * 3U);
 }
 
 static sdio_err_t SdioTransfer(uint32_t function, uint32_t addr, void *buffer,
@@ -1486,18 +1589,41 @@ static sdio_err_t SdioTransfer(uint32_t function, uint32_t addr, void *buffer,
 
     const uint8_t cmd52_fallback = ((is_write == 0U) &&
                                     (block_mode == HAL_SDIO_MODE_BYTE) &&
-                                    (len <= SDIO_CMD52_FALLBACK_MAX)) ? 1U : 0U;
+                                    (len <= SDIO_CMD52_FALLBACK_MAX) &&
+                                    (addr < SDIO_CMD52_FALLBACK_MAX_ADDR)) ? 1U : 0U;
+
+    const uint32_t timeout_ms = SdioXferTimeoutMs(len);
+
+    /* The whole transfer runs with SDMMC1 masked at the NVIC.
+     *
+     * HAL_SDIO_EnableIOFunctionInterrupt() leaves SDMMC_IT_SDIOIT enabled for
+     * good, and STA.SDIOIT simply tracks D1 - so the slave raising its
+     * interrupt part way through a data phase, which is exactly what it does
+     * when the next packet lands, runs HAL_SDIO_IRQHandler(). That handler
+     * reads STA and acts on DATAEND *without checking whether the DATAEND
+     * interrupt was ever enabled*: it clears the flag, forces State to READY
+     * and disables CMDTRANS. The polled loop inside HAL_SDIO_ReadExtended() /
+     * WriteExtended() is then waiting for a flag that has already been taken
+     * from it, and gives up with HAL_SDIO_ERROR_TIMEOUT (0x80000000) on a
+     * transfer whose data actually moved - no CRC error, no DTIMEOUT. From
+     * there the recovery aborts a function that was never stuck and the link
+     * stops carrying anything at all.
+     *
+     * Masking the IRQ loses no interrupt: SDIOIT is a level, not an edge, so
+     * it is still asserted when the mask is lifted. */
+    HAL_NVIC_DisableIRQ(SDMMC1_IRQn);
 
     for (retry = 0U; retry < SDIO_CMD53_RETRY_COUNT; retry++) {
         if ((is_write == 0U) && (block_mode == HAL_SDIO_MODE_BYTE)) {
-            status = SdioByteReadBlockMode(function, addr, (uint8_t *)buffer, len, 1000U);
+            status = SdioByteReadBlockMode(function, addr, (uint8_t *)buffer, len, timeout_ms);
         } else if (is_write != 0U) {
-            status = HAL_SDIO_WriteExtended(&hsdio1, &cmd53, (uint8_t *)buffer, len, 1000U);
+            status = HAL_SDIO_WriteExtended(&hsdio1, &cmd53, (uint8_t *)buffer, len, timeout_ms);
         } else {
-            status = HAL_SDIO_ReadExtended(&hsdio1, &cmd53, (uint8_t *)buffer, len, 1000U);
+            status = HAL_SDIO_ReadExtended(&hsdio1, &cmd53, (uint8_t *)buffer, len, timeout_ms);
         }
 
         if (status == HAL_OK) {
+            HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
             return SDIO_SUCCESS;
         }
 
@@ -1507,6 +1633,8 @@ static sdio_err_t SdioTransfer(uint32_t function, uint32_t addr, void *buffer,
 
         if ((SdioCmd53RetryableError(err) == 0U) ||
             ((retry + 1U) >= SDIO_CMD53_RETRY_COUNT) ||
+            (((err & HAL_SDIO_ERROR_TIMEOUT) != 0U) &&
+             ((retry + 1U) >= SDIO_CMD53_TIMEOUT_RETRY)) ||
             ((cmd52_fallback != 0U) && ((retry + 1U) >= SDIO_CMD52_FALLBACK_AFTER))) {
             break;
         }
@@ -1515,9 +1643,12 @@ static sdio_err_t SdioTransfer(uint32_t function, uint32_t addr, void *buffer,
 
     if (cmd52_fallback != 0U) {
         if (SdioReadBytesCmd52(function, addr, (uint8_t *)buffer, len) == SDIO_SUCCESS) {
+            HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
             return SDIO_SUCCESS;
         }
     }
+
+    HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
 
     {
         SDIO_LOGE(TAG, "CMD53 %s error, addr 0x%lx count %lu, err 0x%08lx%s%s%s%s%s%s%s%s",
