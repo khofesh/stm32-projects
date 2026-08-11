@@ -79,7 +79,27 @@ static HAL_StatusTypeDef SdioKernelClockConfig(void)
     RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
 
     PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_SDMMC1;
+
+#if (SDIO_PORT_SLOW_KERNEL_CLK != 0)
+    /* CLKDIV tops out at 1023, so a 250 MHz kernel clock cannot go below
+       122 kHz - and the link is only known to carry a frame at 25 kHz. PLL2R at
+       50 MHz moves the whole range down by five: div=1023 is 24 kHz, div=312 is
+       80 kHz. Same CSI source as PLL1, so no extra oscillator is needed:
+       4 MHz / 1 = 4 MHz in, x100 = 400 MHz VCO, / 8 = 50 MHz. */
+    PeriphClkInitStruct.Sdmmc1ClockSelection = RCC_SDMMC1CLKSOURCE_PLL2R;
+    PeriphClkInitStruct.PLL2.PLL2Source   = RCC_PLL2_SOURCE_CSI;
+    PeriphClkInitStruct.PLL2.PLL2M        = 1;
+    PeriphClkInitStruct.PLL2.PLL2N        = 100;
+    PeriphClkInitStruct.PLL2.PLL2P        = 2;
+    PeriphClkInitStruct.PLL2.PLL2Q        = 2;
+    PeriphClkInitStruct.PLL2.PLL2R        = 8;
+    PeriphClkInitStruct.PLL2.PLL2RGE      = RCC_PLL2_VCIRANGE_2;
+    PeriphClkInitStruct.PLL2.PLL2VCOSEL   = RCC_PLL2_VCORANGE_WIDE;
+    PeriphClkInitStruct.PLL2.PLL2FRACN    = 0;
+    PeriphClkInitStruct.PLL2.PLL2ClockOut = RCC_PLL2_DIVR;
+#else
     PeriphClkInitStruct.Sdmmc1ClockSelection = RCC_SDMMC1CLKSOURCE_PLL1Q;
+#endif
 
     return HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct);
 }
@@ -104,13 +124,21 @@ void HAL_SDIO_MspInit(SDIO_HandleTypeDef *hsdio)
     PC11     ------> SDMMC1_D3
     PC12     ------> SDMMC1_CK
     */
-    GPIO_InitStruct.Pin = GPIO_PIN_2 | GPIO_PIN_13;
+    GPIO_InitStruct.Pin = GPIO_PIN_13;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = SDIO_PORT_GPIO_SPEED;
     GPIO_InitStruct.Alternate = GPIO_AF12_SDMMC1;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+    /* CMD alone may be open-drain - see SDIO_PORT_CMD_OPEN_DRAIN */
+    GPIO_InitStruct.Pin = GPIO_PIN_2;
+#if (SDIO_PORT_CMD_OPEN_DRAIN != 0)
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
+#endif
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pin = GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12;
     HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
@@ -168,10 +196,225 @@ static void SdioSetPadSpeed(uint32_t speed)
     gpio.Speed = speed;
     gpio.Alternate = GPIO_AF12_SDMMC1;
 
-    gpio.Pin = GPIO_PIN_2 | GPIO_PIN_13;
+    gpio.Pin = GPIO_PIN_13;
     HAL_GPIO_Init(GPIOB, &gpio);
+
+    gpio.Pin = GPIO_PIN_2;
+#if (SDIO_PORT_CMD_OPEN_DRAIN != 0)
+    gpio.Mode = GPIO_MODE_AF_OD;
+#endif
+    HAL_GPIO_Init(GPIOB, &gpio);
+
+    gpio.Mode = GPIO_MODE_AF_PP;
     gpio.Pin = GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12;
     HAL_GPIO_Init(GPIOC, &gpio);
+}
+
+/**
+  * @brief CMD0 then CMD5 driven by hand, with the SDMMC out of the picture.
+  *
+  * Every host-side explanation for the timeout has been ruled out with the CPSM
+  * in the loop, which still leaves three things it could be hiding: the edge the
+  * frame is driven on, the 64-clock window the CPSM gives up after, and whether
+  * the CPSM releases CMD in time for the slave to answer at all. Bit-banging
+  * removes all three. The clock is ~25 kHz and the response window is 200 clocks
+  * instead of 64, so anything the slave sends will be caught.
+  *
+  * A response here with none from the CPSM is a host configuration bug. Silence
+  * here too means the slave is not decoding the frame, and no host setting will
+  * fix that.
+  */
+/* Half-period in core cycles at 250 MHz; 5000 = 25 kHz, 312 = 400 kHz */
+static uint32_t sdio_bb_half_cycles = 5000U;
+
+/* Idle clocks sent with CMD high before CMD0. The SD spec wants at least 74
+   after power-up; the question is whether the slave insists on them. */
+static uint32_t sdio_bb_idle_clocks = 80U;
+
+/* Result of the same probe with the idle clocks suppressed */
+volatile uint32_t sdio_bb_noidle = 0U;
+
+/* Enumeration outcome, as a magic value so it is recognisable in a raw memory
+   dump even if the symbol table and the running image disagree on layout. */
+#define SDIO_MARK_ENUM_OK    0xC0FFEE01U
+#define SDIO_MARK_DRIVER_OK  0xC0FFEE02U
+#define SDIO_MARK_ENUM_FAIL  0xDEAD0001U
+volatile uint32_t sdio_enum_mark = 0U;
+
+/* How far SdioIdentifyCardSlow() got on its last run: 1 entered, 2 CMD0 ok,
+   3 inquiry CMD5 ok, 4 slave reported ready, 5 CMD3 ok, 6 CMD7 ok. */
+volatile uint32_t sdio_ident_step = 0U;
+volatile uint32_t sdio_ident_resp4 = 0U;
+volatile uint32_t sdio_enum_retries = 0U;
+
+/* Mirrored out of the log so the result can be read over SWD when the VCP is
+   taken: [0] 0=not run 1=answered 2=silent, [1] clocks to the start bit,
+   [2]/[3] the R4 bytes. Not static - it has to survive into the map file. */
+volatile uint32_t sdio_bb_result[4] = {0U, 0U, 0U, 0U};
+
+/* Answer count per CLKCR phase combination, same reason. Index is
+   bit0 = NEGEDGE, bit1 = HWFC_EN. */
+volatile uint32_t sdio_phase_result[4] = {0U, 0U, 0U, 0U};
+
+/* Bit-banged CMD5 answered (1) or not (0) at 25/50/100/200/400 kHz. Finds the
+   clock the interconnect actually stops carrying, which the CPSM cannot reach:
+   its slowest cell is 122 kHz off a 250 MHz kernel clock. */
+volatile uint32_t sdio_bb_freq_khz[8] = {0U};
+volatile uint32_t sdio_bb_freq_ok[8] = {0U};
+
+static void SdioBbDelay(void)
+{
+    uint32_t start = DWT->CYCCNT;
+
+    while ((DWT->CYCCNT - start) < sdio_bb_half_cycles) {
+    }
+}
+
+static uint8_t SdioCrc7(const uint8_t *data, uint32_t len)
+{
+    uint8_t crc = 0U;
+    uint32_t i;
+    uint32_t j;
+
+    for (i = 0U; i < len; i++) {
+        uint8_t b = data[i];
+
+        for (j = 0U; j < 8U; j++) {
+            crc = (uint8_t)(crc << 1);
+            if (((b ^ crc) & 0x80U) != 0U) {
+                crc ^= 0x09U;
+            }
+            b = (uint8_t)(b << 1);
+        }
+    }
+
+    return (uint8_t)(crc & 0x7FU);
+}
+
+/* CMD is driven while CK is low, so the slave latches it on the rising edge -
+   the "send at negedge, sample at posedge" default the ESP slave documents. */
+static void SdioBbClock(uint32_t cmd_bit)
+{
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, (cmd_bit != 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+    SdioBbDelay();
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_SET);
+    SdioBbDelay();
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_RESET);
+}
+
+static void SdioBbSendFrame(uint8_t index, uint32_t arg)
+{
+    uint8_t frame[6];
+    uint32_t i;
+    uint32_t j;
+
+    frame[0] = (uint8_t)(0x40U | (index & 0x3FU));
+    frame[1] = (uint8_t)(arg >> 24);
+    frame[2] = (uint8_t)(arg >> 16);
+    frame[3] = (uint8_t)(arg >> 8);
+    frame[4] = (uint8_t)arg;
+    frame[5] = (uint8_t)((SdioCrc7(frame, 5U) << 1) | 1U);
+
+    for (i = 0U; i < 6U; i++) {
+        for (j = 0U; j < 8U; j++) {
+            SdioBbClock((uint32_t)(frame[i] >> (7U - j)) & 1U);
+        }
+    }
+}
+
+static void SdioBitBangProbe(void)
+{
+    GPIO_InitTypeDef gpio = {0};
+    uint32_t i;
+    uint32_t start_clk = 0U;
+    uint32_t got_start = 0U;
+    uint8_t  resp[6] = {0};
+
+    /* Free-running cycle counter for the sub-millisecond delays */
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0U;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+
+    if ((DWT->CTRL & DWT_CTRL_CYCCNTENA_Msk) == 0U) {
+        SDIO_LOGE(TAG, "bitbang: no cycle counter, skipped");
+        return;
+    }
+
+    gpio.Mode  = GPIO_MODE_OUTPUT_PP;
+    gpio.Pull  = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_LOW;
+    gpio.Pin   = GPIO_PIN_12;
+    HAL_GPIO_Init(GPIOC, &gpio);
+    gpio.Pin   = GPIO_PIN_2;
+    HAL_GPIO_Init(GPIOB, &gpio);
+
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_RESET);
+
+    /* Idle clocks with CMD high, as the card expects before CMD0 */
+    for (i = 0U; i < sdio_bb_idle_clocks; i++) {
+        SdioBbClock(1U);
+    }
+
+    SdioBbSendFrame(0U, 0U);          /* CMD0 - no response expected */
+    for (i = 0U; i < 16U; i++) {
+        SdioBbClock(1U);
+    }
+
+    SdioBbSendFrame(5U, 0U);          /* CMD5 - R4 */
+
+    /* Release CMD to the pull-up so the slave can drive it */
+    gpio.Mode = GPIO_MODE_INPUT;
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Pin  = GPIO_PIN_2;
+    HAL_GPIO_Init(GPIOB, &gpio);
+
+    for (i = 0U; i < 200U; i++) {
+        SdioBbDelay();
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_SET);
+        SdioBbDelay();
+        if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_2) == GPIO_PIN_RESET) {
+            got_start = 1U;
+            start_clk = i;
+        }
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_RESET);
+        if (got_start != 0U) {
+            break;
+        }
+    }
+
+    if (got_start != 0U) {
+        /* Start bit already consumed; take the remaining 47 of the R4 frame */
+        for (i = 0U; i < 47U; i++) {
+            SdioBbDelay();
+            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_SET);
+            SdioBbDelay();
+            if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_2) != GPIO_PIN_RESET) {
+                resp[(i + 1U) / 8U] |= (uint8_t)(0x80U >> ((i + 1U) % 8U));
+            }
+            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_RESET);
+        }
+
+        sdio_bb_result[0] = 1U;
+        sdio_bb_result[1] = start_clk;
+        sdio_bb_result[2] = ((uint32_t)resp[0] << 24) | ((uint32_t)resp[1] << 16) |
+                            ((uint32_t)resp[2] << 8) | (uint32_t)resp[3];
+        sdio_bb_result[3] = ((uint32_t)resp[4] << 8) | (uint32_t)resp[5];
+
+        SDIO_LOGE(TAG, "bitbang: slave answered CMD5 after %lu clocks - "
+                       "%02x %02x %02x %02x %02x %02x",
+                  (unsigned long)start_clk, resp[0], resp[1], resp[2],
+                  resp[3], resp[4], resp[5]);
+        SDIO_LOGE(TAG, "  the slave decodes a hand-built frame, so the fault is "
+                       "in the SDMMC setup, not the link");
+    } else {
+        sdio_bb_result[0] = 2U;
+        SDIO_LOGE(TAG, "bitbang: no start bit in 200 clocks after CMD5");
+        SDIO_LOGE(TAG, "  the slave ignores a frame built by hand at 25 kHz with "
+                       "a 200-clock window, so it is not decoding CMD at all - "
+                       "stop tuning the host");
+    }
+
+    SdioSetPadSpeed(SDIO_PORT_GPIO_SPEED);
 }
 
 /**
@@ -216,6 +459,8 @@ static void SdioReportAlignment(uint32_t resp4, uint32_t respcmd)
     SDIO_LOGE(TAG, "    corrupt - no single clock count fits the frame");
 }
 
+static uint32_t sdio_probe_answered;
+
 /**
   * @brief One matrix cell: SDIO_PROBE_REPEAT x CMD5 at a fixed slew and CLKDIV.
   */
@@ -248,6 +493,8 @@ static void SdioProbeCmd5(uint32_t clkdiv, uint32_t arg, const char *speed_name)
         }
         HAL_Delay(1U);
     }
+
+    sdio_probe_answered = answered;
 
     SDIO_LOGE(TAG, "  pads=%-5s div=%-4lu arg=0x%08lx answered=%lu/%u "
                    "respcmd=0x%02lx resp=0x%08lx",
@@ -366,6 +613,7 @@ static void SdioProbeLineActivity(void)
     uint32_t i;
     uint32_t cmd_low = 0U;
     uint32_t ck_low = 0U;
+    uint32_t d3_low = 0U;
 
     cmd.Argument         = 0U;
     cmd.CmdIndex         = SDMMC_CMD_GO_IDLE_STATE;
@@ -382,13 +630,24 @@ static void SdioProbeLineActivity(void)
         if ((GPIOC->IDR & GPIO_PIN_12) == 0U) {
             ck_low++;
         }
+        /* DAT3 is CS at CMD0 time: low selects SPI mode, and an SDIO slave in
+           SPI mode ignores CMD5 forever. It must stay high through the frame. */
+        if ((GPIOC->IDR & GPIO_PIN_11) == 0U) {
+            d3_low++;
+        }
     }
 
     __SDMMC_CLEAR_FLAG(hsdio1.Instance, SDMMC_STATIC_CMD_FLAGS);
 
     SDIO_LOGE(TAG, "probe: line activity during CMD0 - CMD low %lu/%u, "
-                   "CK low %lu/%u", (unsigned long)cmd_low, 20000U,
-              (unsigned long)ck_low, 20000U);
+                   "CK low %lu/%u, D3 low %lu/%u", (unsigned long)cmd_low, 20000U,
+              (unsigned long)ck_low, 20000U, (unsigned long)d3_low, 20000U);
+
+    if (d3_low != 0U) {
+        SDIO_LOGE(TAG, "  D3/CS went low during CMD0 - that latches the slave "
+                       "into SPI mode, where CMD5 is never answered. D3 must "
+                       "stay high until enumeration is done");
+    }
 
     if (ck_low == 0U) {
         SDIO_LOGE(TAG, "  CK never sampled low - the clock is not running, so "
@@ -400,6 +659,47 @@ static void SdioProbeLineActivity(void)
         SDIO_LOGE(TAG, "  host transmits: CK toggles and CMD is pulled low "
                        "inside the frame, so the timeout is at the slave");
     }
+}
+
+/**
+  * @brief CMD5 at each CLKCR sampling phase, with everything else held still.
+  *
+  * The slave answers a bit-banged CMD5 with NCR=2, the spec minimum, so the CPSM
+  * has no slack: half a cycle of error in where it turns CMD around or samples
+  * the reply and it misses the start bit and reports a plain timeout. NEGEDGE
+  * moves exactly that phase, and HWFC_EN is swept with it because it also gates
+  * when the CPSM releases the line.
+  */
+static void SdioProbeClkPhase(uint32_t base_div)
+{
+    static const char *const phase_name[4] = {
+        "posedge no-hwfc", "negedge no-hwfc", "posedge hwfc", "negedge hwfc"
+    };
+    uint32_t i;
+
+    SDIO_LOGE(TAG, "probe: CLKCR sampling phase");
+
+    for (i = 0U; i < 4U; i++) {
+        uint32_t clkcr = hsdio1.Instance->CLKCR;
+
+        clkcr &= ~(SDMMC_CLKCR_NEGEDGE | SDMMC_CLKCR_HWFC_EN);
+        if ((i & 1U) != 0U) {
+            clkcr |= SDMMC_CLKCR_NEGEDGE;
+        }
+        if ((i & 2U) != 0U) {
+            clkcr |= SDMMC_CLKCR_HWFC_EN;
+        }
+        hsdio1.Instance->CLKCR = clkcr;
+        HAL_Delay(2U);
+
+        SdioProbeCmd5(base_div, 0U, phase_name[i]);
+        sdio_phase_result[i] = sdio_probe_answered;
+    }
+
+    /* Back to the configured phase so nothing downstream inherits the sweep */
+    MODIFY_REG(hsdio1.Instance->CLKCR,
+               SDMMC_CLKCR_NEGEDGE | SDMMC_CLKCR_HWFC_EN,
+               hsdio1.Init.ClockEdge | hsdio1.Init.HardwareFlowControl);
 }
 
 static void SdioProbeSlave(void)
@@ -442,6 +742,40 @@ static void SdioProbeSlave(void)
     gpio.Speed = SDIO_PORT_GPIO_SPEED;
     gpio.Alternate = GPIO_AF12_SDMMC1;
     HAL_GPIO_Init(GPIOB, &gpio);
+
+    SdioProbeClkPhase(base_div);
+
+    /* Does the slave insist on the 74 idle clocks the spec asks for after
+       power-up? The HAL sends CMD0 straight after powering the CPSM on, so if
+       it does, the CPSM can never enumerate no matter how it is tuned. */
+    sdio_bb_idle_clocks = 0U;
+    sdio_bb_result[0] = 0U;
+    SdioBitBangProbe();
+    sdio_bb_noidle = sdio_bb_result[0];
+    sdio_bb_idle_clocks = 80U;
+    sdio_bb_result[0] = 0U;
+    SdioBitBangProbe();
+    SDIO_LOGE(TAG, "  bitbang idle-clock A/B: without=%s with=%s",
+              (sdio_bb_noidle == 1U) ? "answered" : "silent",
+              (sdio_bb_result[0] == 1U) ? "answered" : "silent");
+
+    /* Where does the interconnect actually stop carrying a frame? */
+    {
+        static const uint32_t half[5] = { 5000U, 2500U, 1250U, 625U, 312U };
+        static const uint32_t khz[5]  = { 25U, 50U, 100U, 200U, 400U };
+        uint32_t f;
+
+        for (f = 0U; f < 5U; f++) {
+            sdio_bb_half_cycles = half[f];
+            sdio_bb_result[0] = 0U;
+            SdioBitBangProbe();
+            sdio_bb_freq_khz[f] = khz[f];
+            sdio_bb_freq_ok[f] = (sdio_bb_result[0] == 1U) ? 1U : 0U;
+            SDIO_LOGE(TAG, "  bitbang %lu kHz: %s", (unsigned long)khz[f],
+                      (sdio_bb_result[0] == 1U) ? "answered" : "silent");
+        }
+        sdio_bb_half_cycles = 5000U;
+    }
 
     SDIO_LOGE(TAG, "probe: 'answered=0/8' everywhere is a silent slave or a dead "
                    "net; a mix of 0/8 and 8/8 is an intermittent joint; 8/8 with "
@@ -717,6 +1051,140 @@ static sdio_err_t SdioSetBusWidth4(void)
 }
 #endif /* SDIO_PORT_BUS_WIDTH == HAL_SDIO_4_WIRES_MODE */
 
+/* CMD5 argument: 3.2-3.3V window, no 1.8V switch request */
+#define SDIO_IDENT_OCR_VDD_32_33  (1UL << 20U)
+
+/* Per-command retries inside identification. The link drops frames at a low
+   rate; retrying the command is far cheaper than restarting enumeration. */
+#define SDIO_IDENT_CMD_RETRY      32U
+
+/**
+  * @brief Replacement for the HAL identification step, run at the port's clock.
+  *
+  * HAL_SDIO_Init() recomputes Init.ClockDiv from its private SDIO_INIT_FREQ
+  * (400 kHz) and enumerates there, throwing away hsdio1.Init.ClockDiv - it only
+  * restores it after identification succeeds. This link does not carry a frame
+  * at 400 kHz: the bit-banged probe reads a valid R4 at 25 kHz and nothing at
+  * 400 kHz, which is why every clock, slew and phase sweep changed nothing. They
+  * were all outside the window the HAL re-initialises.
+  *
+  * SDIO_IdentifyCard is a documented hook and the HAL only defaults it when it
+  * is NULL, so this runs the same CMD0/CMD5/CMD3/CMD7 sequence with the clock
+  * put back to SDIO_PORT_CLOCK_HZ first, plus the 74 idle cycles the slave turns
+  * out to insist on - a bit-banged CMD5 with them is answered, without them it
+  * is not.
+  */
+static HAL_StatusTypeDef SdioIdentifyCardSlow(SDIO_HandleTypeDef *hsdio)
+{
+    uint32_t errorstate;
+    uint32_t resp4 = 0U;
+    uint32_t timeout;
+    uint16_t rca = 1U;
+
+    sdio_ident_step = 1U;
+
+    /* Undo the HAL's 400 kHz and give the slave its power-up clocks at ours */
+    MODIFY_REG(hsdio->Instance->CLKCR, SDMMC_CLKCR_CLKDIV, hsdio->Init.ClockDiv);
+    HAL_Delay(1U + (74U * 1000U / SDIO_PORT_CLOCK_HZ) + 1U);
+
+    for (timeout = 0U; timeout < SDIO_IDENT_CMD_RETRY; timeout++) {
+        if (SDMMC_CmdGoIdleState(hsdio->Instance) == HAL_SDIO_ERROR_NONE) {
+            break;
+        }
+        HAL_Delay(2U);
+    }
+
+    if (timeout >= SDIO_IDENT_CMD_RETRY) {
+        return HAL_ERROR;
+    }
+
+    sdio_ident_step = 2U;
+
+    if (SDMMC_GetPowerState(hsdio->Instance) == 0U) {
+        return HAL_ERROR;
+    }
+
+    /* Inquiry CMD5 - arg 0 never sets C, it only reports the OCR.
+
+       Retried here rather than upwards: a single timed-out command used to fail
+       the whole HAL_SDIO_Init(), which tears the card back down to RESET and
+       re-runs CMD0 from scratch. On a link that drops the occasional frame that
+       turns a recoverable hiccup into a total failure, and the step markers show
+       exactly that - runs that failed at this command had already seen a ready
+       R4 from an earlier attempt in the same batch. */
+    for (timeout = 0U; timeout < SDIO_IDENT_CMD_RETRY; timeout++) {
+        if (SDMMC_CmdSendOperationcondition(hsdio->Instance, 0U, &resp4) ==
+            HAL_SDIO_ERROR_NONE) {
+            break;
+        }
+        HAL_Delay(2U);
+        (void)SDMMC_CmdGoIdleState(hsdio->Instance);
+        HAL_Delay(2U);
+    }
+
+    if (timeout >= SDIO_IDENT_CMD_RETRY) {
+        return HAL_ERROR;
+    }
+
+    sdio_ident_step = 3U;
+    sdio_ident_resp4 = resp4;
+
+    if (((resp4 & 0x70000000U) >> 28U) == 0U) {
+        return HAL_ERROR;      /* no I/O function - not an SDIO card */
+    }
+
+    /* Now poll with the voltage window until the slave reports ready. The HAL
+       asks once and gives up, which loses the race whenever the slave is still
+       initialising. */
+    for (timeout = 0U; timeout < 1000U; timeout++) {
+        if (SDMMC_CmdSendOperationcondition(hsdio->Instance,
+                                            SDIO_IDENT_OCR_VDD_32_33,
+                                            &resp4) == HAL_SDIO_ERROR_NONE) {
+            if ((resp4 & 0x80000000U) != 0U) {
+                break;
+            }
+        }
+        HAL_Delay(1U);
+    }
+
+    if ((resp4 & 0x80000000U) == 0U) {
+        return HAL_ERROR;
+    }
+
+    sdio_ident_step = 4U;
+    sdio_ident_resp4 = resp4;
+
+    /* CMD0 before CMD3 makes CMD3 illegal for a while; the HAL retries and so
+       does this. */
+    timeout = 0U;
+    do {
+        errorstate = SDMMC_CmdSetRelAdd(hsdio->Instance, &rca);
+        timeout++;
+        HAL_Delay(1U);
+    } while ((errorstate != HAL_SDIO_ERROR_NONE) && (timeout < 1000U));
+
+    if (errorstate != HAL_SDIO_ERROR_NONE) {
+        return HAL_ERROR;
+    }
+
+    sdio_ident_step = 5U;
+
+    for (timeout = 0U; timeout < SDIO_IDENT_CMD_RETRY; timeout++) {
+        if (SDMMC_CmdSelDesel(hsdio->Instance, ((uint32_t)rca) << 16U) ==
+            HAL_SDIO_ERROR_NONE) {
+            break;
+        }
+        HAL_Delay(2U);
+    }
+
+    if (timeout >= SDIO_IDENT_CMD_RETRY) {
+        return HAL_ERROR;
+    }
+
+    sdio_ident_step = 6U;
+    return HAL_OK;
+}
+
 sdio_err_t sdio_driver_init(void)
 {
     uint32_t kernel_clk;
@@ -771,6 +1239,9 @@ sdio_err_t sdio_driver_init(void)
     /* Runs the CMD0/CMD5/CMD3/CMD7 enumeration and sets the CCCR bus width.
        A failed attempt leaves State back at RESET, so re-calling it is a clean
        restart of the whole sequence. */
+    /* Claim the identification step before the HAL can default it */
+    hsdio1.SDIO_IdentifyCard = SdioIdentifyCardSlow;
+
     for (retry = 0U; retry < SDIO_INIT_RETRY_COUNT; retry++) {
         status = HAL_SDIO_Init(&hsdio1);
         if (status == HAL_OK) {
@@ -779,6 +1250,9 @@ sdio_err_t sdio_driver_init(void)
         SdioResetSlaveIo();
         HAL_Delay(SDIO_INIT_RETRY_MS);
     }
+
+    sdio_enum_retries = retry;
+    sdio_enum_mark = (status == HAL_OK) ? SDIO_MARK_ENUM_OK : SDIO_MARK_ENUM_FAIL;
 
     if (status != HAL_OK) {
         /* SDIO_InitCard() returns HAL_ERROR without recording an ErrorCode, so
@@ -796,8 +1270,20 @@ sdio_err_t sdio_driver_init(void)
                   (unsigned long)(retry * SDIO_INIT_RETRY_MS));
     }
 
+    /* Everything below is a CMD52 on the same link that loses the occasional
+       frame during identification, and a single miss here used to fail the whole
+       init even though enumeration had succeeded. Same answer as there: retry
+       the command rather than the sequence. */
 #if (SDIO_PORT_BUS_WIDTH == HAL_SDIO_4_WIRES_MODE)
-    if (SdioSetBusWidth4() != SDIO_SUCCESS) {
+    for (retry = 0U; retry < SDIO_IDENT_CMD_RETRY; retry++) {
+        if (SdioSetBusWidth4() == SDIO_SUCCESS) {
+            break;
+        }
+        HAL_Delay(2U);
+    }
+
+    if (retry >= SDIO_IDENT_CMD_RETRY) {
+        SDIO_LOGE(TAG, "set 4-bit bus width failed");
         return FAILURE;
     }
 #endif
@@ -807,21 +1293,44 @@ sdio_err_t sdio_driver_init(void)
         return FAILURE;
     }
 
-    if (HAL_SDIO_EnableIOFunction(&hsdio1, SDIO_PORT_FUNCTION) != HAL_OK) {
+    for (retry = 0U; retry < SDIO_IDENT_CMD_RETRY; retry++) {
+        if (HAL_SDIO_EnableIOFunction(&hsdio1, SDIO_PORT_FUNCTION) == HAL_OK) {
+            break;
+        }
+        HAL_Delay(2U);
+    }
+
+    if (retry >= SDIO_IDENT_CMD_RETRY) {
         SDIO_LOGE(TAG, "enable IO function 1 failed");
         return FAILURE;
     }
 
-    if (HAL_SDIO_SetBlockSize(&hsdio1, SDIO_PORT_FUNCTION, SDIO_PORT_BLOCK_SIZE) != HAL_OK) {
+    for (retry = 0U; retry < SDIO_IDENT_CMD_RETRY; retry++) {
+        if (HAL_SDIO_SetBlockSize(&hsdio1, SDIO_PORT_FUNCTION,
+                                  SDIO_PORT_BLOCK_SIZE) == HAL_OK) {
+            break;
+        }
+        HAL_Delay(2U);
+    }
+
+    if (retry >= SDIO_IDENT_CMD_RETRY) {
         SDIO_LOGE(TAG, "set block size failed");
         return FAILURE;
     }
 
-    if (HAL_SDIO_EnableIOFunctionInterrupt(&hsdio1, SDIO_PORT_FUNCTION) != HAL_OK) {
+    for (retry = 0U; retry < SDIO_IDENT_CMD_RETRY; retry++) {
+        if (HAL_SDIO_EnableIOFunctionInterrupt(&hsdio1, SDIO_PORT_FUNCTION) == HAL_OK) {
+            break;
+        }
+        HAL_Delay(2U);
+    }
+
+    if (retry >= SDIO_IDENT_CMD_RETRY) {
         SDIO_LOGE(TAG, "enable IO function 1 interrupt failed");
         return FAILURE;
     }
 
+    sdio_enum_mark = SDIO_MARK_DRIVER_OK;
     return SDIO_SUCCESS;
 }
 

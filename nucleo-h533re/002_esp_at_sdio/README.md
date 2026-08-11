@@ -104,6 +104,34 @@ NUCLEO-H533RE assigns to `USB_FS_PWR_EN`/`USB_Disconnect`. PC10 is the only
 SDMMC1_D2 pin on the LQFP64 package, so D2 cannot be relocated — check what is
 actually on that net first. See `ERROR.md`.
 
+## why enumeration used to fail
+
+`HAL_SDIO_Init()` recomputes `Init.ClockDiv` from a private `SDIO_INIT_FREQ` of
+400 kHz and runs the whole CMD0/CMD5/CMD3/CMD7 identification there, restoring
+`hsdio1.Init.ClockDiv` only afterwards. This interconnect does not carry a frame
+at 400 kHz - a bit-banged CMD5 gets a valid R4 at 25 kHz and nothing at 400 kHz -
+so identification always timed out, and every host-side sweep (pad slew, CLKDIV,
+NEGEDGE, HWFC) changed nothing because all of them lived outside the window the
+HAL re-initialises.
+
+The fix is `SdioIdentifyCardSlow()`, registered on the `SDIO_IdentifyCard` hook,
+which puts the clock back to `SDIO_PORT_CLOCK_HZ`, gives the slave its 74
+power-up clocks, and retries each command instead of failing the whole attempt.
+Measured 12/12 clean inits, including the 4-bit widen.
+
+Ruled out along the way, each by measurement rather than argument: wiring (all
+six verified pad-to-pad by reading `GPIO_IN` on the slave), stale slave state
+(the PB15 EN pulse reboots it every run), host transmission, DAT3/SPI-mode
+latch, sampling phase, and CMD push-pull contention.
+
+25 kHz is a crutch. The slave is fine and the host is fine; the wires are the
+limit. Shorten them, give each signal a ground return, then walk
+`SDIO_PORT_CLOCK_HZ` back up and set `SDIO_PORT_SLOW_KERNEL_CLK` to 0.
+
+Still outstanding: D3 (PC11) is bridged to the C6's GPIO15 as well as GPIO23.
+GPIO15 is the JTAG-source-select strap, so clear the bridge before trusting
+4-bit traffic.
+
 ## if successful
 
 ```shell

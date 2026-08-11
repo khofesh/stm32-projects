@@ -20,8 +20,9 @@ extern "C" {
 #include "stm32h5xx_hal.h"
 
 /* Bring-up configuration ----------------------------------------------------*/
-/* Enumeration always runs at 1 wire / 400 kHz; SDIO_PORT_BUS_WIDTH only selects
-   what the link is widened to afterwards.
+/* Enumeration always runs at 1 wire; SDIO_PORT_BUS_WIDTH only selects what the
+   link is widened to afterwards. It runs at SDIO_PORT_CLOCK_HZ rather than the
+   400 kHz the HAL would pick - see SdioIdentifyCardSlow() in the .c.
    HAL_SDIO_Init() writes the slave CCCR bus width from Init.BusWide compared
    against HAL_SDIO_4_WIRES_MODE (1), but Init.BusWide holds an SDMMC_BUS_WIDE_*
    register value, so the comparison never matches and the slave would be left
@@ -31,8 +32,21 @@ extern "C" {
    change is needed to switch: D1-D3 keep their pull-ups and stay wired, the
    SDMMC just never drives them. 1 wire also keeps D2 off PC10, which the
    NUCLEO-H533RE assigns to USB_FS_PWR_EN - see ERROR.md. */
-#define SDIO_PORT_BUS_WIDTH   HAL_SDIO_1_WIRE_MODE
-#define SDIO_PORT_CLOCK_HZ    400000U
+#define SDIO_PORT_BUS_WIDTH   HAL_SDIO_4_WIRES_MODE
+#define SDIO_PORT_CLOCK_HZ    25000U
+
+/* Drop the SDMMC1 kernel clock from PLL1Q (250 MHz) to PLL2R (50 MHz).
+
+   CLKDIV is 10 bits, so off 250 MHz the bus bottoms out at 122 kHz. This link
+   does not carry a frame reliably anywhere near there: a bit-banged CMD5 is
+   answered at 25 kHz and ignored at 400 kHz. 50 MHz makes 25 kHz reachable
+   (ClockDiv 1000), and SdioIdentifyCardSlow() is what stops the HAL putting
+   400 kHz back for the identification sequence.
+
+   This is a crutch, not a destination: needing 25 kHz means the interconnect is
+   the real problem. Shorten the jumpers and give each signal a ground return,
+   then walk SDIO_PORT_CLOCK_HZ back up and set this to 0 once 400 kHz holds. */
+#define SDIO_PORT_SLOW_KERNEL_CLK  1
 
 /* Pad slew rate for CK/CMD/D0-D3. CubeMX and the ST SDMMC examples use
    VERY_HIGH, but on this wiring it is the worst setting: the measured CMD5
@@ -54,6 +68,15 @@ extern "C" {
    far end, since it only delays enumeration. */
 #define SDIO_PORT_PIN_DIAG      1
 #define SDIO_PORT_CK_TOGGLE_MS  0U
+
+/* Drive CMD open-drain instead of push-pull.
+
+   Kept because it is cheap to reach for, but measured to be unnecessary: it was
+   tried against the theory that the CPSM was still driving CMD when the slave
+   answered at NCR=2, and it changed nothing. Enumeration is 8/8 with plain
+   push-pull once the clock and the per-command retries are right. Turn it on
+   only if CMD contention is ever actually demonstrated. */
+#define SDIO_PORT_CMD_OPEN_DRAIN  0
 
 /* Slave reset line: PB15 (CN10-26, free on this board) to the ESP32-C6 EN pin.
    Without it the slave keeps whatever state the previous host session left it
