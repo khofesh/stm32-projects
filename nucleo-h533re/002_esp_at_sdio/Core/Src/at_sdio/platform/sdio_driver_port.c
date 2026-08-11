@@ -40,11 +40,11 @@ static volatile uint8_t esp_int_flag;
 /* CMD53 byte mode carries a 9-bit count, so a single transfer tops out at 512 */
 #define SDIO_PORT_MAX_BYTE_XFER 512U
 
-/* The ESP needs roughly a second from reset to bring its SDIO slave up, while
-   the STM32 is ready in milliseconds. SDIO_InitCard() sends CMD5 exactly once,
-   so enumeration is retried here instead of losing that race on every boot. */
-#define SDIO_INIT_RETRY_COUNT   25U
-#define SDIO_INIT_RETRY_MS      200U
+/* ESP-AT can take several seconds to boot and enable its SDIO slave, while the
+   STM32 is ready in milliseconds. SDIO_InitCard() sends CMD5 exactly once, so
+   enumeration is retried here instead of losing that race on every boot. */
+#define SDIO_INIT_RETRY_COUNT   60U
+#define SDIO_INIT_RETRY_MS      500U
 
 /* CCCR Bus Interface Control (function 0, register 0x07) */
 #define SDIO_CCCR_BUS_IF_CTRL   0x07U
@@ -494,10 +494,10 @@ static uint32_t SdioPinDiag(void)
 
 #if (SDIO_PORT_CK_TOGGLE_MS != 0)
 /**
-  * @brief Square wave on CK, slow enough for a multimeter or an LED.
+  * @brief Square wave on CK and CMD, slow enough for a meter or logic probe.
   *
-  * Proves the host really drives PC12 and that the far end (ESP32 GPIO14) sees
-  * it, which the SDMMC at 400 kHz cannot demonstrate without an analyser.
+  * Proves the host really drives PC12/PB2 and that the far end sees them,
+  * which the SDMMC at 400 kHz cannot demonstrate without an analyser.
   */
 static void SdioToggleCk(void)
 {
@@ -511,8 +511,8 @@ static void SdioToggleCk(void)
     gpio.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(GPIOC, &gpio);
 
-    SDIO_LOGE(TAG, "toggling CK(PC12) at 2 Hz for %u ms - measure at the ESP32 "
-                   "GPIO14 end of the jumper", (unsigned int)SDIO_PORT_CK_TOGGLE_MS);
+    SDIO_LOGE(TAG, "toggling CK(PC12) at 2 Hz for %u ms - measure at ESP32-C6 "
+                   "GPIO19", (unsigned int)SDIO_PORT_CK_TOGGLE_MS);
 
     end = HAL_GetTick() + SDIO_PORT_CK_TOGGLE_MS;
     while (HAL_GetTick() < end) {
@@ -520,6 +520,20 @@ static void SdioToggleCk(void)
         HAL_Delay(250U);
     }
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_RESET);
+
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+    gpio.Pin = GPIO_PIN_2;
+    HAL_GPIO_Init(GPIOB, &gpio);
+
+    SDIO_LOGE(TAG, "toggling CMD(PB2) at 2 Hz for %u ms - measure at ESP32-C6 "
+                   "GPIO18", (unsigned int)SDIO_PORT_CK_TOGGLE_MS);
+
+    end = HAL_GetTick() + SDIO_PORT_CK_TOGGLE_MS;
+    while (HAL_GetTick() < end) {
+        HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_2);
+        HAL_Delay(250U);
+    }
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_SET);
 }
 #endif /* SDIO_PORT_CK_TOGGLE_MS */
 
@@ -735,9 +749,15 @@ static sdio_err_t SdioTransfer(uint32_t function, uint32_t addr, void *buffer,
     }
 
     if (status != HAL_OK) {
-        SDIO_LOGE(TAG, "CMD53 %s error, addr 0x%lx count %lu, err 0x%08lx",
+        uint32_t err = HAL_SDIO_GetError(&hsdio1);
+        SDIO_LOGE(TAG, "CMD53 %s error, addr 0x%lx count %lu, err 0x%08lx%s%s%s%s%s",
                   (is_write != 0U) ? "write" : "read", (unsigned long)addr,
-                  (unsigned long)len, (unsigned long)HAL_SDIO_GetError(&hsdio1));
+                  (unsigned long)len, (unsigned long)err,
+                  ((err & HAL_SDIO_ERROR_DATA_CRC_FAIL) != 0U) ? " DATA_CRC_FAIL" : "",
+                  ((err & HAL_SDIO_ERROR_DATA_TIMEOUT) != 0U) ? " DATA_TIMEOUT" : "",
+                  ((err & HAL_SDIO_ERROR_TX_UNDERRUN) != 0U) ? " TX_UNDERRUN" : "",
+                  ((err & HAL_SDIO_ERROR_RX_OVERRUN) != 0U) ? " RX_OVERRUN" : "",
+                  ((err & HAL_SDIO_ERROR_TIMEOUT) != 0U) ? " TIMEOUT" : "");
         return FAILURE;
     }
     return SDIO_SUCCESS;

@@ -31,7 +31,7 @@ extern "C" {
    change is needed to switch: D1-D3 keep their pull-ups and stay wired, the
    SDMMC just never drives them. 1 wire also keeps D2 off PC10, which the
    NUCLEO-H533RE assigns to USB_FS_PWR_EN - see ERROR.md. */
-#define SDIO_PORT_BUS_WIDTH   HAL_SDIO_4_WIRES_MODE
+#define SDIO_PORT_BUS_WIDTH   HAL_SDIO_1_WIRE_MODE
 #define SDIO_PORT_CLOCK_HZ    400000U
 
 /* Pad slew rate for CK/CMD/D0-D3. CubeMX and the ST SDMMC examples use
@@ -48,11 +48,11 @@ extern "C" {
    SDIO_PORT_PIN_DIAG: pull-up census plus a pin-to-pin short matrix on the six
    SDMMC nets. Costs ~100 ms and needs no instruments; set to 0 once the link is
    up. SDIO_PORT_CK_TOGGLE_MS: hold CK as a 2 Hz GPIO square wave for that many
-   milliseconds so continuity to ESP32 GPIO14 can be checked with a multimeter.
+   milliseconds so continuity to ESP32-C6 GPIO19 can be checked with a meter.
    0 disables it - leave it disabled unless a meter is actually attached, since
    it only delays enumeration. */
 #define SDIO_PORT_PIN_DIAG      1
-#define SDIO_PORT_CK_TOGGLE_MS  0U
+#define SDIO_PORT_CK_TOGGLE_MS  10000U
 
 /* Function 1 is the ESP slave data function */
 #define SDIO_PORT_FUNCTION    HAL_SDIO_FUNCTION_1

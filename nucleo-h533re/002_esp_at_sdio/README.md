@@ -27,15 +27,17 @@ Host is SDMMC1 in SDIO mode. All six lines are wired; the bus is currently held
 at 1-bit for bring-up (see `### bus width`). The ESP32 SDIO slave pins are fixed
 by the chip and cannot be remapped.
 
-| Signal | STM32H533 | AF   | ESP32  |
-| ------ | --------- | ---- | ------ |
-| CK     | PC12      | AF12 | GPIO14 |
-| CMD    | PB2       | AF12 | GPIO15 |
-| D0     | PB13      | AF12 | GPIO2  |
-| D1     | PC9       | AF12 | GPIO4  |
-| D2     | PC10      | AF12 | GPIO12 |
-| D3     | PC11      | AF12 | GPIO13 |
-| GND    | GND       | -    | GND    |
+| Signal | STM32H533 | AF   | ESP32  | ESP32C6 |
+| ------ | --------- | ---- | ------ | ------- |
+| CK     | PC12      | AF12 | GPIO14 | GPIO19  |
+| CMD    | PB2       | AF12 | GPIO15 | GPIO18  |
+| D0     | PB13      | AF12 | GPIO2  | GPIO20  |
+| D1     | PC9       | AF12 | GPIO4  | GPIO21  |
+| D2     | PC10      | AF12 | GPIO12 | GPIO22  |
+| D3     | PC11      | AF12 | GPIO13 | GPIO23  |
+| GND    | GND       | -    | GND    | GND     |
+
+see the sdio pins for esp32c6: https://docs.espressif.com/projects/esp-at/en/latest/esp32c6/Compile_and_Develop/How_to_implement_SDIO_AT.html#introduction
 
 D1 also carries the SDIO card interrupt the slave uses to signal the host, so
 it has to be wired even though it is not needed for 1-bit data.

@@ -232,13 +232,11 @@ sdio_err_t sdio_host_get_packet(void* out_data, size_t size, size_t* out_length,
             len_to_send = block_n * block_size;
             err = sdio_driver_read_blocks(1, ESP_SLAVE_CMD53_END_ADDR - len_remain, start_ptr, len_to_send);
         } else {
+            uint32_t len_aligned;
             len_to_send = len_remain;
-            /* though the driver supports to split packet of unaligned size into length
-             * of 4x and 1~3, we still get aligned size of data to get higher
-             * effeciency. The length is determined by the SDIO address, and the
-             * remainning will be ignored by the slave hardware.
-             */
-            err = sdio_driver_read_bytes(1, ESP_SLAVE_CMD53_END_ADDR - len_remain, start_ptr, (len_to_send + 3) & (~3));
+            len_aligned = ((uint32_t)len_to_send + 3U) & ~3U;
+            err = sdio_driver_read_bytes(1, ESP_SLAVE_CMD53_END_ADDR - len_aligned,
+                                         start_ptr, len_aligned);
         }
 
         if (err != SDIO_SUCCESS) {
@@ -367,8 +365,11 @@ sdio_err_t sdio_host_send_packet(const void* start, size_t length)
             len_to_send = block_n * block_size;
             err = sdio_driver_write_blocks(1, ESP_SLAVE_CMD53_END_ADDR - len_remain, start_ptr, len_to_send);
         } else {
+            uint32_t len_aligned;
             len_to_send = len_remain;
-            err = sdio_driver_write_bytes(1, ESP_SLAVE_CMD53_END_ADDR - len_remain, start_ptr, (len_to_send + 3) & (~3));
+            len_aligned = ((uint32_t)len_to_send + 3U) & ~3U;
+            err = sdio_driver_write_bytes(1, ESP_SLAVE_CMD53_END_ADDR - len_aligned,
+                                          start_ptr, len_aligned);
         }
 
         if (err != SDIO_SUCCESS) {
