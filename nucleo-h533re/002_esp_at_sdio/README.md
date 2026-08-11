@@ -35,7 +35,17 @@ by the chip and cannot be remapped.
 | D1     | PC9       | AF12 | GPIO4  | GPIO21  |
 | D2     | PC10      | AF12 | GPIO12 | GPIO22  |
 | D3     | PC11      | AF12 | GPIO13 | GPIO23  |
+| RST    | PB15      | -    | EN     | EN      |
 | GND    | GND       | -    | GND    | GND     |
+
+PB15 (CN10-26) is a plain open-drain output, not an SDMMC signal. The host
+pulses EN low for 20 ms at every `sdio_driver_init()` and then waits 1.5 s for
+esp-at to reach `sdio_slave_start`, so a host restart always meets a freshly
+booted slave. Without it the slave keeps the RCA and enabled function from the
+previous session and ignores the CMD0 that opens enumeration - an I/O-only card
+is not required to honour CMD0 - which is why the link came up only sometimes.
+Open-drain matters: the devkit pulls EN up and its USB bridge drives EN low for
+its own auto-reset, so the host must only ever pull down.
 
 see the sdio pins for esp32c6: https://docs.espressif.com/projects/esp-at/en/latest/esp32c6/Compile_and_Develop/How_to_implement_SDIO_AT.html#introduction
 

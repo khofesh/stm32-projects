@@ -278,6 +278,78 @@ static void SdioProbeCmd5(uint32_t clkdiv, uint32_t arg, const char *speed_name)
   * answer (intermittent connection - a resistive joint, not a missing one), or
   * every try answers with a shifted frame (bus timing).
   */
+#if (SDIO_PORT_ESP_RST_BOOT_MS != 0)
+/**
+  * @brief Pulse the ESP32-C6 EN pin, then wait for esp-at to come up.
+  *
+  * Puts the slave in a known state at every host start, which is what makes
+  * enumeration repeatable: the software CCCR reset only reaches a slave still
+  * willing to decode CMD52, this reaches one that is not.
+  */
+static void SdioResetSlaveHw(void)
+{
+    GPIO_InitTypeDef gpio = {0};
+
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+
+    gpio.Pin   = SDIO_PORT_ESP_RST_PIN;
+    gpio.Mode  = GPIO_MODE_OUTPUT_OD;
+    gpio.Pull  = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(SDIO_PORT_ESP_RST_PORT, &gpio);
+
+    HAL_GPIO_WritePin(SDIO_PORT_ESP_RST_PORT, SDIO_PORT_ESP_RST_PIN, GPIO_PIN_RESET);
+    HAL_Delay(SDIO_PORT_ESP_RST_LOW_MS);
+    /* Open-drain high is a release, not a drive - the devkit pull-up takes it */
+    HAL_GPIO_WritePin(SDIO_PORT_ESP_RST_PORT, SDIO_PORT_ESP_RST_PIN, GPIO_PIN_SET);
+
+    SDIO_LOGI(TAG, "slave held in reset %u ms, waiting %u ms for esp-at",
+              (unsigned int)SDIO_PORT_ESP_RST_LOW_MS,
+              (unsigned int)SDIO_PORT_ESP_RST_BOOT_MS);
+    HAL_Delay(SDIO_PORT_ESP_RST_BOOT_MS);
+}
+#endif /* SDIO_PORT_ESP_RST_BOOT_MS */
+
+/**
+  * @brief CMD52 write of the CCCR RES bit - the only reset an I/O card honours.
+  *
+  * CMD0 is a memory-card command and an I/O-only slave is free to ignore it, so
+  * a host that restarts while the slave keeps running meets a card still holding
+  * the RCA and enabled function from the previous session, quietly ignoring
+  * CMD5. No amount of retrying breaks that loop; a write of RES to CCCR 0x06
+  * does, and it is harmless on a slave that is already idle.
+  *
+  * The response is deliberately not checked: a wedged slave will not send one,
+  * and it acts on the write either way.
+  */
+static void SdioResetSlaveIo(void)
+{
+    SDMMC_CmdInitTypeDef cmd = {0};
+    uint32_t tickstart;
+
+    if (SDMMC_GetPowerState(hsdio1.Instance) == 0U) {
+        return;
+    }
+
+    /* R/W=1, function 0, RAW=0, address 0x06 (I/O Abort), data 0x08 (RES) */
+    cmd.Argument         = 0x80000C08U;
+    cmd.CmdIndex         = SDMMC_CMD_SDMMC_RW_DIRECT;
+    cmd.Response         = SDMMC_RESPONSE_SHORT;
+    cmd.WaitForInterrupt = SDMMC_WAIT_NO;
+    cmd.CPSM             = SDMMC_CPSM_ENABLE;
+    (void)SDMMC_SendCommand(hsdio1.Instance, &cmd);
+
+    tickstart = HAL_GetTick();
+    while (((hsdio1.Instance->STA & (SDMMC_FLAG_CMDREND | SDMMC_FLAG_CTIMEOUT |
+                                     SDMMC_FLAG_CCRCFAIL)) == 0U) &&
+           ((HAL_GetTick() - tickstart) < 10U)) {
+    }
+    __SDMMC_CLEAR_FLAG(hsdio1.Instance, SDMMC_STATIC_CMD_FLAGS);
+
+    /* The slave needs a moment to fall back to the pre-init state */
+    HAL_Delay(20U);
+}
+
 /**
   * @brief Does the CPSM actually put a frame on CMD, and does CK really run?
   *
@@ -651,6 +723,11 @@ sdio_err_t sdio_driver_init(void)
     uint32_t retry;
     HAL_StatusTypeDef status = HAL_ERROR;
 
+#if (SDIO_PORT_ESP_RST_BOOT_MS != 0)
+    /* Before anything touches the bus, so the slave is always freshly booted */
+    SdioResetSlaveHw();
+#endif
+
     /* The sweep runs first: it is the only test that says where a wire actually
        lands, and a net the census rejects is exactly when that matters most */
 #if (SDIO_PORT_CK_TOGGLE_MS != 0)
@@ -699,6 +776,7 @@ sdio_err_t sdio_driver_init(void)
         if (status == HAL_OK) {
             break;
         }
+        SdioResetSlaveIo();
         HAL_Delay(SDIO_INIT_RETRY_MS);
     }
 

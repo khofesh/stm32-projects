@@ -55,6 +55,23 @@ extern "C" {
 #define SDIO_PORT_PIN_DIAG      1
 #define SDIO_PORT_CK_TOGGLE_MS  0U
 
+/* Slave reset line: PB15 (CN10-26, free on this board) to the ESP32-C6 EN pin.
+   Without it the slave keeps whatever state the previous host session left it
+   in, and an I/O-only card may ignore the CMD0 that opens enumeration, so a
+   host restart alone cannot recover the link.
+
+   Open-drain: the devkit already pulls EN up and the USB bridge drives it low
+   for its own auto-reset, so the host must only ever pull down, never push up.
+   A host reset leaves the pad high-Z and the module boots on its own.
+
+   EN carries ~10k/1uF on the devkit, so it needs a long low to discharge and
+   ~10 ms to rise again; BOOT_MS then covers ROM plus esp-at reaching
+   sdio_slave_start, measured at ~1.05 s. 0 disables the whole thing. */
+#define SDIO_PORT_ESP_RST_PORT     GPIOB
+#define SDIO_PORT_ESP_RST_PIN      GPIO_PIN_15
+#define SDIO_PORT_ESP_RST_LOW_MS   20U
+#define SDIO_PORT_ESP_RST_BOOT_MS  1500U
+
 /* Function 1 is the ESP slave data function */
 #define SDIO_PORT_FUNCTION    HAL_SDIO_FUNCTION_1
 #define SDIO_PORT_BLOCK_SIZE  HAL_SDIO_DATA_BLOCK_SIZE_512BYTE
