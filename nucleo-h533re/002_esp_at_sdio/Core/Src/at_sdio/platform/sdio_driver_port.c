@@ -1486,9 +1486,9 @@ static void SdioRecoverAfterCmd53(uint32_t function)
     hsdio1.Context = SDIO_CONTEXT_NONE;
 }
 
-/* A register read is at most one word; anything longer is packet payload and
-   has to stay on CMD53 */
-#define SDIO_CMD52_FALLBACK_MAX 4U
+/* A register access is at most one word; anything longer is packet payload and
+   has to stay on CMD53. */
+#define SDIO_CMD52_REG_XFER_MAX 4U
 /* ...and only a register may take it at all. In the packet window at
    ESP_SLAVE_CMD53_END_ADDR the address *is* the transfer length, so splitting a
    read into four CMD52s does not read four bytes of one packet - it asks the
@@ -1496,12 +1496,8 @@ static void SdioRecoverAfterCmd53(uint32_t function)
    register this driver touches (0x44, 0x50, 0x58, 0x60, 0xd4) is below 0x1000;
    the window is at 0x1f4xx-0x1f800. */
 #define SDIO_CMD52_FALLBACK_MAX_ADDR 0x1000U
-/* CMD53 attempts before the fallback is tried. The registers that need it fail
-   every single time, so waiting out all SDIO_CMD53_RETRY_COUNT of them would
-   cost ~60 ms per poll at this clock. */
-#define SDIO_CMD52_FALLBACK_AFTER 2U
-/* Attempts per byte inside the fallback itself. Kept short - each miss costs a
-   CMD52 timeout and a log line, and the fallback only runs on a register. */
+/* Attempts per byte. Kept short - each miss costs a CMD52 timeout and a log
+   line, and this path only runs on a register. */
 #define SDIO_CMD52_BYTE_RETRY     4U
 
 /**
@@ -1528,6 +1524,27 @@ static sdio_err_t SdioReadBytesCmd52(uint32_t function, uint32_t addr,
            for the length register at 0x60 aborts the receive drain. */
         for (retry = 0U; retry < SDIO_CMD52_BYTE_RETRY; retry++) {
             if (sdio_driver_read_byte(function, addr + i, &buf[i]) == SDIO_SUCCESS) {
+                break;
+            }
+            HAL_Delay(1U);
+        }
+
+        if (retry >= SDIO_CMD52_BYTE_RETRY) {
+            return FAILURE;
+        }
+    }
+    return SDIO_SUCCESS;
+}
+
+static sdio_err_t SdioWriteBytesCmd52(uint32_t function, uint32_t addr,
+                                      const uint8_t *buf, uint32_t len)
+{
+    uint32_t i;
+    uint32_t retry;
+
+    for (i = 0U; i < len; i++) {
+        for (retry = 0U; retry < SDIO_CMD52_BYTE_RETRY; retry++) {
+            if (sdio_driver_write_byte(function, addr + i, buf[i], NULL) == SDIO_SUCCESS) {
                 break;
             }
             HAL_Delay(1U);
@@ -1587,12 +1604,18 @@ static sdio_err_t SdioTransfer(uint32_t function, uint32_t addr, void *buffer,
     cmd53.Block_Mode = block_mode;
     cmd53.IOFunctionNbr = function & 0x7U;
 
-    const uint8_t cmd52_fallback = ((is_write == 0U) &&
-                                    (block_mode == HAL_SDIO_MODE_BYTE) &&
-                                    (len <= SDIO_CMD52_FALLBACK_MAX) &&
+    const uint8_t cmd52_reg_xfer = ((block_mode == HAL_SDIO_MODE_BYTE) &&
+                                    (len <= SDIO_CMD52_REG_XFER_MAX) &&
                                     (addr < SDIO_CMD52_FALLBACK_MAX_ADDR)) ? 1U : 0U;
 
     const uint32_t timeout_ms = SdioXferTimeoutMs(len);
+
+    if (cmd52_reg_xfer != 0U) {
+        if (is_write != 0U) {
+            return SdioWriteBytesCmd52(function, addr, (const uint8_t *)buffer, len);
+        }
+        return SdioReadBytesCmd52(function, addr, (uint8_t *)buffer, len);
+    }
 
     /* The whole transfer runs with SDMMC1 masked at the NVIC.
      *
@@ -1634,18 +1657,10 @@ static sdio_err_t SdioTransfer(uint32_t function, uint32_t addr, void *buffer,
         if ((SdioCmd53RetryableError(err) == 0U) ||
             ((retry + 1U) >= SDIO_CMD53_RETRY_COUNT) ||
             (((err & HAL_SDIO_ERROR_TIMEOUT) != 0U) &&
-             ((retry + 1U) >= SDIO_CMD53_TIMEOUT_RETRY)) ||
-            ((cmd52_fallback != 0U) && ((retry + 1U) >= SDIO_CMD52_FALLBACK_AFTER))) {
+             ((retry + 1U) >= SDIO_CMD53_TIMEOUT_RETRY))) {
             break;
         }
         HAL_Delay(1U);
-    }
-
-    if (cmd52_fallback != 0U) {
-        if (SdioReadBytesCmd52(function, addr, (uint8_t *)buffer, len) == SDIO_SUCCESS) {
-            HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
-            return SDIO_SUCCESS;
-        }
     }
 
     HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
