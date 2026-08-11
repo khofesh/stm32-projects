@@ -93,3 +93,35 @@ Before moving to 4 wires, note that D2 lands on **PC10**, which the
 NUCLEO-H533RE assigns to `USB_FS_PWR_EN`/`USB_Disconnect`. PC10 is the only
 SDMMC1_D2 pin on the LQFP64 package, so D2 cannot be relocated — check what is
 actually on that net first. See `ERROR.md`.
+
+## if successful
+
+```shell
+
+host ready, start initializing slave...
+E sdio_driver: pin diag: control CTRL(PA5) drive0=ok drive1=ok
+E sdio_driver: pin diag: pull-up census (expect 'high' on CMD and D0-D3)
+E sdio_driver:   CMD(PB2): high  (something pulls this net up)
+E sdio_driver:   D0(PB13): high  (something pulls this net up)
+E sdio_driver:   D1(PC9): high  (something pulls this net up)
+E sdio_driver:   D2(PC10): high  (something pulls this net up)
+E sdio_driver:   D3(PC11): high  (something pulls this net up)
+E sdio_driver: pin diag: short matrix
+E sdio_driver: pin diag: wiring looks sane from the host side
+I sdio_driver: [Clock] kernel=250000000Hz, div=312, SDMMC_CK=400641Hz
+I sdio_driver: slave enumerated after 1 retries (500 ms)
+esp_slave_init_io
+D sdio_transport: IOE: 0x02
+D sdio_transport: IOR: 0x06
+D sdio_transport: IOE: 0x06
+D sdio_transport: IOE: 0x06
+D sdio_transport: IE: 0x03
+D sdio_transport: IE: 0x07
+D sdio_transport: Function 0 BSL: 0x00
+D sdio_transport: Function 0 BSH: 0x02
+D sdio_transport: Function 1 BSL: 0x00
+D sdio_transport: Function 1 BSH: 0x02
+D sdio_transport: Function 2 BSL: 0x00
+D sdio_transport: Function 2 BSH: 0x02
+Sdio init done
+```

@@ -47,12 +47,13 @@ extern "C" {
 
    SDIO_PORT_PIN_DIAG: pull-up census plus a pin-to-pin short matrix on the six
    SDMMC nets. Costs ~100 ms and needs no instruments; set to 0 once the link is
-   up. SDIO_PORT_CK_TOGGLE_MS: hold CK as a 2 Hz GPIO square wave for that many
-   milliseconds so continuity to ESP32-C6 GPIO19 can be checked with a meter.
-   0 disables it - leave it disabled unless a meter is actually attached, since
-   it only delays enumeration. */
+   up. SDIO_PORT_CK_TOGGLE_MS: sweep the six nets one at a time, each a 2 Hz GPIO
+   square wave for that many milliseconds, so continuity to the matching
+   ESP32-C6 pad can be checked with a meter or by reading GPIO_IN on the slave.
+   0 disables it - leave it disabled unless something is actually watching the
+   far end, since it only delays enumeration. */
 #define SDIO_PORT_PIN_DIAG      1
-#define SDIO_PORT_CK_TOGGLE_MS  10000U
+#define SDIO_PORT_CK_TOGGLE_MS  0U
 
 /* Function 1 is the ESP slave data function */
 #define SDIO_PORT_FUNCTION    HAL_SDIO_FUNCTION_1

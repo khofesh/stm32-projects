@@ -278,6 +278,58 @@ static void SdioProbeCmd5(uint32_t clkdiv, uint32_t arg, const char *speed_name)
   * answer (intermittent connection - a resistive joint, not a missing one), or
   * every try answers with a shifted frame (bus timing).
   */
+/**
+  * @brief Does the CPSM actually put a frame on CMD, and does CK really run?
+  *
+  * Everything else in the probe only says "no response", which cannot tell a
+  * silent slave from a host that never transmitted. The AF does not disable the
+  * input path, so IDR still shows what the pad is doing: kick a CMD0 off
+  * without waiting for it, then sample both pads flat out for longer than the
+  * 48-bit frame lasts. CK is the control - it free-runs, so a run of all-high
+  * there means the sampling itself is broken.
+  */
+static void SdioProbeLineActivity(void)
+{
+    SDMMC_CmdInitTypeDef cmd = {0};
+    uint32_t i;
+    uint32_t cmd_low = 0U;
+    uint32_t ck_low = 0U;
+
+    cmd.Argument         = 0U;
+    cmd.CmdIndex         = SDMMC_CMD_GO_IDLE_STATE;
+    cmd.Response         = SDMMC_RESPONSE_NO;
+    cmd.WaitForInterrupt = SDMMC_WAIT_NO;
+    cmd.CPSM             = SDMMC_CPSM_ENABLE;
+    (void)SDMMC_SendCommand(hsdio1.Instance, &cmd);
+
+    /* ~20k reads of two IDRs outlasts a 48-bit frame at 400 kHz by a wide margin */
+    for (i = 0U; i < 20000U; i++) {
+        if ((GPIOB->IDR & GPIO_PIN_2) == 0U) {
+            cmd_low++;
+        }
+        if ((GPIOC->IDR & GPIO_PIN_12) == 0U) {
+            ck_low++;
+        }
+    }
+
+    __SDMMC_CLEAR_FLAG(hsdio1.Instance, SDMMC_STATIC_CMD_FLAGS);
+
+    SDIO_LOGE(TAG, "probe: line activity during CMD0 - CMD low %lu/%u, "
+                   "CK low %lu/%u", (unsigned long)cmd_low, 20000U,
+              (unsigned long)ck_low, 20000U);
+
+    if (ck_low == 0U) {
+        SDIO_LOGE(TAG, "  CK never sampled low - the clock is not running, so "
+                       "nothing below this line means anything");
+    } else if (cmd_low == 0U) {
+        SDIO_LOGE(TAG, "  CMD never left the pull-up while CK ran - the CPSM is "
+                       "not driving PB2, so the slave has nothing to answer");
+    } else {
+        SDIO_LOGE(TAG, "  host transmits: CK toggles and CMD is pulled low "
+                       "inside the frame, so the timeout is at the slave");
+    }
+}
+
 static void SdioProbeSlave(void)
 {
     GPIO_InitTypeDef gpio = {0};
@@ -293,6 +345,7 @@ static void SdioProbeSlave(void)
 
     err = SDMMC_CmdGoIdleState(hsdio1.Instance);
     SDIO_LOGE(TAG, "probe: CMD0 err=0x%08lx", (unsigned long)err);
+    SdioProbeLineActivity();
     SDIO_LOGE(TAG, "probe: CMD5 matrix, slew rate x clock (div 0x3ff = slowest)");
 
     for (speed = 0U; speed < SDIO_PROBE_SPEED_COUNT; speed++) {
@@ -501,39 +554,56 @@ static uint32_t SdioPinDiag(void)
   */
 static void SdioToggleCk(void)
 {
+    /* One net at a time, so whoever is watching the slave can tell which host
+       pin a given ESP32-C6 pad is actually wired to. Expected far end:
+       CK->GPIO19, CMD->GPIO18, D0->GPIO20, D1->GPIO21, D2->GPIO22, D3->GPIO23 */
+    static const struct {
+        const char   *name;
+        const char   *far_end;
+        GPIO_TypeDef *port;
+        uint16_t      pin;
+    } sweep[] = {
+        { "CK(PC12)",  "GPIO19", GPIOC, GPIO_PIN_12 },
+        { "CMD(PB2)",  "GPIO18", GPIOB, GPIO_PIN_2  },
+        { "D0(PB13)",  "GPIO20", GPIOB, GPIO_PIN_13 },
+        { "D1(PC9)",   "GPIO21", GPIOC, GPIO_PIN_9  },
+        { "D2(PC10)",  "GPIO22", GPIOC, GPIO_PIN_10 },
+        { "D3(PC11)",  "GPIO23", GPIOC, GPIO_PIN_11 },
+    };
     GPIO_InitTypeDef gpio = {0};
+    uint32_t i;
     uint32_t end;
 
+    __HAL_RCC_GPIOB_CLK_ENABLE();
     __HAL_RCC_GPIOC_CLK_ENABLE();
-    gpio.Pin = GPIO_PIN_12;
+
     gpio.Mode = GPIO_MODE_OUTPUT_PP;
     gpio.Pull = GPIO_NOPULL;
     gpio.Speed = GPIO_SPEED_FREQ_LOW;
-    HAL_GPIO_Init(GPIOC, &gpio);
 
-    SDIO_LOGE(TAG, "toggling CK(PC12) at 2 Hz for %u ms - measure at ESP32-C6 "
-                   "GPIO19", (unsigned int)SDIO_PORT_CK_TOGGLE_MS);
+    for (i = 0U; i < (sizeof(sweep) / sizeof(sweep[0])); i++) {
+        gpio.Pin = sweep[i].pin;
+        HAL_GPIO_Init(sweep[i].port, &gpio);
+        HAL_GPIO_WritePin(sweep[i].port, sweep[i].pin, GPIO_PIN_SET);
 
-    end = HAL_GetTick() + SDIO_PORT_CK_TOGGLE_MS;
-    while (HAL_GetTick() < end) {
-        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_12);
-        HAL_Delay(250U);
+        SDIO_LOGE(TAG, "sweep: %s alone at 2 Hz for %u ms - expect it at "
+                       "ESP32-C6 %s", sweep[i].name,
+                  (unsigned int)SDIO_PORT_CK_TOGGLE_MS, sweep[i].far_end);
+
+        end = HAL_GetTick() + SDIO_PORT_CK_TOGGLE_MS;
+        while (HAL_GetTick() < end) {
+            HAL_GPIO_TogglePin(sweep[i].port, sweep[i].pin);
+            HAL_Delay(250U);
+        }
+
+        /* Release the net (pull-ups take it high) and leave a quiet gap so the
+           next window is unambiguous */
+        HAL_GPIO_WritePin(sweep[i].port, sweep[i].pin, GPIO_PIN_SET);
+        gpio.Mode = GPIO_MODE_INPUT;
+        HAL_GPIO_Init(sweep[i].port, &gpio);
+        gpio.Mode = GPIO_MODE_OUTPUT_PP;
+        HAL_Delay(1500U);
     }
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_RESET);
-
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-    gpio.Pin = GPIO_PIN_2;
-    HAL_GPIO_Init(GPIOB, &gpio);
-
-    SDIO_LOGE(TAG, "toggling CMD(PB2) at 2 Hz for %u ms - measure at ESP32-C6 "
-                   "GPIO18", (unsigned int)SDIO_PORT_CK_TOGGLE_MS);
-
-    end = HAL_GetTick() + SDIO_PORT_CK_TOGGLE_MS;
-    while (HAL_GetTick() < end) {
-        HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_2);
-        HAL_Delay(250U);
-    }
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_SET);
 }
 #endif /* SDIO_PORT_CK_TOGGLE_MS */
 
@@ -581,14 +651,16 @@ sdio_err_t sdio_driver_init(void)
     uint32_t retry;
     HAL_StatusTypeDef status = HAL_ERROR;
 
+    /* The sweep runs first: it is the only test that says where a wire actually
+       lands, and a net the census rejects is exactly when that matters most */
+#if (SDIO_PORT_CK_TOGGLE_MS != 0)
+    SdioToggleCk();
+#endif
 #if (SDIO_PORT_PIN_DIAG != 0)
     /* No point clocking the bus when the host cannot even assert CMD */
     if (SdioPinDiag() != 0U) {
         return FAILURE;
     }
-#endif
-#if (SDIO_PORT_CK_TOGGLE_MS != 0)
-    SdioToggleCk();
 #endif
 
     if (SdioKernelClockConfig() != HAL_OK) {
