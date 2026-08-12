@@ -37,6 +37,10 @@ SDIO_HandleTypeDef hsdio1;
 
 static volatile uint8_t esp_int_flag;
 
+/* Set while a transfer failure is an expected consequence of the slave being
+   told to reboot, so the teardown does not print faults that are not faults */
+static uint8_t sdio_quiet_errors;
+
 /* CMD53 byte mode carries a 9-bit count, so a single transfer tops out at 512 */
 #define SDIO_PORT_MAX_BYTE_XFER 512U
 #define SDIO_CMD53_RETRY_COUNT  32U
@@ -51,6 +55,11 @@ static volatile uint8_t esp_int_flag;
    enumeration is retried here instead of losing that race on every boot. */
 #define SDIO_INIT_RETRY_COUNT   60U
 #define SDIO_INIT_RETRY_MS      500U
+/* A re-enumeration after AT+RESTORE is a different bet: the slave was alive a
+   moment ago and only has to finish one reboot, so a full 30 s of retries here
+   just leaves the console mute. Give up sooner and let the caller decide
+   whether to wait longer or fall back to a hardware reset. */
+#define SDIO_REINIT_RETRY_COUNT 20U
 
 /* CCCR Bus Interface Control (function 0, register 0x07) */
 #define SDIO_CCCR_BUS_IF_CTRL   0x07U
@@ -165,8 +174,32 @@ void HAL_SDIO_MspDeInit(SDIO_HandleTypeDef *hsdio)
     HAL_NVIC_DisableIRQ(SDMMC1_IRQn);
 }
 
+/**
+  * @brief SDMMC1 interrupt entry.
+  *
+  * SDMMC_STA_SDIOIT follows the D1 level and has no write-1-to-clear: masking
+  * the source is the only way out of the handler. HAL_SDIO_IRQHandler() does
+  * that from the IO-function callback, but SDIO_IOFunction_IRQHandler() only
+  * reaches the callback while IOInterruptNbr == 1. HAL_SDIO_DeInit() never
+  * resets that counter, so the second HAL_SDIO_EnableIOFunctionInterrupt() -
+  * the one in the re-enumeration after AT+RESTORE - takes it to 2, and from
+  * then on every interrupt goes down a path that first issues a CMD52 from
+  * inside the ISR. Against a slave that is still rebooting that read fails, the
+  * handler returns without masking anything, and the level re-enters it
+  * immediately: the main loop never runs again. Measured on the bench as a
+  * permanent hang with PC inside this vector (IPSR 95).
+  *
+  * Every transfer this port issues is polled, so SDIOIT is the only reason this
+  * interrupt is enabled at all and it is answered here rather than in the HAL.
+  */
 void SdioPortIrqHandler(void)
 {
+    if (__HAL_SDIO_GET_FLAG(&hsdio1, SDMMC_FLAG_SDIOIT) != 0U) {
+        __HAL_SDIO_DISABLE_IT(&hsdio1, SDMMC_IT_SDIOIT);
+        esp_int_flag = 1U;
+        return;
+    }
+
     HAL_SDIO_IRQHandler(&hsdio1);
 }
 
@@ -1204,28 +1237,51 @@ static HAL_StatusTypeDef SdioIdentifyCardSlow(SDIO_HandleTypeDef *hsdio)
     return HAL_OK;
 }
 
-sdio_err_t sdio_driver_init(void)
+static sdio_err_t SdioDriverInit(uint8_t reset_slave)
 {
     uint32_t kernel_clk;
     uint32_t retry;
+    uint32_t init_retry_count = (reset_slave != 0U) ? SDIO_INIT_RETRY_COUNT
+                                                    : SDIO_REINIT_RETRY_COUNT;
     HAL_StatusTypeDef status = HAL_ERROR;
 
-#if (SDIO_PORT_ESP_RST_BOOT_MS != 0)
-    /* Before anything touches the bus, so the slave is always freshly booted */
-    SdioResetSlaveHw();
-#endif
+    if (hsdio1.Instance == SDMMC1) {
+        HAL_NVIC_DisableIRQ(SDMMC1_IRQn);
+        (void)HAL_SDIO_DeInit(&hsdio1);
+    }
+    esp_int_flag = 0U;
+    /* Whatever the caller was suppressing, a failure to re-enumerate is real */
+    sdio_quiet_errors = 0U;
 
-    /* The sweep runs first: it is the only test that says where a wire actually
-       lands, and a net the census rejects is exactly when that matters most */
+    /* HAL_SDIO_DeInit() resets State and ErrorCode and nothing else, so the
+       IO-interrupt bookkeeping survives into the next enumeration: the counter
+       would reach 2 on the second EnableIOFunctionInterrupt() and put the ISR
+       on the CMD52-from-interrupt path for good. See SdioPortIrqHandler(). */
+    hsdio1.IOInterruptNbr = 0U;
+    hsdio1.IOFunctionMask = 0U;
+
+    if (reset_slave != 0U) {
+#if (SDIO_PORT_ESP_RST_BOOT_MS != 0)
+        /* Before anything touches the bus, so the slave is always freshly booted */
+        SdioResetSlaveHw();
+#endif
+    }
+
+    /* The sweep runs first on cold boot: it is the only test that says where a
+       wire actually lands, and a net the census rejects is exactly when that
+       matters most. Skip it on reinit after AT+RESTORE; the slave is rebooting
+       itself and the host must not remux or drive the SDIO pins as GPIOs. */
+    if (reset_slave != 0U) {
 #if (SDIO_PORT_CK_TOGGLE_MS != 0)
-    SdioToggleCk();
+        SdioToggleCk();
 #endif
 #if (SDIO_PORT_PIN_DIAG != 0)
-    /* No point clocking the bus when the host cannot even assert CMD */
-    if (SdioPinDiag() != 0U) {
-        return FAILURE;
-    }
+        /* No point clocking the bus when the host cannot even assert CMD */
+        if (SdioPinDiag() != 0U) {
+            return FAILURE;
+        }
 #endif
+    }
 
     if (SdioKernelClockConfig() != HAL_OK) {
         SDIO_LOGE(TAG, "SDMMC1 kernel clock config failed");
@@ -1261,7 +1317,7 @@ sdio_err_t sdio_driver_init(void)
     /* Claim the identification step before the HAL can default it */
     hsdio1.SDIO_IdentifyCard = SdioIdentifyCardSlow;
 
-    for (retry = 0U; retry < SDIO_INIT_RETRY_COUNT; retry++) {
+    for (retry = 0U; retry < init_retry_count; retry++) {
         status = HAL_SDIO_Init(&hsdio1);
         if (status == HAL_OK) {
             break;
@@ -1277,9 +1333,11 @@ sdio_err_t sdio_driver_init(void)
         /* SDIO_InitCard() returns HAL_ERROR without recording an ErrorCode, so
            re-probe CMD0/CMD5 here to say which half of the link is at fault. */
         SDIO_LOGE(TAG, "HAL_SDIO_Init failed after %lu attempts, err=0x%08lx",
-                  (unsigned long)SDIO_INIT_RETRY_COUNT,
+                  (unsigned long)init_retry_count,
                   (unsigned long)HAL_SDIO_GetError(&hsdio1));
-        SdioProbeSlave();
+        if (reset_slave != 0U) {
+            SdioProbeSlave();
+        }
         return FAILURE;
     }
 
@@ -1322,18 +1380,11 @@ sdio_err_t sdio_driver_init(void)
         return FAILURE;
     }
 
-    for (retry = 0U; retry < SDIO_IDENT_CMD_RETRY; retry++) {
-        if (HAL_SDIO_SetBlockSize(&hsdio1, SDIO_PORT_FUNCTION,
-                                  SDIO_PORT_BLOCK_SIZE) == HAL_OK) {
-            break;
-        }
-        HAL_Delay(2U);
-    }
-
-    if (retry >= SDIO_IDENT_CMD_RETRY) {
-        SDIO_LOGE(TAG, "set block size failed");
-        return FAILURE;
-    }
+    /* esp_slave_init_io() programs the CCCR/FBR block size with CMD52. Do not
+       duplicate it here with HAL_SDIO_SetBlockSize(): that HAL path writes the
+       same two FBR bytes with CMD53 byte mode, which is exactly the transfer
+       type this port avoids for short register access during recovery. */
+    hsdio1.block_size = SDIO_PORT_BLOCK_SIZE;
 
     for (retry = 0U; retry < SDIO_IDENT_CMD_RETRY; retry++) {
         if (HAL_SDIO_EnableIOFunctionInterrupt(&hsdio1, SDIO_PORT_FUNCTION) == HAL_OK) {
@@ -1349,6 +1400,21 @@ sdio_err_t sdio_driver_init(void)
 
     sdio_enum_mark = SDIO_MARK_DRIVER_OK;
     return SDIO_SUCCESS;
+}
+
+sdio_err_t sdio_driver_init(void)
+{
+    return SdioDriverInit(1U);
+}
+
+void sdio_driver_set_quiet(uint8_t quiet)
+{
+    sdio_quiet_errors = quiet;
+}
+
+sdio_err_t sdio_driver_reinit(void)
+{
+    return SdioDriverInit(0U);
 }
 
 static sdio_err_t SdioReadByte(uint32_t function, uint32_t reg, uint8_t *out_byte,
@@ -1687,6 +1753,12 @@ static sdio_err_t SdioTransfer(uint32_t function, uint32_t addr, void *buffer,
     }
 
     HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
+
+    if (sdio_quiet_errors != 0U) {
+        /* The caller knows the slave is going away - an AT+RESTORE reboot -
+           so a failed transfer here is the expected outcome, not a fault. */
+        return FAILURE;
+    }
 
     {
         SDIO_LOGE(TAG, "CMD53 %s error, addr 0x%lx count %lu, err 0x%08lx%s%s%s%s%s%s%s%s",

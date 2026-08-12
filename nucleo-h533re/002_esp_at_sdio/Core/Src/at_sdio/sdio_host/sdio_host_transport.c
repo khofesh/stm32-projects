@@ -20,6 +20,12 @@ static uint32_t rx_got_bytes   = 0;       ///< Counter hold the amount of bytes 
  * the main context - the SDMMC and console ISRs do not call in here. */
 static uint32_t sdio_tail_buf[512U / sizeof(uint32_t)];
 
+static void sdio_host_reset_counters(void)
+{
+    tx_sent_buffers = 0U;
+    rx_got_bytes = 0U;
+}
+
 /******************  Init SDIO slave *********************/
 static sdio_err_t esp_slave_init_io(void)
 {
@@ -157,6 +163,8 @@ printf("esp_slave_init_io\r\n");
 sdio_err_t sdio_host_init(void)
 {
     sdio_err_t ret;
+
+    sdio_host_reset_counters();
     ret = sdio_driver_init();
 
     if (ret != SDIO_SUCCESS) {
@@ -168,6 +176,28 @@ sdio_err_t sdio_host_init(void)
 
     if (ret != SDIO_SUCCESS) {
         SDIO_LOGE(TAG, "esp slave init error, err: %d", ret);
+        return ret;
+    }
+
+    return SDIO_SUCCESS;
+}
+
+sdio_err_t sdio_host_reinit(void)
+{
+    sdio_err_t ret;
+
+    sdio_host_reset_counters();
+    ret = sdio_driver_reinit();
+
+    if (ret != SDIO_SUCCESS) {
+        SDIO_LOGE(TAG, "sdio host reinit error, err: %d", ret);
+        return ret;
+    }
+
+    ret = esp_slave_init_io();
+
+    if (ret != SDIO_SUCCESS) {
+        SDIO_LOGE(TAG, "esp slave reinit error, err: %d", ret);
         return ret;
     }
 
@@ -338,19 +368,29 @@ sdio_err_t sdio_host_wait_int(uint32_t wait)
 
 /*********************** SEND ***************************/
 
-static uint32_t esp_sdio_host_get_buffer_size(void)
+/* A slave that has buffers to give hands them over at once, so anything past a
+ * couple of seconds here is a link that has gone away - most often the slave
+ * rebooting under an AT+RESTORE. The old bound was 0xffff retries of 1 ms,
+ * which parked the main loop for over a minute with nothing on the console. */
+#define SDIO_TX_WAIT_MS         2000U
+/* The token register is read over the same bus that loses the occasional frame,
+ * so one failure is retried; a run of them is the link, not a frame. */
+#define SDIO_TX_TOKEN_ERR_MAX   8U
+
+static sdio_err_t esp_sdio_host_get_buffer_size(uint32_t *out_num)
 {
     sdio_err_t ret;
     uint32_t len;
     ret = sdio_driver_read_bytes(1, ESP_SDIO_TOKEN_RDATA, &len, 4);
     if (ret != SDIO_SUCCESS) {
         SDIO_LOGE(TAG, "Read length error, ret=%d\r\n", ret);
-        return 0;
+        return ret;
     }
     SDIO_LOGD(TAG, " Read ESP32 len: %lu\r\n", (unsigned long)len);
     len = (len >> ESP_SDIO_SEND_OFFSET) & TX_BUFFER_MASK;
     len = (len + TX_BUFFER_MAX - tx_sent_buffers) % TX_BUFFER_MAX;
-    return len;
+    *out_num = len;
+    return SDIO_SUCCESS;
 }
 
 sdio_err_t sdio_host_send_intr(uint8_t intr_no)
@@ -376,27 +416,41 @@ sdio_err_t sdio_host_send_packet(const void* start, size_t length)
     uint32_t block_size = 512;
     int buffer_used = (length + block_size - 1) / block_size;
 
-    uint32_t cnt = 0xffff;               // Test 0xffff times, fail will return TIMEOUT
+    uint32_t waited = 0;
+    uint32_t token_err = 0;
 
     while (1) {
-        uint32_t num = esp_sdio_host_get_buffer_size();
-        SDIO_LOGD(TAG, "Buffer size %lu can be send", (unsigned long)num);
+        uint32_t num = 0;
+        sdio_err_t token_ret = esp_sdio_host_get_buffer_size(&num);
 
-        if (num * block_size < length) {
-            if (!--cnt) {
-                SDIO_LOGI(TAG, "buffer is not enough: %lu, %d required.",
-                          (unsigned long)num, buffer_used);
-                return ERR_TIMEOUT;
-            } else {
-                SDIO_LOGD(TAG, "buffer is not enough: %lu, %d required. Retry...",
-                          (unsigned long)num, buffer_used);
+        if (token_ret != SDIO_SUCCESS) {
+            token_err++;
+
+            if (token_err >= SDIO_TX_TOKEN_ERR_MAX) {
+                SDIO_LOGE(TAG, "token read failed %lu times, err=%d",
+                          (unsigned long)token_err, token_ret);
+                return token_ret;
+            }
+        } else {
+            token_err = 0;
+            SDIO_LOGD(TAG, "Buffer size %lu can be send", (unsigned long)num);
+
+            if (num * block_size >= length) {
+                break;
             }
 
-            platform_os_delay(1);
-						
-        }  else {
-            break;
+            SDIO_LOGD(TAG, "buffer is not enough: %lu, %d required. Retry...",
+                      (unsigned long)num, buffer_used);
         }
+
+        if (waited >= SDIO_TX_WAIT_MS) {
+            SDIO_LOGI(TAG, "buffer is not enough: %lu, %d required.",
+                      (unsigned long)num, buffer_used);
+            return ERR_TIMEOUT;
+        }
+
+        platform_os_delay(1);
+        waited++;
     }
 
     do {

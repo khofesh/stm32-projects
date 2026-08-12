@@ -17,6 +17,23 @@ extern "C" {
 sdio_err_t sdio_driver_init(void);
 
 /**
+ * Re-enumerate SDIO after the slave has reset itself.
+ *
+ * @return
+ *      - SUCCESS on success
+ *      - FAILURE on fail
+ */
+sdio_err_t sdio_driver_reinit(void);
+
+/**
+ * Suppress transfer-error logging while the slave is known to be rebooting.
+ *
+ * @param quiet  Non-zero to suppress, zero to restore. Cleared automatically by
+ *               sdio_driver_init() and sdio_driver_reinit().
+ */
+void sdio_driver_set_quiet(uint8_t quiet);
+
+/**
  * Write blocks of data to an SDIO card using CMD53
  *
  * This function performs write operation using CMD53 in block mode.

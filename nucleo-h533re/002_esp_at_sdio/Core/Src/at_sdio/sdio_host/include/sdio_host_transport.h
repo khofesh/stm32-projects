@@ -22,6 +22,15 @@ extern "C" {
 sdio_err_t sdio_host_init(void);
 
 /**
+ * Re-initialize SDIO host and slave after the slave resets.
+ *
+ * @return
+ *      - SUCCESS on success
+ *      - FAILURE on fail
+ */
+sdio_err_t sdio_host_reinit(void);
+
+/**
  * Block until an SDIO interrupt is received
  *
  * Slave uses D1 line to signal interrupt condition to the host.
