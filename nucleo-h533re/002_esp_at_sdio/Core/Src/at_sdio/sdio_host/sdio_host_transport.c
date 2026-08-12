@@ -206,7 +206,19 @@ sdio_err_t sdio_host_reinit(void)
 
 /************************* RECEIVE ****************************/
 // HOST receive data
-static sdio_err_t esp_sdio_slave_get_rx_data_size(uint32_t* rx_size)
+/* The queue length is a difference between two free-running 20-bit counters, so
+   a host counter that has run ahead of the slave's does not read as a negative
+   number - it wraps to just under RX_BYTE_MAX. Nothing the slave can legally
+   have queued comes near half the counter range, so that is where a backlog
+   stops and a desync begins. */
+#define RX_BYTE_DESYNC_MIN (RX_BYTE_MAX / 2)
+
+/* Ceiling on one CMD53 out of the packet window, whatever the caller's buffer
+   allows. A backlog of tens of kilobytes builds up during an HTTP GET, and a
+   4096-byte read of it is answered with no data phase at all. */
+#define SDIO_HOST_MAX_READ 2048U
+
+static sdio_err_t esp_sdio_slave_get_rx_data_size(uint32_t* rx_size, uint32_t* raw)
 {
     uint32_t len;
     sdio_err_t err = sdio_driver_read_bytes(1, ESP_SDIO_PKT_LEN, &len, 4);
@@ -214,6 +226,12 @@ static sdio_err_t esp_sdio_slave_get_rx_data_size(uint32_t* rx_size)
         return err;
     }
     len &= RX_BYTE_MASK;
+
+    /* The absolute counter goes back to the caller as well: it is what a
+       desynchronised rx_got_bytes has to be re-anchored on. */
+    if (raw != NULL) {
+        *raw = len;
+    }
     len = (len + RX_BYTE_MAX - rx_got_bytes)%RX_BYTE_MAX;
     *rx_size = len;
     return SDIO_SUCCESS;
@@ -225,22 +243,33 @@ sdio_err_t sdio_host_get_packet(void* out_data, size_t size, size_t* out_length,
     uint32_t len = 0;
     uint32_t wait_time = 0;
 
-    if (size <= 0) {
-        SDIO_LOGE(TAG, "Invalid size:%d", size);
+    uint32_t raw = 0;
+
+    if (size == 0) {
+        SDIO_LOGE(TAG, "Invalid size:%u", (unsigned int)size);
         return ERR_INVALID_ARG;
     }
 
     for (;;) {
-        err = esp_sdio_slave_get_rx_data_size(&len);
+        err = esp_sdio_slave_get_rx_data_size(&len, &raw);
 
         if (err != SDIO_SUCCESS) {
             return err;
         }
 
-        if (len > 4096) {
-            /* Slave counter out of range - treat as no data rather than
-               spinning here forever without ever checking the timeout. */
-            SDIO_LOGE(TAG, "Invalid size:%lu", (unsigned long)len);
+        /* A backlog larger than the read buffer is normal - the slave queues
+           several packets and an HTTP GET leaves kilobytes pending - and is
+           served in ``size`` sized pieces by the truncation below. Only a
+           wrapped difference is a fault: it means rx_got_bytes was credited
+           bytes the slave never sent, and no amount of waiting brings it back
+           down. Re-anchoring on the slave's own counter costs the bytes still
+           queued at that moment, which are lost either way, and gets the link
+           back instead of leaving it logging the same length every millisecond
+           for as long as the console is up. */
+        if (len >= RX_BYTE_DESYNC_MIN) {
+            SDIO_LOGE(TAG, "rx counter desync: slave=%lu host=%lu, resyncing",
+                      (unsigned long)raw, (unsigned long)rx_got_bytes);
+            rx_got_bytes = raw;
             len = 0;
         }
 
@@ -259,8 +288,9 @@ sdio_err_t sdio_host_get_packet(void* out_data, size_t size, size_t* out_length,
         platform_os_delay(1);
     }
 
-    SDIO_LOGD(TAG, "get_packet: slave len=%lu, max read size=%u",
-              (unsigned long)len, (unsigned int)size);
+    SDIO_LOGD(TAG, "get_packet: slave len=%lu, max read size=%u (raw=%lu got=%lu)",
+              (unsigned long)len, (unsigned int)size,
+              (unsigned long)raw, (unsigned long)rx_got_bytes);
 
     sdio_err_t truncated = SDIO_SUCCESS;
 
@@ -269,59 +299,54 @@ sdio_err_t sdio_host_get_packet(void* out_data, size_t size, size_t* out_length,
         truncated = ERR_NOT_FINISHED;
     }
 
-    uint32_t len_remain = len;
-    uint8_t* start_ptr = (uint8_t*)out_data;
+    if (len > SDIO_HOST_MAX_READ) {
+        len = SDIO_HOST_MAX_READ;
+        truncated = ERR_NOT_FINISHED;
+    }
 
-    do {
-        const int block_size = 512; //currently our driver don't support block size other than 512
-        int len_to_send;
+    /* The whole packet in one CMD53, its transfer rounded up to the block the
+       slave pads to - 1024 clocked out for a 583-byte packet.
+       Splitting it is what the log in todo.md was full of. The slave takes the
+       length it is to serve from the address, reading it back as 0x1f800 -
+       addr, and once a read has started on a packet it is done with the rest:
+       reading 512 of a 583-byte packet leaves the remaining 71 counted by the
+       length register but no longer available, and the second CMD53 that goes
+       for them ends in "CMD53 read error, addr 0x1f7b9 count 512 ... TIMEOUT".
+       Measured both ways round here - as 512 then 71, and as 512 with the
+       address left at 583 - and the tail fails identically. */
+    const uint32_t block_size = 512U; /* the driver supports no other block size */
+    uint32_t xfer = ((len + block_size - 1U) / block_size) * block_size;
 
-        int block_n = len_remain / block_size;
-
-        if (block_n != 0) {
-            len_to_send = block_n * block_size;
-            err = sdio_driver_read_blocks(1, ESP_SLAVE_CMD53_END_ADDR - len_remain, start_ptr, len_to_send);
-        } else {
-            /* The tail goes out as a whole block, not as a byte-mode CMD53.
-               This slave serves the packet window in block mode only: a byte
-               mode read there is answered with R5 all clear and then no data
-               phase at all - DPSMACT stays set with DCOUNT never moving -
-               whatever the count, measured again here at addr 0x1f7f4 count 12
-               after the CMD52 fallback was kept out of the window. Register
-               reads in function 1 are unaffected and stay in byte mode.
-
-               The address carries the real length, exactly as on the send
-               side. It has to: the slave reads the requested length back out
-               of the address as 0x1f800 - addr, and the protocol requires that
-               length to be no more than what it has queued. Asking from
-               END_ADDR - block_size instead requests 512 bytes for a packet
-               that is only len_remain long, which walks the slave's send DMA
-               off the end of the loaded descriptors - three short packets was
-               enough on the bench - and from there every CMD53 in both
-               directions times out. */
-            len_to_send = len_remain;
-            err = sdio_driver_read_blocks(1, ESP_SLAVE_CMD53_END_ADDR - len_remain,
-                                          sdio_tail_buf, block_size);
-            if (err == SDIO_SUCCESS) {
-                memcpy(start_ptr, sdio_tail_buf, len_remain);
-            }
+    if (xfer <= size) {
+        err = sdio_driver_read_blocks(1, ESP_SLAVE_CMD53_END_ADDR - len, out_data, xfer);
+    } else if (xfer <= sizeof(sdio_tail_buf)) {
+        /* One block, and the caller's buffer is smaller than it: the padding
+           goes into the bounce buffer rather than over the caller's. */
+        err = sdio_driver_read_blocks(1, ESP_SLAVE_CMD53_END_ADDR - len,
+                                      sdio_tail_buf, xfer);
+        if (err == SDIO_SUCCESS) {
+            memcpy(out_data, sdio_tail_buf, len);
         }
+    } else {
+        /* Caller's buffer is not block-aligned and more than a block short.
+           Take whole blocks and let the next poll report the rest. */
+        len = (size / block_size) * block_size;
+        truncated = ERR_NOT_FINISHED;
+        err = (len != 0U)
+              ? sdio_driver_read_blocks(1, ESP_SLAVE_CMD53_END_ADDR - len, out_data, len)
+              : ERR_INVALID_ARG;
+    }
 
-        if (err != SDIO_SUCCESS) {
-            /* Give up on this packet, but credit it. The slave took the
-               requested length out of the CMD53 address and moved its send
-               FIFO on regardless of how the data phase ended, so bytes left
-               uncredited here are asked for again on the next poll, fail the
-               same way, and lock the link into a retry loop it never leaves -
-               one dropped frame on this bus otherwise costs every AT command
-               that follows it. */
-            rx_got_bytes += len;
-            return err;
-        }
-
-        start_ptr += len_to_send;
-        len_remain -= len_to_send;
-    } while (len_remain != 0);
+    if (err != SDIO_SUCCESS) {
+        /* Give up on this packet, but credit it. The slave took the requested
+           length out of the CMD53 address and moved its send FIFO on
+           regardless of how the data phase ended, so bytes left uncredited
+           here are asked for again on the next poll, fail the same way, and
+           lock the link into a retry loop it never leaves - one dropped frame
+           on this bus otherwise costs every AT command that follows it. */
+        rx_got_bytes += len;
+        return err;
+    }
 
     *out_length = len;
     rx_got_bytes += len;

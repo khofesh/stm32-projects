@@ -1511,40 +1511,56 @@ static uint32_t SdioCmd53RetryableError(uint32_t err);
   * - a slave wedged mid-transfer may not send one, and it acts on the write
   * either way.
   */
+/* The abort frame itself can be lost - the slave is mid-transfer and the log
+   shows it answering with CTIMEOUT (STA bit 2) while DPSMACT stays set. One
+   shot is then not enough, and a DPSM left active makes DCTRL and DLEN
+   read-only for every transfer that follows, so the link never comes back. */
+#define SDIO_ABORT_ATTEMPTS 3U
+
 static void SdioAbortDataPath(uint32_t function)
 {
     SDMMC_CmdInitTypeDef cmd = {0};
     uint32_t tickstart;
+    uint32_t attempt;
 
-    __SDMMC_CMDSTOP_ENABLE(hsdio1.Instance);
-    __SDMMC_CMDTRANS_DISABLE(hsdio1.Instance);
+    for (attempt = 0U; attempt < SDIO_ABORT_ATTEMPTS; attempt++) {
+        __SDMMC_CMDSTOP_ENABLE(hsdio1.Instance);
+        __SDMMC_CMDTRANS_DISABLE(hsdio1.Instance);
 
-    /* R/W=1, function 0, RAW=0, address 0x06 (I/O Abort), data = function no. */
-    cmd.Argument         = 0x80000C00U | (function & 0x7U);
-    cmd.CmdIndex         = SDMMC_CMD_SDMMC_RW_DIRECT;
-    cmd.Response         = SDMMC_RESPONSE_SHORT;
-    cmd.WaitForInterrupt = SDMMC_WAIT_NO;
-    cmd.CPSM             = SDMMC_CPSM_ENABLE;
-    (void)SDMMC_SendCommand(hsdio1.Instance, &cmd);
+        /* R/W=1, function 0, RAW=0, address 0x06 (I/O Abort), data = function no. */
+        cmd.Argument         = 0x80000C00U | (function & 0x7U);
+        cmd.CmdIndex         = SDMMC_CMD_SDMMC_RW_DIRECT;
+        cmd.Response         = SDMMC_RESPONSE_SHORT;
+        cmd.WaitForInterrupt = SDMMC_WAIT_NO;
+        cmd.CPSM             = SDMMC_CPSM_ENABLE;
+        (void)SDMMC_SendCommand(hsdio1.Instance, &cmd);
 
-    tickstart = HAL_GetTick();
-    while (((hsdio1.Instance->STA & (SDMMC_FLAG_CMDREND | SDMMC_FLAG_CTIMEOUT |
-                                    SDMMC_FLAG_CCRCFAIL)) == 0U) &&
-           ((HAL_GetTick() - tickstart) < 20U)) {
+        tickstart = HAL_GetTick();
+        while (((hsdio1.Instance->STA & (SDMMC_FLAG_CMDREND | SDMMC_FLAG_CTIMEOUT |
+                                        SDMMC_FLAG_CCRCFAIL)) == 0U) &&
+               ((HAL_GetTick() - tickstart) < 20U)) {
+        }
+
+        __SDMMC_CMDSTOP_DISABLE(hsdio1.Instance);
+
+        tickstart = HAL_GetTick();
+        while (((hsdio1.Instance->STA & SDMMC_FLAG_DPSMACT) != 0U) &&
+               ((HAL_GetTick() - tickstart) < 20U)) {
+        }
+
+        /* Retrying with the response flags still latched would make the wait
+           above fall straight through on the next pass */
+        __SDMMC_CLEAR_FLAG(hsdio1.Instance, SDMMC_STATIC_CMD_FLAGS);
+
+        if ((hsdio1.Instance->STA & SDMMC_FLAG_DPSMACT) == 0U) {
+            return;
+        }
     }
 
-    __SDMMC_CMDSTOP_DISABLE(hsdio1.Instance);
-
-    tickstart = HAL_GetTick();
-    while (((hsdio1.Instance->STA & SDMMC_FLAG_DPSMACT) != 0U) &&
-           ((HAL_GetTick() - tickstart) < 20U)) {
-    }
-
-    if ((hsdio1.Instance->STA & SDMMC_FLAG_DPSMACT) != 0U) {
-        SDIO_LOGE(TAG, "DPSM still active after abort, STA=0x%08lx DCOUNT=%lu",
-                  (unsigned long)hsdio1.Instance->STA,
-                  (unsigned long)hsdio1.Instance->DCOUNT);
-    }
+    SDIO_LOGE(TAG, "DPSM still active after %u aborts, STA=0x%08lx DCOUNT=%lu",
+              (unsigned int)SDIO_ABORT_ATTEMPTS,
+              (unsigned long)hsdio1.Instance->STA,
+              (unsigned long)hsdio1.Instance->DCOUNT);
 }
 
 static void SdioRecoverAfterCmd53(uint32_t function)
@@ -1660,7 +1676,12 @@ static uint32_t SdioXferTimeoutMs(uint32_t len)
     /* 8 clocks per byte on one data line; a 4-bit bus only finishes sooner */
     uint32_t ms = ((len * 8U) / (SDIO_PORT_CLOCK_HZ / 1000U));
 
-    return 50U + (ms * 3U);
+    /* Six times, not three. The slave does not stream a multi-block read at the
+       bus rate - it pauses between blocks - and a 1024-byte read that needs
+       328 ms of clock was being failed at 1033 ms with the data still coming.
+       The cost of the wider budget is only how long a genuinely dead transfer
+       takes to notice, and that one is retried at most three times. */
+    return 100U + (ms * 6U);
 }
 
 static sdio_err_t SdioTransfer(uint32_t function, uint32_t addr, void *buffer,
@@ -1739,8 +1760,14 @@ static sdio_err_t SdioTransfer(uint32_t function, uint32_t addr, void *buffer,
             return SDIO_SUCCESS;
         }
 
-        /* Latched before the recovery below, whose CMD52 resets ErrorCode */
+        /* Latched before the recovery below, whose CMD52 resets ErrorCode.
+           DCOUNT goes with it: on a read that ends in HAL_SDIO_ERROR_TIMEOUT it
+           says how much of the transfer never arrived, which is the difference
+           between a slave that stopped early and one that never started. */
         err = HAL_SDIO_GetError(&hsdio1);
+        SDIO_LOGD(TAG, "CMD53 attempt %lu failed, STA=0x%08lx DCOUNT=%lu",
+                  (unsigned long)retry, (unsigned long)hsdio1.Instance->STA,
+                  (unsigned long)hsdio1.Instance->DCOUNT);
         SdioRecoverAfterCmd53(function);
 
         if ((SdioCmd53RetryableError(err) == 0U) ||
