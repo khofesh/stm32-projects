@@ -21,7 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "bme280_app.h"
+#include "display_app.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -126,7 +127,14 @@ int main(void)
   MX_ADC1_Init();
   MX_RF_Init();
   /* USER CODE BEGIN 2 */
-
+  if (DISPLAY_APP_Init() != 0)
+  {
+    Error_Handler();
+  }
+  if (BME280_APP_Init() != 0)
+  {
+    Error_Handler();
+  }
   /* USER CODE END 2 */
 
   /* Init code for STM32_WPAN */
@@ -140,6 +148,15 @@ int main(void)
     MX_APPE_Process();
 
     /* USER CODE BEGIN 3 */
+    if (BME280_APP_Process() != 0)
+    {
+      bme280_app_data_t data;
+
+      if (BME280_APP_GetData(&data) == 0)
+      {
+        (void)DISPLAY_APP_ShowMeasurement(&data);
+      }
+    }
   }
   /* USER CODE END 3 */
 }

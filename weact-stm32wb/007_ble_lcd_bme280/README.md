@@ -1,5 +1,7 @@
 # STM32WB55 + BME280 + LCD
 
+- https://www.tokopedia.com/syalis-electrical/display-oled-0-96-biru-blue-i2c-ss1315-syalis
+
 ## pin connections
 
 BME280

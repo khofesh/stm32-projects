@@ -35,13 +35,24 @@
  */
 
 #include "driver_ssd1315_interface.h"
+#include "main.h"
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
+
+/* the OLED sits on I2C3 (PA7 = SCL, PB4 = SDA), see README.md */
+extern I2C_HandleTypeDef hi2c3;
+extern UART_HandleTypeDef huart1;
+
+#define SSD1315_IIC_TIMEOUT        100U
+#define SSD1315_DEBUG_BUF_SIZE     128U
 
 /**
  * @brief  interface iic bus init
  * @return status code
  *         - 0 success
  *         - 1 iic init failed
- * @note   none
+ * @note   bus is brought up by MX_I2C3_Init()
  */
 uint8_t ssd1315_interface_iic_init(void)
 {
@@ -53,7 +64,7 @@ uint8_t ssd1315_interface_iic_init(void)
  * @return status code
  *         - 0 success
  *         - 1 iic deinit failed
- * @note   none
+ * @note   bus stays up, it is owned by CubeMX generated code
  */
 uint8_t ssd1315_interface_iic_deinit(void)
 {
@@ -69,11 +80,16 @@ uint8_t ssd1315_interface_iic_deinit(void)
  * @return    status code
  *            - 0 success
  *            - 1 write failed
- * @note      none
+ * @note      addr is already the 8 bit write address (0x78 / 0x7A)
  */
 uint8_t ssd1315_interface_iic_write(uint8_t addr, uint8_t reg, uint8_t *buf, uint16_t len)
 {
-    return 0;
+    HAL_StatusTypeDef res;
+
+    res = HAL_I2C_Mem_Write(&hi2c3, (uint16_t)addr, (uint16_t)reg,
+                            I2C_MEMADD_SIZE_8BIT, buf, len, SSD1315_IIC_TIMEOUT);
+
+    return (res == HAL_OK) ? 0 : 1;
 }
 
 /**
@@ -121,7 +137,7 @@ uint8_t ssd1315_interface_spi_write_cmd(uint8_t *buf, uint16_t len)
  */
 void ssd1315_interface_delay_ms(uint32_t ms)
 {
-
+    HAL_Delay(ms);
 }
 
 /**
@@ -131,7 +147,24 @@ void ssd1315_interface_delay_ms(uint32_t ms)
  */
 void ssd1315_interface_debug_print(const char *const fmt, ...)
 {
-    
+    char buf[SSD1315_DEBUG_BUF_SIZE];
+    va_list args;
+    int len;
+
+    va_start(args, fmt);
+    len = vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+
+    if (len <= 0)
+    {
+        return;
+    }
+    if ((size_t)len > sizeof(buf))
+    {
+        len = (int)sizeof(buf);
+    }
+
+    (void)HAL_UART_Transmit(&huart1, (uint8_t *)buf, (uint16_t)len, SSD1315_IIC_TIMEOUT);
 }
 
 /**
