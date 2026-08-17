@@ -1,7 +1,8 @@
 # STM32 with esp-at via SDIO
 
-- https://github.com/espressif/esp-at/tree/release/v4.1.0.0/examples/at_sdio_host
+- https://github.com/espressif/esp-at/blob/master/examples/at_sdio_host/README.md
 - https://docs.espressif.com/projects/esp-idf/en/latest/esp32c6/api-reference/peripherals/sdio_slave.html
+- https://espressif-docs.readthedocs-hosted.com/projects/esp-idf/en/latest/api-reference/peripherals/sd_pullup_requirements.html
 
 ## boards used
 
