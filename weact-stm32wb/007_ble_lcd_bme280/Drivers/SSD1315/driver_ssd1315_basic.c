@@ -39,6 +39,16 @@
 static ssd1315_handle_t gs_handle;        /**< ssd1315 handle */
 
 /**
+ * @brief  get the internal handle
+ * @return pointer to the ssd1315 handle
+ * @note   none
+ */
+ssd1315_handle_t *ssd1315_basic_get_handle(void)
+{
+    return &gs_handle;
+}
+
+/**
  * @brief     basic example init
  * @param[in] interface interface type
  * @param[in] addr iic device address

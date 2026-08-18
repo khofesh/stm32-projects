@@ -91,6 +91,14 @@ extern "C"{
 uint8_t ssd1315_basic_init(ssd1315_interface_t interface, ssd1315_address_t addr);
 
 /**
+ * @brief  get the internal handle
+ * @return pointer to the ssd1315 handle
+ * @note   lets the application push the gram itself in page sized blocks
+ *         instead of the byte at a time ssd1315_gram_update()
+ */
+ssd1315_handle_t *ssd1315_basic_get_handle(void);
+
+/**
  * @brief  basic example deinit
  * @return status code
  *         - 0 success

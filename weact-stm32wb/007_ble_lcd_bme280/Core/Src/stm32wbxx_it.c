@@ -22,6 +22,7 @@
 #include "stm32wbxx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "hw_if.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -300,5 +301,18 @@ void HSEM_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+
+/**
+  * @brief This function handles RTC wake-up interrupt through EXTI line 19.
+  * @note  HW_TS_Init() enables RTC_WKUP_IRQn at runtime for the STM32_WPAN
+  *        timer server, but the RTC wake-up interrupt is not ticked in the
+  *        CubeMX NVIC tab, so no handler is generated and the vector falls
+  *        through to Default_Handler(). The first timer server timeout after
+  *        the BLE stack starts then traps the core in that infinite loop.
+  */
+void RTC_WKUP_IRQHandler(void)
+{
+  HW_TS_RTC_Wakeup_Handler();
+}
 
 /* USER CODE END 1 */

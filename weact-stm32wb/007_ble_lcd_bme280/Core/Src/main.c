@@ -127,14 +127,9 @@ int main(void)
   MX_ADC1_Init();
   MX_RF_Init();
   /* USER CODE BEGIN 2 */
-  if (DISPLAY_APP_Init() != 0)
-  {
-    Error_Handler();
-  }
-  if (BME280_APP_Init() != 0)
-  {
-    Error_Handler();
-  }
+  /* not fatal: a dead sensor or panel must not stop the BLE stack from coming up */
+  (void)DISPLAY_APP_Init();
+  (void)BME280_APP_Init();
   /* USER CODE END 2 */
 
   /* Init code for STM32_WPAN */
@@ -157,6 +152,7 @@ int main(void)
         (void)DISPLAY_APP_ShowMeasurement(&data);
       }
     }
+    DISPLAY_APP_Process();
   }
   /* USER CODE END 3 */
 }

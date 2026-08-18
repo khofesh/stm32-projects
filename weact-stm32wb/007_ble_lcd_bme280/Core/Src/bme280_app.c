@@ -27,6 +27,7 @@ static uint8_t               s_addr = BME280_I2C_ADDR_PRIM;
 static bme280_app_data_t     s_data;
 static uint8_t               s_have_data;
 static bme280_app_state_t    s_state;
+static uint8_t               s_inited;
 static uint32_t              s_tick;
 static uint32_t              s_meas_delay_ms;
 
@@ -105,6 +106,7 @@ uint8_t BME280_APP_Init(void)
 
     s_state     = BME280_STATE_IDLE;
     s_have_data = 0;
+    s_inited    = 1;
     /* fire the first conversion immediately */
     s_tick = HAL_GetTick() - BME280_SAMPLE_PERIOD_MS;
 
@@ -114,7 +116,16 @@ uint8_t BME280_APP_Init(void)
 uint8_t BME280_APP_Process(void)
 {
     struct bme280_data raw;
-    uint32_t now = HAL_GetTick();
+    uint32_t now;
+
+    /* without this a failed init would retry every loop, each attempt burning
+       two 100 ms HAL I2C timeouts and stalling the sequencer */
+    if (s_inited == 0)
+    {
+        return 0;
+    }
+
+    now = HAL_GetTick();
 
     switch (s_state)
     {
