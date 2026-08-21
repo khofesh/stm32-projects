@@ -21,6 +21,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "app_config.h"
+#include "app_display.h"
+#include "app_env.h"
 #include "bme280_app.h"
 #include "display_app.h"
 /* USER CODE END Includes */
@@ -131,29 +134,26 @@ int main(void)
   /* not fatal: a dead sensor or panel must not stop the BLE stack from coming up */
   (void)DISPLAY_APP_Init();
   (void)BME280_APP_Init();
-  /* USER CODE END 2 */
+/* USER CODE END 2 */
 
   /* Init code for STM32_WPAN */
   MX_APPE_Init();
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  /* the timer server is up only after MX_APPE_Init(), and APP_ENV_Init()
+     creates timers, so it has to come after it */
+  APP_ENV_Init();
+
   while (1)
   {
     /* USER CODE END WHILE */
     MX_APPE_Process();
 
     /* USER CODE BEGIN 3 */
-    if (BME280_APP_Process() != 0)
-    {
-      bme280_app_data_t data;
-
-      if (BME280_APP_GetData(&data) == 0)
-      {
-        (void)DISPLAY_APP_ShowMeasurement(&data);
-      }
-    }
-    DISPLAY_APP_Process();
+    /* deliberately empty: sampling, display and BLE publication are driven by
+       RTC timers and the sequencer, so every pass through here ends in
+       UTIL_SEQ_Idle() and the application is free to sleep */
   }
   /* USER CODE END 3 */
 }
@@ -638,6 +638,34 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+#if defined(USER_BUTTON_Pin)
+/**
+  * @brief  user button EXTI callback
+  * @note   ISR responsibilities stop at debouncing and waking the application:
+  *         no I2C, no panel and no BLE work happens here
+  */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  static uint32_t last_press_tick;
+  uint32_t        now;
+
+  if (GPIO_Pin != USER_BUTTON_Pin)
+  {
+    return;
+  }
+
+  /* SysTick is stopped in STOP2, so the first edge after a wake sees a stale
+     tick; that only ever makes the debounce more permissive, never less */
+  now = HAL_GetTick();
+  if ((uint32_t)(now - last_press_tick) < BUTTON_DEBOUNCE_MS)
+  {
+    return;
+  }
+  last_press_tick = now;
+
+  APP_ENV_OnUserInteraction();
+}
+#endif /* USER_BUTTON_Pin */
 
 /* USER CODE END 4 */
 

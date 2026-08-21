@@ -672,7 +672,7 @@ typedef enum
 #endif
   CFG_TASK_HCI_ASYNCH_EVT_ID,
   /* USER CODE BEGIN CFG_Task_Id_With_HCI_Cmd_t */
-
+  CFG_TASK_BLE_PUBLISH_ID,          /**< notification / adv payload / conn param */
   /* USER CODE END CFG_Task_Id_With_HCI_Cmd_t */
   CFG_LAST_TASK_ID_WITH_HCICMD,                                               /**< Shall be LAST in the list */
 } CFG_Task_Id_With_HCI_Cmd_t;
@@ -683,7 +683,11 @@ typedef enum
   CFG_FIRST_TASK_ID_WITH_NO_HCICMD = CFG_LAST_TASK_ID_WITH_HCICMD - 1,        /**< Shall be FIRST in the list */
   CFG_TASK_SYSTEM_HCI_ASYNCH_EVT_ID,
   /* USER CODE BEGIN CFG_Task_Id_With_NO_HCI_Cmd_t */
-
+  CFG_TASK_ENV_MEASURE_ID,          /**< start a forced conversion */
+  CFG_TASK_ENV_READ_ID,             /**< read it back and run the state machine */
+  CFG_TASK_ENV_INTERACT_ID,         /**< deferred button handling */
+  CFG_TASK_DISPLAY_PUSH_ID,         /**< walk one queued frame out to the panel */
+  CFG_TASK_DISPLAY_TIMEOUT_ID,      /**< inactivity timeout expired */
   /* USER CODE END CFG_Task_Id_With_NO_HCI_Cmd_t */
   CFG_LAST_TASK_ID_WITH_NO_HCICMD                                            /**< Shall be LAST in the list */
 } CFG_Task_Id_With_NO_HCI_Cmd_t;

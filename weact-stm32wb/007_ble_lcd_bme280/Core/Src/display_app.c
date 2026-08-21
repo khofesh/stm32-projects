@@ -13,6 +13,7 @@
 
 #include "display_app.h"
 #include "driver_ssd1315_basic.h"
+#include "main.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -42,6 +43,7 @@ static uint8_t s_page_buf[DISPLAY_COLUMNS];
 static uint8_t s_inited;
 static uint8_t s_pending;        /**< frame waiting to be pushed */
 static uint8_t s_page;           /**< next page to push */
+static uint8_t s_powered;        /**< panel is lit */
 
 /**
  * @brief     compose one padded row into the gram, no bus traffic
@@ -134,6 +136,7 @@ uint8_t DISPLAY_APP_Init(void)
 
     s_pending = 0;
     s_page    = 0;
+    s_powered = 1;
 
     return 0;
 }
@@ -145,7 +148,8 @@ uint8_t DISPLAY_APP_ShowMeasurement(const bme280_app_data_t *data)
     uint32_t h;
     char     sign;
 
-    if ((data == NULL) || (s_inited == 0))
+    /* composing for a dark panel would only queue I2C traffic nobody sees */
+    if ((data == NULL) || (s_inited == 0) || (s_powered == 0))
     {
         return 1;
     }
@@ -210,4 +214,66 @@ void DISPLAY_APP_Process(void)
         s_pending = 0;
         s_page    = 0;
     }
+}
+
+uint8_t DISPLAY_APP_HasPendingFrame(void)
+{
+    return s_pending;
+}
+
+uint8_t DISPLAY_APP_PowerOn(void)
+{
+    if (s_inited == 0)
+    {
+        return 1;
+    }
+
+    if (s_powered != 0)
+    {
+        return 0;
+    }
+
+#if defined(OLED_PWR_Pin)
+    /* rail first, then the controller, so the panel never sees commands
+       before VCC has settled */
+    HAL_GPIO_WritePin(OLED_PWR_GPIO_Port, OLED_PWR_Pin, GPIO_PIN_SET);
+#endif
+
+    if (ssd1315_basic_display_on() != 0)
+    {
+        return 1;
+    }
+
+    s_powered = 1;
+
+    return 0;
+}
+
+uint8_t DISPLAY_APP_PowerOff(void)
+{
+    if (s_inited == 0)
+    {
+        return 1;
+    }
+
+    if (ssd1315_basic_display_off() != 0)
+    {
+        return 1;
+    }
+
+#if defined(OLED_PWR_Pin)
+    HAL_GPIO_WritePin(OLED_PWR_GPIO_Port, OLED_PWR_Pin, GPIO_PIN_RESET);
+#endif
+
+    /* nothing composed so far survives a rail cut, drop any queued frame */
+    s_pending = 0;
+    s_page    = 0;
+    s_powered = 0;
+
+    return 0;
+}
+
+uint8_t DISPLAY_APP_IsPowered(void)
+{
+    return s_powered;
 }

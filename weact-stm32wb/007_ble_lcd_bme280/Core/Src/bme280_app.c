@@ -13,23 +13,15 @@
 extern I2C_HandleTypeDef hi2c1;
 
 #define BME280_I2C_TIMEOUT      100U
-#define BME280_SAMPLE_PERIOD_MS 1000U
 
-typedef enum
-{
-    BME280_STATE_IDLE = 0,        /**< waiting for the next sample period */
-    BME280_STATE_MEASURING,       /**< forced conversion in flight */
-} bme280_app_state_t;
-
-static struct bme280_dev     s_dev;
+static struct bme280_dev      s_dev;
 static struct bme280_settings s_settings;
-static uint8_t               s_addr = BME280_I2C_ADDR_PRIM;
-static bme280_app_data_t     s_data;
-static uint8_t               s_have_data;
-static bme280_app_state_t    s_state;
-static uint8_t               s_inited;
-static uint32_t              s_tick;
-static uint32_t              s_meas_delay_ms;
+static uint8_t                s_addr = BME280_I2C_ADDR_PRIM;
+static bme280_app_data_t      s_data;
+static uint8_t                s_have_data;
+static uint8_t                s_inited;
+static uint32_t               s_meas_delay_ms;
+static uint32_t               s_err_count;
 
 static BME280_INTF_RET_TYPE bme280_i2c_read(uint8_t reg_addr, uint8_t *reg_data, uint32_t len, void *intf_ptr)
 {
@@ -102,71 +94,72 @@ uint8_t BME280_APP_Init(void)
     {
         return 1;
     }
-    s_meas_delay_ms = (delay_us + 999U) / 1000U;
+    /* round up, and add one millisecond of margin for the internal oscillator
+       tolerance so the read never races the end of the conversion */
+    s_meas_delay_ms = ((delay_us + 999U) / 1000U) + 1U;
 
-    s_state     = BME280_STATE_IDLE;
     s_have_data = 0;
+    s_err_count = 0;
     s_inited    = 1;
-    /* fire the first conversion immediately */
-    s_tick = HAL_GetTick() - BME280_SAMPLE_PERIOD_MS;
 
     return 0;
 }
 
-uint8_t BME280_APP_Process(void)
+uint8_t BME280_APP_StartMeasurement(void)
 {
-    struct bme280_data raw;
-    uint32_t now;
-
-    /* without this a failed init would retry every loop, each attempt burning
-       two 100 ms HAL I2C timeouts and stalling the sequencer */
+    /* without this a failed init would retry on every scheduled cycle, each
+       attempt burning two 100 ms HAL I2C timeouts and stalling the sequencer */
     if (s_inited == 0)
     {
-        return 0;
+        return 1;
     }
 
-    now = HAL_GetTick();
-
-    switch (s_state)
+    if (bme280_set_sensor_mode(BME280_POWERMODE_FORCED, &s_dev) != BME280_OK)
     {
-        case BME280_STATE_IDLE:
-            if ((now - s_tick) < BME280_SAMPLE_PERIOD_MS)
-            {
-                break;
-            }
-            if (bme280_set_sensor_mode(BME280_POWERMODE_FORCED, &s_dev) != BME280_OK)
-            {
-                /* back off a full period and try again */
-                s_tick = now;
-                break;
-            }
-            s_tick  = now;
-            s_state = BME280_STATE_MEASURING;
-            break;
-
-        case BME280_STATE_MEASURING:
-            if ((now - s_tick) < s_meas_delay_ms)
-            {
-                break;
-            }
-            s_state = BME280_STATE_IDLE;
-            s_tick  = now;
-            if (bme280_get_sensor_data(BME280_ALL, &raw, &s_dev) != BME280_OK)
-            {
-                break;
-            }
-            s_data.temperature = raw.temperature;
-            s_data.pressure    = raw.pressure;
-            s_data.humidity    = raw.humidity;
-            s_have_data        = 1;
-            return 1;
-
-        default:
-            s_state = BME280_STATE_IDLE;
-            break;
+        s_err_count++;
+        return 1;
     }
 
     return 0;
+}
+
+uint32_t BME280_APP_GetMeasurementDelayMs(void)
+{
+    return s_meas_delay_ms;
+}
+
+uint8_t BME280_APP_ReadMeasurement(bme280_app_data_t *out)
+{
+    struct bme280_data raw;
+
+    if (s_inited == 0)
+    {
+        return 1;
+    }
+
+    if (bme280_get_sensor_data(BME280_ALL, &raw, &s_dev) != BME280_OK)
+    {
+        s_err_count++;
+        return 1;
+    }
+
+    s_data.temperature = raw.temperature;
+    s_data.pressure    = raw.pressure;
+    s_data.humidity    = raw.humidity;
+    s_have_data        = 1;
+    s_err_count        = 0;
+
+    if (out != NULL)
+    {
+        *out = s_data;
+    }
+
+    return 0;
+}
+
+uint32_t BME280_APP_GetErrorCount(void)
+{
+    return s_err_count;
 }
 
 uint8_t BME280_APP_GetData(bme280_app_data_t *out)

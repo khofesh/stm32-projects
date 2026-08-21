@@ -23,7 +23,7 @@
 #include "custom_stm.h"
 
 /* USER CODE BEGIN Includes */
-
+#include "app_config.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -294,6 +294,12 @@ void SVCCTL_InitCustomSvc(void)
 
   /* USER CODE BEGIN SVCCTL_InitService1 */
   /* max_attr_record to be updated if descriptors have been added */
+
+  /* CubeMX generates SizeBme_C = 1, which is the maximum value length passed to
+     aci_gatt_add_char below. The environmental payload is 12 bytes, so widen it
+     here rather than by editing generated code. The characteristic is already
+     declared CHAR_VALUE_LEN_VARIABLE, so shorter writes stay legal. */
+  SizeBme_C = BLE_ENV_PAYLOAD_LEN;
 
   /* USER CODE END SVCCTL_InitService1 */
 

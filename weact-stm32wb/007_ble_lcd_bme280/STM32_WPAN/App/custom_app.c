@@ -29,7 +29,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "app_ble_policy.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -101,13 +101,15 @@ void Custom_STM_App_Notification(Custom_STM_App_Notification_evt_t *pNotificatio
     /* WB_BME280 */
     case CUSTOM_STM_BME_C_NOTIFY_ENABLED_EVT:
       /* USER CODE BEGIN CUSTOM_STM_BME_C_NOTIFY_ENABLED_EVT */
-
+      Custom_App_Context.Bme_c_Notification_Status = 1;
+      APP_BLE_POLICY_OnNotifyEnabled(1);
       /* USER CODE END CUSTOM_STM_BME_C_NOTIFY_ENABLED_EVT */
       break;
 
     case CUSTOM_STM_BME_C_NOTIFY_DISABLED_EVT:
       /* USER CODE BEGIN CUSTOM_STM_BME_C_NOTIFY_DISABLED_EVT */
-
+      Custom_App_Context.Bme_c_Notification_Status = 0;
+      APP_BLE_POLICY_OnNotifyEnabled(0);
       /* USER CODE END CUSTOM_STM_BME_C_NOTIFY_DISABLED_EVT */
       break;
 
@@ -142,13 +144,15 @@ void Custom_APP_Notification(Custom_App_ConnHandle_Not_evt_t *pNotification)
     /* USER CODE END P2PS_CUSTOM_Notification_Custom_Evt_Opcode */
     case CUSTOM_CONN_HANDLE_EVT :
       /* USER CODE BEGIN CUSTOM_CONN_HANDLE_EVT */
-
+      Custom_App_Context.ConnectionHandle = pNotification->ConnectionHandle;
+      APP_BLE_POLICY_OnConnected(pNotification->ConnectionHandle);
       /* USER CODE END CUSTOM_CONN_HANDLE_EVT */
       break;
 
     case CUSTOM_DISCON_HANDLE_EVT :
       /* USER CODE BEGIN CUSTOM_DISCON_HANDLE_EVT */
-
+      Custom_App_Context.Bme_c_Notification_Status = 0;
+      APP_BLE_POLICY_OnDisconnected();
       /* USER CODE END CUSTOM_DISCON_HANDLE_EVT */
       break;
 
@@ -169,7 +173,9 @@ void Custom_APP_Notification(Custom_App_ConnHandle_Not_evt_t *pNotification)
 void Custom_APP_Init(void)
 {
   /* USER CODE BEGIN CUSTOM_APP_Init */
-
+  /* the publication policy itself is brought up from APP_ENV_Init(); this hook
+     only runs once the stack is ready, which is later than the sensor needs */
+  Custom_App_Context.Bme_c_Notification_Status = 0;
   /* USER CODE END CUSTOM_APP_Init */
   return;
 }

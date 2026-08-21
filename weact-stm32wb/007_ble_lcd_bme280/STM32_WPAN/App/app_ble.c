@@ -37,7 +37,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "app_config.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -158,7 +158,14 @@ typedef struct
 #define BLE_DEFAULT_PIN                     (111111)
 
 /* USER CODE BEGIN PD */
-
+/* Adv_Request() hardcodes CFG_FAST_CONN_ADV_INTERVAL_*, and those defines sit
+   outside a CubeMX user section in app_conf.h. Overriding them here keeps the
+   ~1000 ms advertising interval the power budget is built around, and survives
+   a project regeneration. */
+#undef CFG_FAST_CONN_ADV_INTERVAL_MIN
+#undef CFG_FAST_CONN_ADV_INTERVAL_MAX
+#define CFG_FAST_CONN_ADV_INTERVAL_MIN    BLE_ADV_INTERVAL_MIN
+#define CFG_FAST_CONN_ADV_INTERVAL_MAX    BLE_ADV_INTERVAL_MAX
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/

@@ -32,8 +32,12 @@ Both buses run at ~104 kHz, not 400 kHz: `Timing = 0x10B17DB5` with PCLK1 =
 
 | file | role |
 | ---- | ---- |
-| `Core/Src/bme280_app.c` | forced mode sampling state machine on I2C1, one sample per second, non blocking |
-| `Core/Src/display_app.c` | frame composition into the driver GRAM plus page at a time push to the panel |
+| `Core/Inc/app_config.h` | every tunable of the sampling / display / BLE policy |
+| `Core/Src/app_env.c` | sampling schedule and STABLE / ACTIVE / INTERACTIVE state machine |
+| `Core/Src/app_display.c` | display timeout policy, decides when the OLED is awake and what it shows |
+| `Core/Src/app_ble_policy.c` | notification thresholds, advertising payload, connection parameter policy |
+| `Core/Src/bme280_app.c` | forced mode BME280 transport on I2C1, no scheduling policy |
+| `Core/Src/display_app.c` | frame composition into the driver GRAM, page at a time push, panel power abstraction |
 | `Core/Src/driver_ssd1315_interface.c` | LibDriver SSD1315 port layer on I2C3 |
 | `Drivers/BME280` | Bosch BME280_SensorAPI |
 | `Drivers/SSD1315` | LibDriver SSD1315 |

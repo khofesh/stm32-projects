@@ -2,6 +2,10 @@
  ******************************************************************************
  * @file    bme280_app.h
  * @brief   BME280 acquisition on I2C1, non blocking forced mode sampling
+ *
+ * This layer owns the BME280 registers, the Bosch compensation and the forced
+ * mode handshake, nothing else. When to sample, what a change means and who
+ * gets told about it are decisions of app_env, not of this driver.
  ******************************************************************************
  */
 
@@ -31,10 +35,24 @@ typedef struct
 uint8_t BME280_APP_Init(void);
 
 /**
- * @brief  drive the sampling state machine, call from the main loop
- * @return 1 when a fresh sample became available, 0 otherwise
+ * @brief  kick off one forced mode conversion
+ * @return 0 on success, 1 on failure
+ * @note   the part returns to sleep on its own once the conversion completes
  */
-uint8_t BME280_APP_Process(void);
+uint8_t BME280_APP_StartMeasurement(void);
+
+/**
+ * @brief  worst case conversion time for the configured oversampling
+ * @return delay in milliseconds
+ */
+uint32_t BME280_APP_GetMeasurementDelayMs(void);
+
+/**
+ * @brief  read out and latch the result of the last started conversion
+ * @param[out] out destination, may be NULL if only latching is wanted
+ * @return 0 on success, 1 on failure
+ */
+uint8_t BME280_APP_ReadMeasurement(bme280_app_data_t *out);
 
 /**
  * @brief  copy out the last completed sample
@@ -42,6 +60,11 @@ uint8_t BME280_APP_Process(void);
  * @return 0 on success, 1 when no sample has been taken yet
  */
 uint8_t BME280_APP_GetData(bme280_app_data_t *out);
+
+/**
+ * @brief  number of consecutive failed conversions since the last good one
+ */
+uint32_t BME280_APP_GetErrorCount(void);
 
 #ifdef __cplusplus
 }

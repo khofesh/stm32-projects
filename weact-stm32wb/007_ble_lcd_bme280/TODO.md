@@ -1100,89 +1100,184 @@ At this phase continuous display is acceptable for debugging.
 
 Implement:
 
-- STABLE state
-- ACTIVE state
-- change detection
-- 20-second stable sampling
-- 1-second active sampling
-- return to stable after timeout
+- [x] STABLE state
+- [x] ACTIVE state
+- [x] change detection
+- [x] 20-second stable sampling
+- [x] 1-second active sampling
+- [x] return to stable after timeout
 
-Validate state transitions through logs.
+Implemented in `Core/Src/app_env.c`. Sampling is no longer polled from the main
+loop: an RTC-backed timer-server timer sets `CFG_TASK_ENV_MEASURE_ID`, a second
+timer covers the forced-conversion delay and sets `CFG_TASK_ENV_READ_ID`.
+Stability is measured by counting consecutive unchanged 1 Hz samples
+(`ACTIVE_STABLE_SAMPLE_COUNT`) rather than by a tick stopwatch, so it stays
+correct across STOP2 and across a tick wraparound.
+
+Remaining validation steps (hardware):
+
+1. Flash and verify the BME280 samples once after boot, then about every 20 s.
+2. Breathe on the sensor and verify sampling switches to about 1 Hz.
+3. Leave it alone and verify it returns to 20 s after ~30 s.
 
 ---
 
 ## Phase 4 — BLE Environmental Data
 
-Expose:
+- [x] temperature exposed
+- [x] humidity exposed
+- [x] pressure exposed
+- [x] notifications, thresholded
 
-- temperature
-- humidity
-- pressure
+Implemented in `Core/Src/app_ble_policy.c`. The `WB_BME280` service's
+`bme280_char` carries a 12-byte little-endian payload:
 
-Implement notifications.
+```text
+offset 0  int32   temperature, 0.01 degC
+offset 4  uint32  pressure, Pa
+offset 8  uint32  humidity, 1/1024 %RH
+```
 
-Do not optimize BLE intervals yet.
+CubeMX generates `SizeBme_C = 1`; it is widened to `BLE_ENV_PAYLOAD_LEN` from
+the `SVCCTL_InitService1` user section in `custom_stm.c`, before
+`aci_gatt_add_char()` reads it. The characteristic is already declared
+`CHAR_VALUE_LEN_VARIABLE`.
+
+The last value reported over BLE is kept separately from the previous sensor
+reading, so a slow drift still notifies once it crosses
+`BLE_TEMP_NOTIFY_DELTA_C_X100` / `BLE_HUMIDITY_NOTIFY_DELTA_X1024` /
+`BLE_PRESSURE_NOTIFY_DELTA_PA`, and an unchanged reading never generates
+traffic.
+
+While disconnected, the advertising manufacturer-specific field carries the
+latest temperature (int16, 0.01 degC) and humidity (uint16, 0.01 %RH) so a
+scanner can read the room without connecting.
+
+Remaining validation step (hardware): connect with nRF Connect, subscribe, and
+confirm notifications only arrive on meaningful change.
 
 ---
 
 ## Phase 5 — OLED Sleep
 
-Implement:
+- [x] OLED wake path
+- [x] 10-second timeout
+- [x] OLED shutdown
+- [x] OLED normally off
+- [ ] button interrupt — **needs a CubeMX change, see below**
 
-- button interrupt
-- OLED wake
-- 10-second timeout
-- OLED shutdown
+`Core/Src/app_display.c` owns the timeout, `DISPLAY_APP_PowerOn()` /
+`DISPLAY_APP_PowerOff()` / `DISPLAY_APP_IsPowered()` in `display_app.c` own the
+power abstraction. The panel is powered off at the end of `APP_DISPLAY_Init()`
+and only relit by `APP_ENV_OnUserInteraction()`. A frame is recomposed only
+when a digit that is actually printed changes.
 
-Verify OLED is normally off.
+`HAL_GPIO_EXTI_Callback()` in `main.c` is written and debounced, but it is
+compiled out until `USER_BUTTON_Pin` exists, because this `.ioc` has no button
+pin. **Do not hand-edit the `.ioc`.** In STM32CubeMX:
+
+1. Open `007_ble_lcd_bme280.ioc`, go to **Pinout & Configuration**.
+2. Pick a free pin for the button. On this UFQFPN48 build the unassigned GPIOs
+   are PA1–PA6, PA8, PA15, PB0–PB3, PB5–PB7 and PE4 (PA0 is taken by
+   `ADCx_IN5`, PA13/PA14 are SWD, PB3 is SWO). Check which of them your board
+   actually breaks out.
+3. Left-click the pin, set its mode to **GPIO_EXTI\<n\>**.
+4. **System Core → GPIO**, select that pin:
+   - GPIO mode: *External Interrupt Mode with Falling edge trigger detection*
+     (use Rising if the button pulls high).
+   - Pull-up/Pull-down: *Pull-up* (for a button to GND).
+   - User Label: `USER_BUTTON` — this is what generates `USER_BUTTON_Pin`.
+5. **System Core → NVIC**, enable **EXTI line\<n\> interrupt**. Leave the
+   preemption priority at or below the RTC wakeup interrupt's.
+6. **Project Manager → Code Generator**, keep *Generate peripheral
+   initialization as a pair of .c/.h files* as configured, then **Generate
+   Code**.
+
+No further firmware change is needed: the callback is inside
+`/* USER CODE BEGIN 4 */` and becomes live as soon as the macro exists.
 
 ---
 
 ## Phase 6 — STM32 Low Power
 
-Implement STOP2 integration.
+- [x] no busy polling left in the main loop
+- [x] all scheduling on RTC timers, which keep running in STOP2
+- [ ] STOP2 actually enabled — **needs a CubeMX change, see below**
+- [ ] current measured on hardware
 
-Verify:
+`main.c`'s `while (1)` now contains nothing but `MX_APPE_Process()`, so every
+pass ends in `UTIL_SEQ_Idle()` → `UTIL_LPM_EnterLowPower()`. That path is inert
+today: `app_conf.h` has `CFG_LPM_SUPPORTED 0`, and it is force-cleared anyway
+because `CFG_DEBUG_TRACE` is 1.
 
-- RTC wakes application
-- BLE continues operating correctly
-- button wakes application
-- sensor scheduling remains correct
+To enable it in STM32CubeMX:
 
-Measure actual current.
+1. **Middleware and Software Packs → STM32_WPAN**.
+2. Under the debug/trace settings, set **CFG_DEBUG_BLE_TRACE**,
+   **CFG_DEBUG_APP_TRACE** and **CFG_DEBUG_TRACE_FULL** to *Disabled*, and set
+   **CFG_HW_USART1_ENABLED** to *Disabled* if UART logging is not needed.
+3. Confirm **Low Power Manager (TINY_LPM)** stays enabled in
+   **Middleware → STM32_WPAN → Utilities**.
+4. Generate code, then set `CFG_LPM_SUPPORTED` to `1` in `Core/Inc/app_conf.h`
+   (line 477). Keep `CFG_DEBUGGER_SUPPORTED` at 1 only while debugging — it
+   keeps the debug domain clocked and inflates the measured current.
 
-Do not claim low-power success solely because firmware calls a STOP function.
+Then verify, in this order, before claiming anything:
+
+1. RTC wakes the application: sampling cadence unchanged with LPM on.
+2. BLE stays connected across sleep cycles.
+3. The button wakes the application (needs Phase 5's pin). Any GPIO EXTI line
+   wakes the CPU from STOP2 on STM32WB — the dedicated PWR WKUP pins only
+   matter for Standby/Shutdown, which this design does not use.
+4. Measure the actual current with a Joulescope/PPK across a full
+   STABLE → ACTIVE → INTERACTIVE → STABLE cycle.
 
 ---
 
 ## Phase 7 — BLE Power Optimization
 
-Tune:
+- [x] advertising interval ~1000 ms
+- [x] connection interval policy, relaxed vs fast
+- [x] slave latency exposed as a tunable
+- [x] notification frequency decoupled from sampling
+- [ ] responsiveness checked on hardware
 
-- advertising interval
-- connection interval
-- slave latency if appropriate
-- BLE notification frequency
+`Adv_Request()` hardcodes `CFG_FAST_CONN_ADV_INTERVAL_*`, and those defines sit
+outside any CubeMX user section in `app_conf.h`. They are overridden from
+`/* USER CODE BEGIN PD */` in `app_ble.c` to `BLE_ADV_INTERVAL_MIN/MAX`, which
+survives regeneration.
 
-Check that interactive responsiveness remains acceptable.
+`APP_BLE_POLICY_OnStateChanged()` issues
+`aci_l2cap_connection_parameter_update_req()` once per transition — never
+repeatedly — asking for 500–1000 ms in STABLE and 100–250 ms in
+ACTIVE/INTERACTIVE.
+
+Slave latency is `BLE_CONN_LATENCY`, currently 0. Raising it is the next lever;
+`BLE_CONN_SUPERVISION_TIMEOUT` must stay above
+`(1 + latency) * interval_max * 2`.
 
 ---
 
 ## Phase 8 — OLED Hardware Power Gating
 
-If hardware supports it, add:
+- [x] abstraction in place
+- [ ] hardware — the WeAct module wires OLED VCC directly, no load switch
 
-```text
-STM32 GPIO
-    │
-    ▼
-load switch / MOSFET
-    │
-    ▼
-OLED VCC
-```
+`DISPLAY_APP_PowerOn()` / `DISPLAY_APP_PowerOff()` currently send the SSD1315
+display ON/OFF commands. They already contain the rail sequencing, guarded by
+`#if defined(OLED_PWR_Pin)`: rail up before the controller is addressed, rail
+down after it is blanked. Nothing above the driver knows the difference.
 
-Implement this behind the existing display power abstraction.
+To add the load switch:
+
+1. Wire a P-channel MOSFET or load switch between 3V3 and OLED VCC.
+2. In STM32CubeMX, set the gate-driving pin to **GPIO_Output**, *Low* initial
+   level, push-pull, no pull, and give it the User Label `OLED_PWR`.
+3. Generate code. The `#if defined(OLED_PWR_Pin)` blocks in `display_app.c`
+   become live with no other change.
+4. Re-run `ssd1315_basic_init()` after a rail cycle — the controller loses its
+   configuration. Today the rail is never cut, so this is deliberately not
+   wired up yet; add it to `DISPLAY_APP_PowerOn()` alongside the `#if`.
 
 ---
 
