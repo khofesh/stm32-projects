@@ -379,21 +379,8 @@ static void APPD_BleDtbCfg( void )
 void DbgOutputInit( void )
 {
 /* USER CODE BEGIN DbgOutputInit */
-#ifdef CFG_DEBUG_TRACE_UART
-if (CFG_DEBUG_TRACE_UART == hw_lpuart1)
-{
-#if(CFG_HW_LPUART1_ENABLED == 1)
-    MX_LPUART1_UART_Init();
-#endif
-}
-else if (CFG_DEBUG_TRACE_UART == hw_uart1)
-{
-#if(CFG_HW_USART1_ENABLED == 1)
-    MX_USART1_UART_Init();
-#endif
-}
-#endif
-
+  /* USART1 is already brought up by main() before MX_APPE_Init(); the CubeMX
+     MX_USART1_UART_Init() is static to main.c and not linkable from here. */
 /* USER CODE END DbgOutputInit */
   return;
 }

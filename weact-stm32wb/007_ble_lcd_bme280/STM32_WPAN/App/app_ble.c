@@ -166,6 +166,13 @@ typedef struct
 #undef CFG_FAST_CONN_ADV_INTERVAL_MAX
 #define CFG_FAST_CONN_ADV_INTERVAL_MIN    BLE_ADV_INTERVAL_MIN
 #define CFG_FAST_CONN_ADV_INTERVAL_MAX    BLE_ADV_INTERVAL_MAX
+
+/* The RF path on this board is weak: at the generated CFG_TX_POWER (0x18,
+   -0.15 dBm) the advertiser reads about -86 dBm at 30 cm and a 15 s scan sees
+   at most one report. 0x1F (+6 dBm) is the highest level the stack accepts and
+   is what makes the board reliably discoverable. */
+#undef CFG_TX_POWER
+#define CFG_TX_POWER                      (0x1F)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/

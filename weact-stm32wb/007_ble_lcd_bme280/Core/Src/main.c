@@ -72,9 +72,9 @@ static void MX_I2C1_Init(void);
 static void MX_IPCC_Init(void);
 static void MX_RTC_Init(void);
 static void MX_USART1_UART_Init(void);
-static void MX_USB_PCD_Init(void);
 static void MX_I2C3_Init(void);
 static void MX_ADC1_Init(void);
+static void MX_USB_PCD_Init(void);
 static void MX_RF_Init(void);
 /* USER CODE BEGIN PFP */
 
@@ -126,11 +126,14 @@ int main(void)
   MX_I2C1_Init();
   MX_RTC_Init();
   MX_USART1_UART_Init();
-  MX_USB_PCD_Init();
   MX_I2C3_Init();
   MX_ADC1_Init();
+  MX_USB_PCD_Init();
   MX_RF_Init();
   /* USER CODE BEGIN 2 */
+  /* CLK48 is shared with CPU2: take CFG_HW_CLK48_CONFIG_SEMID before the stack starts */
+  LL_HSEM_1StepLock(HSEM, 5);
+
   /* not fatal: a dead sensor or panel must not stop the BLE stack from coming up */
   (void)DISPLAY_APP_Init();
   (void)BME280_APP_Init();
@@ -537,7 +540,7 @@ static void MX_USART1_UART_Init(void)
   huart1.Init.Parity = UART_PARITY_NONE;
   huart1.Init.Mode = UART_MODE_TX_RX;
   huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_8;
   huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
   huart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
   huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;

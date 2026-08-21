@@ -6,7 +6,8 @@ every notification as it arrives. The firmware only notifies on a meaningful
 change, so long silences in a still room are the expected behaviour, not a bug
 -- the elapsed column makes that easy to see.
 
-    uv run bme280_notify.py                 # connect and watch notifications
+    uv run bme280_notify.py                 # log the next 5 notifications
+    uv run bme280_notify.py --count 0       # watch until Ctrl-C
     uv run bme280_notify.py --scan-only     # just watch the advertisements
 """
 
@@ -19,6 +20,7 @@ import sys
 from datetime import datetime
 
 from bleak import BleakClient, BleakScanner
+from bleak.exc import BleakError
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
@@ -142,15 +144,42 @@ async def scan_only(name: str, timeout: float, show_all: bool) -> None:
         )
 
 
-async def watch_notifications(name: str, address: str | None, timeout: float) -> None:
+async def watch_notifications(
+    name: str, address: str | None, timeout: float, wanted: int, attempts: int
+) -> None:
+    """Log `wanted` notifications, reconnecting if the link drops.
+
+    The RF path on this board is marginal, so a connect or a service discovery
+    can fail outright; retrying is normal here, not a sign of a bug.
+    """
+    logged = 0
+
+    for attempt in range(1, attempts + 1):
+        try:
+            logged += await _session(name, address, timeout, wanted - logged if wanted else 0)
+        except (BleakError, asyncio.TimeoutError, EOFError) as exc:
+            print(f"attempt {attempt}/{attempts} failed: {exc}")
+        else:
+            if not wanted or logged >= wanted:
+                break
+            print(f"link dropped after {logged}/{wanted}, reconnecting ...")
+
+    print(f"\n{logged} notification(s) logged")
+
+
+async def _session(name: str, address: str | None, timeout: float, wanted: int) -> int:
     device = await find_device(name, address, timeout)
     print(f"found {device.name} at {device.address}")
 
     last: float | None = None
     count = 0
+    enough = asyncio.Event()
 
     def on_notify(_sender, data: bytearray) -> None:
         nonlocal last, count
+
+        if enough.is_set():   # already have the whole run, drop the tail
+            return
 
         try:
             temperature, pressure, humidity = decode_payload(bytes(data))
@@ -168,6 +197,9 @@ async def watch_notifications(name: str, address: str | None, timeout: float) ->
             f"{temperature:6.2f} C   {pressure:8.2f} hPa   {humidity:5.2f} %RH"
         )
 
+        if wanted and count >= wanted:
+            enough.set()
+
     async with BleakClient(device) as client:
         if client.services.get_characteristic(ENV_CHAR_UUID) is None:
             raise SystemExit(
@@ -177,14 +209,17 @@ async def watch_notifications(name: str, address: str | None, timeout: float) ->
             )
 
         await client.start_notify(ENV_CHAR_UUID, on_notify)
-        print("subscribed, Ctrl-C to stop")
+        target = f"logging {wanted} notification(s)" if wanted else "Ctrl-C to stop"
+        print(f"subscribed, {target}")
         print("silence means nothing moved past the notification threshold\n")
 
-        try:
-            while client.is_connected:
-                await asyncio.sleep(1.0)
-        finally:
-            print(f"\n{count} notification(s) received")
+        while client.is_connected and not enough.is_set():
+            try:
+                await asyncio.wait_for(enough.wait(), timeout=1.0)
+            except asyncio.TimeoutError:
+                continue
+
+    return count
 
 
 def main() -> int:
@@ -196,6 +231,18 @@ def main() -> int:
         type=float,
         default=30.0,
         help="scan timeout in seconds, also the run time of --scan-only",
+    )
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=5,
+        help="disconnect after this many notifications, 0 to watch until Ctrl-C",
+    )
+    parser.add_argument(
+        "--retries",
+        type=int,
+        default=3,
+        help="how many times to (re)connect before giving up",
     )
     parser.add_argument(
         "--scan-only",
@@ -213,7 +260,15 @@ def main() -> int:
         if args.scan_only:
             asyncio.run(scan_only(args.name, args.timeout, args.all))
         else:
-            asyncio.run(watch_notifications(args.name, args.address, args.timeout))
+            asyncio.run(
+                watch_notifications(
+                    args.name,
+                    args.address,
+                    args.timeout,
+                    max(args.count, 0),
+                    max(args.retries, 1),
+                )
+            )
     except KeyboardInterrupt:
         print()
 
