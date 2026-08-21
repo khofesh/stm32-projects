@@ -59,6 +59,7 @@
 extern DMA_HandleTypeDef hdma_adc1;
 extern I2C_HandleTypeDef hi2c3;
 extern IPCC_HandleTypeDef hipcc;
+extern RTC_HandleTypeDef hrtc;
 extern PCD_HandleTypeDef hpcd_USB_FS;
 /* USER CODE BEGIN EV */
 
@@ -203,6 +204,20 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /**
+  * @brief This function handles RTC wake-up interrupt through EXTI line 19.
+  */
+void RTC_WKUP_IRQHandler(void)
+{
+  /* USER CODE BEGIN RTC_WKUP_IRQn 0 */
+
+  /* USER CODE END RTC_WKUP_IRQn 0 */
+  HAL_RTCEx_WakeUpTimerIRQHandler(&hrtc);
+  /* USER CODE BEGIN RTC_WKUP_IRQn 1 */
+
+  /* USER CODE END RTC_WKUP_IRQn 1 */
+}
+
+/**
   * @brief This function handles DMA1 channel3 global interrupt.
   */
 void DMA1_Channel3_IRQHandler(void)
@@ -301,18 +316,5 @@ void HSEM_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
-
-/**
-  * @brief This function handles RTC wake-up interrupt through EXTI line 19.
-  * @note  HW_TS_Init() enables RTC_WKUP_IRQn at runtime for the STM32_WPAN
-  *        timer server, but the RTC wake-up interrupt is not ticked in the
-  *        CubeMX NVIC tab, so no handler is generated and the vector falls
-  *        through to Default_Handler(). The first timer server timeout after
-  *        the BLE stack starts then traps the core in that infinite loop.
-  */
-void RTC_WKUP_IRQHandler(void)
-{
-  HW_TS_RTC_Wakeup_Handler();
-}
 
 /* USER CODE END 1 */
