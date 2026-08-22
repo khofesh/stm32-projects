@@ -4,7 +4,7 @@
 
 Build a battery-powered environmental monitor using:
 
-- STM32WB54
+- STM32WB55
 - BME280 temperature / humidity / pressure sensor
 - I2C OLED display
 - Bluetooth Low Energy
@@ -26,7 +26,7 @@ Do not optimize for maximum continuous update rate. The device should spend most
 
 Target MCU:
 
-- STM32WB54
+- STM32WB55
 - Cortex-M4 application core
 - Cortex-M0+ wireless core
 - STM32CubeWB BLE stack
@@ -933,7 +933,7 @@ For long low-power intervals, prefer RTC or STM32 low-power timing mechanisms ra
 
 # Floating Point
 
-STM32WB54 can handle floating-point calculations on the Cortex-M4 application core.
+STM32WB55 can handle floating-point calculations on the Cortex-M4 application core.
 
 However:
 
@@ -1183,14 +1183,14 @@ pin. **Do not hand-edit the `.ioc`.** In STM32CubeMX:
    actually breaks out.
 3. Left-click the pin, set its mode to **GPIO_EXTI\<n\>**.
 4. **System Core → GPIO**, select that pin:
-   - GPIO mode: *External Interrupt Mode with Falling edge trigger detection*
+   - GPIO mode: _External Interrupt Mode with Falling edge trigger detection_
      (use Rising if the button pulls high).
-   - Pull-up/Pull-down: *Pull-up* (for a button to GND).
+   - Pull-up/Pull-down: _Pull-up_ (for a button to GND).
    - User Label: `USER_BUTTON` — this is what generates `USER_BUTTON_Pin`.
 5. **System Core → NVIC**, enable **EXTI line\<n\> interrupt**. Leave the
    preemption priority at or below the RTC wakeup interrupt's.
-6. **Project Manager → Code Generator**, keep *Generate peripheral
-   initialization as a pair of .c/.h files* as configured, then **Generate
+6. **Project Manager → Code Generator**, keep _Generate peripheral
+   initialization as a pair of .c/.h files_ as configured, then **Generate
    Code**.
 
 No further firmware change is needed: the callback is inside
@@ -1214,8 +1214,8 @@ To enable it in STM32CubeMX:
 
 1. **Middleware and Software Packs → STM32_WPAN**.
 2. Under the debug/trace settings, set **CFG_DEBUG_BLE_TRACE**,
-   **CFG_DEBUG_APP_TRACE** and **CFG_DEBUG_TRACE_FULL** to *Disabled*, and set
-   **CFG_HW_USART1_ENABLED** to *Disabled* if UART logging is not needed.
+   **CFG_DEBUG_APP_TRACE** and **CFG_DEBUG_TRACE_FULL** to _Disabled_, and set
+   **CFG_HW_USART1_ENABLED** to _Disabled_ if UART logging is not needed.
 3. Confirm **Low Power Manager (TINY_LPM)** stays enabled in
    **Middleware → STM32_WPAN → Utilities**.
 4. Generate code, then set `CFG_LPM_SUPPORTED` to `1` in `Core/Inc/app_conf.h`
@@ -1271,7 +1271,7 @@ down after it is blanked. Nothing above the driver knows the difference.
 To add the load switch:
 
 1. Wire a P-channel MOSFET or load switch between 3V3 and OLED VCC.
-2. In STM32CubeMX, set the gate-driving pin to **GPIO_Output**, *Low* initial
+2. In STM32CubeMX, set the gate-driving pin to **GPIO_Output**, _Low_ initial
    level, push-pull, no pull, and give it the User Label `OLED_PWR`.
 3. Generate code. The `#if defined(OLED_PWR_Pin)` blocks in `display_app.c`
    become live with no other change.
@@ -1358,7 +1358,7 @@ Before modifying code:
 
 1. Inspect the existing repository structure.
 2. Inspect the `.ioc` file if present.
-3. Determine the exact STM32WB54 part number.
+3. Determine the exact STM32WB55 part number.
 4. Identify the STM32CubeWB version.
 5. Identify whether BLE middleware is already configured.
 6. Identify which I2C peripheral is connected to the BME280/OLED.
