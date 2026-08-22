@@ -197,12 +197,17 @@ void APPD_Init( void )
   gpio_config.Pin = GPIO_PIN_14 | GPIO_PIN_13;
   __HAL_RCC_GPIOA_CLK_ENABLE();
   HAL_GPIO_Init(GPIOA, &gpio_config);
-  __HAL_RCC_GPIOA_CLK_DISABLE();
 
-  gpio_config.Pin = GPIO_PIN_4 | GPIO_PIN_3;
+  /* PB4 is I2C3_SDA to the OLED, not JTRST: putting it in analog mode kills
+     the panel bus from APPD_Init() onwards, leaving the splash frozen on the
+     glass. Only PB3 (SWO, unused) goes analog here */
+  gpio_config.Pin = GPIO_PIN_3;
   __HAL_RCC_GPIOB_CLK_ENABLE();
   HAL_GPIO_Init(GPIOB, &gpio_config);
-  __HAL_RCC_GPIOB_CLK_DISABLE();
+
+  /* the GPIOA/GPIOB clocks stay on: I2C1 (PB8/PB9), I2C3 (PA7/PB4) and the
+     button all live on these ports, and in STOP2 the peripheral clocks are
+     gated anyway, so gating them here buys nothing */
 
   HAL_DBGMCU_DisableDBGSleepMode();
   HAL_DBGMCU_DisableDBGStopMode();

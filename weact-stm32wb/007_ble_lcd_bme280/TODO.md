@@ -1222,13 +1222,23 @@ re-enables HSE, raises the flash latency *before* the frequency, switches
 SYSCLK back and puts the SMPS back on HSE. `ExitLowPower_2` is the case where
 CPU2 kept HSE running and the core never left it — nothing to restore.
 
-`CFG_DEBUGGER_SUPPORTED` (`app_conf.h:586`) is deliberately left at **1**. It
-keeps the debug domain clocked in STOP2 and inflates the measured current by
-roughly a milliamp, so it must be set to 0 for the measurement below — and back
-to 1 to attach a probe again. Note what that switch does: the `#else` branch of
-`APPD_Init()` in `app_debug.c` puts the JTAG-only pins in analog mode, and PA15
-is the user button on this board, so `GPIO_PIN_15` has been removed from that
-list. PA13/PA14 (SWD) and PB3/PB4 still go analog as intended.
+`CFG_DEBUGGER_SUPPORTED` (`app_conf.h:586`) is now **0**. It keeps the debug
+domain clocked in STOP2 and inflates the measured current by roughly a
+milliamp, so it has to be 0 for the measurement below — and back to 1 to attach
+a probe to a running target again. With it at 0 the board can only be flashed
+under reset; see PROBLEM.md, "OLED frozen on the `waiting...` splash".
+
+Note what that switch does: the `#else` branch of `APPD_Init()` in
+`app_debug.c` puts the CubeMX "JTAG-only" pin list in analog mode, and two of
+those pins are in use on this board. **PA15** is the user button and **PB4** is
+`I2C3_SDA` to the OLED — leaving either in the list kills its function the
+moment the debugger is disabled, silently, from inside `MX_APPE_Init()`. Both
+have been removed. Only **PA13, PA14 and PB3** go analog, and the
+`__HAL_RCC_GPIOx_CLK_DISABLE()` calls that followed them are gone as well:
+GPIOA and GPIOB carry I2C1, I2C3 and the button, and STOP2 gates peripheral
+clocks anyway.
+
+Check any pin against the `.ioc` before putting it back in that list.
 
 Then verify, in this order, before claiming anything:
 
@@ -1239,9 +1249,16 @@ Then verify, in this order, before claiming anything:
    Standby/Shutdown, which this design does not use.
 4. I2C still clocks correctly after a wake — a half-rate bus is the symptom
    that the clock restore regressed.
-5. Set `CFG_DEBUGGER_SUPPORTED` to 0, `LED_NOTIFY_BLINK` to 0, then measure the
+5. With `CFG_DEBUGGER_SUPPORTED` 0 and `LED_NOTIFY_BLINK` 0, measure the
    actual current with a Joulescope/PPK across a full
    STABLE → ACTIVE → INTERACTIVE → STABLE cycle.
+
+The `.ioc` still carries `STM32_WPAN.CFG_DEBUG_APP_TRACE=1`,
+`CFG_DEBUG_BLE_TRACE=1` and `CFG_DEBUG_TRACE_FULL=1`. The next CubeMX
+regeneration writes those back into `app_conf.h`, which re-triggers the `#if`
+at `app_conf.h:608` and silently force-clears `CFG_LPM_SUPPORTED` again. Set
+them to Disabled under Middleware and Software Packs → STM32_WPAN → BLE →
+Debug/Trace before regenerating.
 
 Still on the table if the measurement disappoints, both `.ioc` changes:
 USB (`MX_USB_PCD_Init`) and its HSI48 are initialized but unused, and ADC1 is

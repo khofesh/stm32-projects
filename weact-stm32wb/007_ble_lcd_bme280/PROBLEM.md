@@ -102,3 +102,94 @@ cd Debug && make all
 arm-none-eabi-objcopy -O binary 007_ble_lcd_bme280.elf fw.bin
 st-flash --reset write fw.bin 0x08000000
 ```
+
+---
+
+# OLED frozen on the "waiting..." splash
+
+Status: **resolved**. Closed 2026-08-22.
+
+---
+
+## Symptom
+
+After turning the Phase 6 power configuration on, the panel showed the boot
+splash
+
+```text
+BME280
+waiting...
+```
+
+and never updated. No measurement row ever appeared, and the panel never went
+dark on the 10 s display timeout either.
+
+## Root cause
+
+Not `CFG_LPM_SUPPORTED`, despite being noticed right after it was set to 1.
+The culprit was `CFG_DEBUGGER_SUPPORTED 0`, flipped in the same pass.
+
+The `#else` branch of `APPD_Init()` puts the debug pins in analog mode. Its
+CubeMX default list is `GPIO_PIN_4 | GPIO_PIN_3` on GPIOB -- JTRST and JTDO on
+a board that uses them for nothing else. **On this board `PB4` is `I2C3_SDA`,
+the OLED bus** (`.ioc`: `PB4.Signal=I2C3_SDA`, `PA7.Signal=I2C3_SCL`).
+
+The ordering is what makes it look like a display bug rather than a pin bug:
+
+```text
+main()
+  DISPLAY_APP_Init()      splash composed and pushed   <- I2C3 alive
+  MX_APPE_Init()
+    APPD_Init()           PB4 -> GPIO_MODE_ANALOG      <- I2C3 dead
+  APP_ENV_Init()
+    APP_DISPLAY_Init()
+      DISPLAY_APP_PowerOff()   fails silently
+```
+
+Every I2C3 transfer after `APPD_Init()` fails, so the splash that was already
+in the panel's GRAM stays lit forever. `DISPLAY_APP_PowerOff()` returning
+non-zero is discarded with `(void)`, and `app_display_render()` gives up before
+touching the bus, so nothing upstream notices.
+
+This is the same class of bug as the PA15 one already commented in that
+function: the CubeMX pin list assumes the JTAG-only pinout.
+
+## Fix applied
+
+| file | change |
+| ---- | ------ |
+| `Core/Src/app_debug.c` | `GPIO_PIN_4` dropped from the GPIOB analog list; only `PB3` (SWO, unused in the `.ioc`) goes analog |
+| `Core/Src/app_debug.c` | `__HAL_RCC_GPIOA_CLK_DISABLE()` / `__HAL_RCC_GPIOB_CLK_DISABLE()` removed -- I2C1 (PB8/PB9), I2C3 (PA7/PB4) and the button (PA15) all live on those ports, and STOP2 gates peripheral clocks anyway, so gating them in RUN buys no power and only invites the same silent failure |
+
+Both edits are inside `/* USER CODE BEGIN APPD_Init */` and survive
+regeneration.
+
+Before touching this list again, check the pin against the `.ioc`. The pins
+that are genuinely free to go analog on this board are **PA13, PA14 and PB3**.
+
+## Flashing with `CFG_DEBUGGER_SUPPORTED 0`
+
+The same switch puts `PA13`/`PA14` (SWD) in analog mode and disables the debug
+domain in STOP2, so a hotplug attach cannot work on a running target. Connect
+under reset, and press the board reset button if the probe still does not see
+the core:
+
+```bash
+export PATH=/opt/st/stm32cubeide_2.1.1/plugins/com.st.stm32cube.ide.mcu.externaltools.cubeprogrammer.linux64_2.2.400.202601091506/tools/bin:$PATH
+STM32_Programmer_CLI -c port=SWD mode=UR -w Debug/007_ble_lcd_bme280.elf -v -rst
+```
+
+Read the `Voltage:` line before blaming the firmware. `0.00 V` there is VTREF,
+not the target -- the board is unpowered or the target-VCC wire of the ribbon
+is not connected, and no `mode=` will help:
+
+```text
+Board       : STLINK-V3SET
+Voltage     : 0.01V
+Error: Unable to get core ID
+Error: No STM32 target found!
+```
+
+For bring-up work, leaving `CFG_DEBUGGER_SUPPORTED` at 1 keeps SWD alive
+through STOP2 and does **not** disable `CFG_LPM_SUPPORTED`. It costs roughly a
+milliamp, which matters only for the final current measurement.
