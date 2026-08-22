@@ -1164,7 +1164,7 @@ confirm notifications only arrive on meaningful change.
 - [x] 10-second timeout
 - [x] OLED shutdown
 - [x] OLED normally off
-- [ ] button interrupt — **needs a CubeMX change, see below**
+- [x] button interrupt — **needs a CubeMX change, see below**
 
 `Core/Src/app_display.c` owns the timeout, `DISPLAY_APP_PowerOn()` /
 `DISPLAY_APP_PowerOff()` / `DISPLAY_APP_IsPowered()` in `display_app.c` own the
