@@ -107,7 +107,8 @@ st-flash --reset write fw.bin 0x08000000
 
 # OLED frozen on the "waiting..." splash
 
-Status: **resolved**. Closed 2026-08-22.
+Status: **resolved**, confirmed on hardware 2026-08-22. The panel now blanks
+after the splash, wakes on the button and shows live rows.
 
 ---
 
@@ -193,3 +194,87 @@ Error: No STM32 target found!
 For bring-up work, leaving `CFG_DEBUGGER_SUPPORTED` at 1 keeps SWD alive
 through STOP2 and does **not** disable `CFG_LPM_SUPPORTED`. It costs roughly a
 milliamp, which matters only for the final current measurement.
+
+---
+
+# GATT discovery fails from the Linux host
+
+Status: **not a firmware bug**. Understood 2026-08-22.
+
+---
+
+## Symptom
+
+`scripts/bme280_notify.py` finds the board every time and then fails to
+connect, three attempts out of three:
+
+```text
+found WeEnv at 00:80:E1:26:06:2E
+attempt 1/3 failed:
+```
+
+The empty reason is the script printing `str(exc)` of a `BleakError`. The real
+message is
+
+```text
+bleak.exc.BleakError: failed to discover services, device disconnected
+```
+
+and on a longer run it degrades to a bare `TimeoutError`.
+
+## What actually happens
+
+The link comes up and dies before discovery finishes. From BlueZ's D-Bus
+properties:
+
+```text
+17:38:02.400  Connected = True
+17:38:07.882  Connected = False     dropped after 5.5 s
+17:38:11.921  Connected = True      BlueZ retried
+17:38:33.356  Connected = False     dropped after 21.4 s
+ServicesResolved: never True
+Paired / Bonded: False
+```
+
+## Cause
+
+The weak RF path already recorded above, not the firmware. A 60 s scan hears
+**5 advertisement reports at -78..-84 dBm** — about one per 12 s against a
+1 s advertising interval, so this host receives well under 1 % of advertising
+events. That is enough to be discovered, which needs one packet, and nowhere
+near enough for a service discovery, which needs dozens of round trips inside
+the supervision timeout.
+
+**nRF Connect on an iPhone at the same distance connects, discovers the
+service and receives notifications for minutes.** The firmware is fine.
+
+## Ruled out, so it is not re-tested
+
+- Not `CFG_LPM_SUPPORTED`. The advertised payload keeps updating through the
+  scan (32.18 -> 32.16 -> 32.13 degC), so sampling, the RTC timer server and
+  `aci_gap_update_adv_data()` all run with STOP2 enabled.
+- Not a stale bond. `bluetoothctl devices Paired` and `Bonded` are empty and
+  the device properties report `Paired: False`.
+- Not the connection parameter policy. `app_ble_policy_publish_task()` gates
+  `aci_l2cap_connection_parameter_update_req()` behind `s_notify_enabled`, so
+  no relaxed interval is applied while the central is walking the attribute
+  table.
+- Not a missing CPU1 wakeup. `Init_Exti()` (IPCC line 36, HSEM line 38) is
+  called from `System_Init()`, `app_entry.c:262`.
+
+## If it has to work from this host
+
+Move the board within a few centimetres of the adapter, or fix the RF path
+itself -- see "Still open" above. To get the disconnect reason rather than
+guessing, capture HCI:
+
+```bash
+sudo btmon -w /tmp/weenv.btsnoop     # then run the script in another terminal
+```
+
+`Disconnect Complete` separates the cases: `0x08` supervision timeout is
+RF/timing, `0x3E` connection failed to establish means the peripheral never saw
+the connect indication, `0x13`/`0x16` means one side terminated deliberately.
+
+Until then, **verify BLE behaviour from a phone**, and use this host only for
+`--scan-only`, which the weak link is still good enough for.

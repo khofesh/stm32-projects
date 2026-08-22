@@ -1196,6 +1196,7 @@ pending bits so bounces that arrived while masked are discarded. The window is
 - [x] all scheduling on RTC timers, which keep running in STOP2
 - [x] STOP2 actually enabled
 - [x] clock restored on wake
+- [x] RTC, BLE, button and I2C verified on hardware with LPM on (2026-08-22)
 - [ ] current measured on hardware
 
 `main.c`'s `while (1)` contains nothing but `MX_APPE_Process()`, so every pass
@@ -1242,16 +1243,27 @@ Check any pin against the `.ioc` before putting it back in that list.
 
 Then verify, in this order, before claiming anything:
 
-1. RTC wakes the application: sampling cadence unchanged with LPM on.
-2. BLE stays connected across sleep cycles.
-3. The button wakes the application. Any GPIO EXTI line wakes the CPU from
-   STOP2 on STM32WB — the dedicated PWR WKUP pins only matter for
-   Standby/Shutdown, which this design does not use.
-4. I2C still clocks correctly after a wake — a half-rate bus is the symptom
-   that the clock restore regressed.
+1. **Done, 2026-08-22.** RTC wakes the application: sampling cadence unchanged
+   with LPM on. The advertised manufacturer data keeps updating across a 60 s
+   scan, so the whole measure → classify → publish chain survives STOP2.
+2. **Done, 2026-08-22.** BLE stays connected across sleep cycles: nRF Connect
+   on an iPhone connects, discovers the service and receives notifications over
+   several minutes while the application is sleeping between events.
+3. **Done, 2026-08-22.** The button wakes the application and lights the OLED.
+   Any GPIO EXTI line wakes the CPU from STOP2 on STM32WB — the dedicated PWR
+   WKUP pins only matter for Standby/Shutdown, which this design does not use.
+4. **Done, 2026-08-22.** I2C still clocks correctly after a wake, on both
+   buses: the BME280 (I2C1) keeps returning sane values and the OLED (I2C3)
+   renders. A half-rate bus would have been the symptom that the clock restore
+   regressed.
 5. With `CFG_DEBUGGER_SUPPORTED` 0 and `LED_NOTIFY_BLINK` 0, measure the
    actual current with a Joulescope/PPK across a full
-   STABLE → ACTIVE → INTERACTIVE → STABLE cycle.
+   STABLE → ACTIVE → INTERACTIVE → STABLE cycle. **Still open** — this is the
+   only Phase 6 item left.
+
+Verify from a phone, not from this Linux host. See PROBLEM.md, "GATT discovery
+fails from the Linux host": the host hears too little of the advertising to
+complete a discovery, which looks exactly like a firmware fault and is not one.
 
 The `.ioc` still carries `STM32_WPAN.CFG_DEBUG_APP_TRACE=1`,
 `CFG_DEBUG_BLE_TRACE=1` and `CFG_DEBUG_TRACE_FULL=1`. The next CubeMX
