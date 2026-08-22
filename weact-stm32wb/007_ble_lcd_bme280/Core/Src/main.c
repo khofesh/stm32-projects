@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "app_common.h"
 #include "app_config.h"
 #include "app_display.h"
 #include "app_env.h"
@@ -35,6 +36,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+/* CFG_TS_TICK_VAL is the timer server tick in microseconds */
+#define BUTTON_DEBOUNCE_TICKS  (((uint32_t)BUTTON_DEBOUNCE_MS * 1000U) / CFG_TS_TICK_VAL)
 
 /* USER CODE END PD */
 
@@ -60,6 +63,10 @@ DMA_HandleTypeDef hdma_usart1_tx;
 PCD_HandleTypeDef hpcd_USB_FS;
 
 /* USER CODE BEGIN PV */
+#if defined(USER_BUTTON_Pin)
+static uint8_t          s_button_ts_id;
+static volatile uint8_t s_button_masked;
+#endif /* USER_BUTTON_Pin */
 
 /* USER CODE END PV */
 
@@ -77,6 +84,10 @@ static void MX_ADC1_Init(void);
 static void MX_USB_PCD_Init(void);
 static void MX_RF_Init(void);
 /* USER CODE BEGIN PFP */
+#if defined(USER_BUTTON_Pin)
+static void button_init(void);
+static void button_rearm_cb(void);
+#endif /* USER_BUTTON_Pin */
 
 /* USER CODE END PFP */
 
@@ -147,6 +158,9 @@ int main(void)
   /* the timer server is up only after MX_APPE_Init(), and APP_ENV_Init()
      creates timers, so it has to come after it */
   APP_ENV_Init();
+#if defined(USER_BUTTON_Pin)
+  button_init();
+#endif /* USER_BUTTON_Pin */
 
   while (1)
   {
@@ -654,28 +668,48 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 #if defined(USER_BUTTON_Pin)
 /**
+  * @brief  re-arm the button EXTI line once the debounce window has elapsed
+  * @note   runs in the RTC wakeup ISR; register writes only
+  */
+static void button_rearm_cb(void)
+{
+  __HAL_GPIO_EXTI_CLEAR_IT(USER_BUTTON_Pin);
+  HAL_NVIC_ClearPendingIRQ(USER_BUTTON_EXTI_IRQn);
+  s_button_masked = 0U;
+  HAL_NVIC_EnableIRQ(USER_BUTTON_EXTI_IRQn);
+}
+
+/**
+  * @brief  create the button debounce timer
+  * @note   must be called after MX_APPE_Init(), the timer server is up only then
+  */
+static void button_init(void)
+{
+  (void)HW_TS_Create(CFG_TIM_PROC_ID_ISR, &s_button_ts_id, hw_ts_SingleShot, button_rearm_cb);
+}
+
+/**
   * @brief  user button EXTI callback
   * @note   ISR responsibilities stop at debouncing and waking the application:
   *         no I2C, no panel and no BLE work happens here
   */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-  static uint32_t last_press_tick;
-  uint32_t        now;
-
   if (GPIO_Pin != USER_BUTTON_Pin)
   {
     return;
   }
 
-  /* SysTick is stopped in STOP2, so the first edge after a wake sees a stale
-     tick; that only ever makes the debounce more permissive, never less */
-  now = HAL_GetTick();
-  if ((uint32_t)(now - last_press_tick) < BUTTON_DEBOUNCE_MS)
+  if (s_button_masked != 0U)
   {
     return;
   }
-  last_press_tick = now;
+
+  /* SysTick is suspended in STOP2, so HAL_GetTick() cannot time the debounce.
+     Mask the line instead and let the RTC-backed timer server re-arm it */
+  s_button_masked = 1U;
+  HAL_NVIC_DisableIRQ(USER_BUTTON_EXTI_IRQn);
+  HW_TS_Start(s_button_ts_id, BUTTON_DEBOUNCE_TICKS);
 
   APP_ENV_OnUserInteraction();
 }
