@@ -45,3 +45,30 @@ temperature and humidity while the device is disconnected.
 - Linux needs BlueZ; no root required for scanning in a normal desktop session.
 - If the device is already connected to a phone it will not be connectable
   here — this firmware accepts one central at a time.
+
+### Discovery fails right after reflashing
+
+```text
+found WeEnv at 00:80:E1:26:06:2E
+attempt 1/3 failed: failed to discover services, device disconnected
+attempt 2/3 failed: failed to discover services, device disconnected
+attempt 3/3 failed: (<BleakGATTProtocolErrorCode.UNLIKELY_ERROR: 14>, ...)
+```
+
+BlueZ caches the attribute table per device address, for unbonded devices too.
+Flashing firmware that moves attribute handles leaves that cache describing a
+database the device no longer has, and discovery fails against the stale copy —
+repeatably, until the cache is dropped. Advertising still works throughout,
+which is what makes it look like a firmware fault.
+
+Drop the cached entry and reconnect:
+
+```bash
+bluetoothctl remove 00:80:E1:26:06:2E
+```
+
+Substitute the address the scan printed. Worth doing as the first step any time
+discovery breaks after a flash, before suspecting the firmware. To tell the two
+apart, the device itself is fine if `STM32_Programmer_CLI -c port=SWD
+mode=Hotplug -coreReg` shows CPU1 in Thread mode inside `UTIL_SEQ_Run` — halt
+state is in `../README.md` under "verifying on the bench".

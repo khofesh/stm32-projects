@@ -1265,7 +1265,10 @@ survives regeneration.
 `APP_BLE_POLICY_OnStateChanged()` issues
 `aci_l2cap_connection_parameter_update_req()` once per transition — never
 repeatedly — asking for 500–1000 ms in STABLE and 100–250 ms in
-ACTIVE/INTERACTIVE.
+ACTIVE/INTERACTIVE. The request is held until the client enables notifications:
+a relaxed interval applied while the central is still walking the attribute
+table stretches every discovery round trip to a full second, and a central that
+times discovery out just drops the link.
 
 Slave latency is `BLE_CONN_LATENCY`, currently 0. Raising it is the next lever;
 `BLE_CONN_SUPERVISION_TIMEOUT` must stay above
