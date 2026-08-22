@@ -19,6 +19,7 @@
 #include "app_config.h"
 #include "ble.h"
 #include "custom_stm.h"
+#include "main.h"
 #include "stm32_seq.h"
 
 /* the advertising payload built here replaces the generated a_AdvData, which
@@ -43,6 +44,56 @@ static uint8_t           s_adv_len;
 
 _Static_assert(APP_BLE_ADV_TOTAL_LEN <= 28,
                "advertising payload must fit in 31 bytes minus the 3 byte flags field");
+
+/* ---------------------------------------------------------------------------
+ * Notification LED
+ *
+ * Lit when the stack accepts a notification, cleared by a timer server
+ * single shot. The pin state is retained in STOP2, so the blink survives a
+ * sleep and costs no wakeup beyond the one the timer server already owns.
+ * ------------------------------------------------------------------------- */
+
+#if (LED_NOTIFY_BLINK == 1)
+
+#if (LED_ACTIVE_HIGH == 1)
+#define LED_ON_STATE   GPIO_PIN_SET
+#define LED_OFF_STATE  GPIO_PIN_RESET
+#else
+#define LED_ON_STATE   GPIO_PIN_RESET
+#define LED_OFF_STATE  GPIO_PIN_SET
+#endif
+
+/* CFG_TS_TICK_VAL is the timer server tick in microseconds */
+#define LED_BLINK_TICKS  (((uint32_t)LED_NOTIFY_BLINK_MS * 1000U) / CFG_TS_TICK_VAL)
+
+static uint8_t           s_led_ts_id;
+
+static void app_ble_policy_led_off_cb(void)
+{
+    HAL_GPIO_WritePin(BOARD_LED_GPIO_Port, BOARD_LED_Pin, LED_OFF_STATE);
+}
+
+/* HW_TS_Start() restarts a running timer, so back to back notifications
+   extend the blink instead of stacking callbacks */
+static void app_ble_policy_led_blink(void)
+{
+    HAL_GPIO_WritePin(BOARD_LED_GPIO_Port, BOARD_LED_Pin, LED_ON_STATE);
+    HW_TS_Start(s_led_ts_id, LED_BLINK_TICKS);
+}
+
+static void app_ble_policy_led_init(void)
+{
+    HAL_GPIO_WritePin(BOARD_LED_GPIO_Port, BOARD_LED_Pin, LED_OFF_STATE);
+    (void)HW_TS_Create(CFG_TIM_PROC_ID_ISR, &s_led_ts_id, hw_ts_SingleShot,
+                       app_ble_policy_led_off_cb);
+}
+
+#else
+
+#define app_ble_policy_led_blink()  ((void)0)
+#define app_ble_policy_led_init()   ((void)0)
+
+#endif /* LED_NOTIFY_BLINK */
 
 static uint16_t          s_conn_handle;
 static uint8_t           s_connected;
@@ -168,7 +219,12 @@ static void app_ble_policy_publish_task(void)
 {
     uint8_t payload[BLE_ENV_PAYLOAD_LEN];
 
-    if (s_conn_update_pending != 0)
+    /* A parameter update issued while the client is still walking the
+       attribute table stretches every discovery round trip to a full relaxed
+       interval, and a central that times discovery out just drops the link.
+       Hold the request until the client has subscribed, which is the signal
+       that it got through discovery */
+    if ((s_conn_update_pending != 0) && (s_notify_enabled != 0))
     {
         s_conn_update_pending = 0;
 
@@ -202,6 +258,8 @@ static void app_ble_policy_publish_task(void)
             {
                 s_reported      = s_latest;
                 s_have_reported = 1;
+
+                app_ble_policy_led_blink();
             }
         }
     }
@@ -229,6 +287,8 @@ void APP_BLE_POLICY_Init(void)
     s_adv_dirty           = 0;
     s_conn_update_pending = 0;
     s_conn_fast           = 0;
+
+    app_ble_policy_led_init();
 
     UTIL_SEQ_RegTask(1U << CFG_TASK_BLE_PUBLISH_ID, UTIL_SEQ_RFU, app_ble_policy_publish_task);
 }
@@ -273,6 +333,9 @@ void APP_BLE_POLICY_OnNotifyEnabled(uint8_t enabled)
 
     if (enabled != 0)
     {
+        /* discovery is over, so the policy interval can be asserted now */
+        s_conn_update_pending = 1;
+
         /* give a fresh subscriber the current value straight away */
         s_have_reported = 0;
         UTIL_SEQ_SetTask(1U << CFG_TASK_BLE_PUBLISH_ID, CFG_SCH_PRIO_0);

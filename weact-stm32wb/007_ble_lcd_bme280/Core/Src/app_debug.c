@@ -192,7 +192,9 @@ void APPD_Init( void )
   gpio_config.Pull = GPIO_NOPULL;
   gpio_config.Mode = GPIO_MODE_ANALOG;
 
-  gpio_config.Pin = GPIO_PIN_15 | GPIO_PIN_14 | GPIO_PIN_13;
+  /* PA15 is the user button, not JTDI here: leaving it in the analog list
+     would silently kill the wake path as soon as the debugger is disabled */
+  gpio_config.Pin = GPIO_PIN_14 | GPIO_PIN_13;
   __HAL_RCC_GPIOA_CLK_ENABLE();
   HAL_GPIO_Init(GPIOA, &gpio_config);
   __HAL_RCC_GPIOA_CLK_DISABLE();

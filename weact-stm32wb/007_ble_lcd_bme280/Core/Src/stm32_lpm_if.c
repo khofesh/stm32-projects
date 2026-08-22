@@ -309,14 +309,31 @@ static void ExitLowPower(void)
   {
 /* Restore the clock configuration of the application in this user section */
 /* USER CODE BEGIN ExitLowPower_1 */
+    /* The application runs on HSE at 32 MHz with one flash wait state, and
+       EnterLowPower() dropped the core to HSI with zero wait states. Without
+       this restore the system stays on HSI 16 MHz after the very first STOP2
+       wake: every peripheral clock, every HAL timeout and the SysTick period
+       silently double. Latency is raised before the frequency, SMPS follows
+       the source Switch_On_HSI() moved to HSI */
+    LL_RCC_HSE_Enable();
 
+    __HAL_FLASH_SET_LATENCY(FLASH_LATENCY_1);
+    while (__HAL_FLASH_GET_LATENCY() != FLASH_LATENCY_1);
+
+    while (!LL_RCC_HSE_IsReady());
+
+    LL_RCC_SetSysClkSource(LL_RCC_SYS_CLKSOURCE_HSE);
+    while (LL_RCC_GetSysClkSource() != LL_RCC_SYS_CLKSOURCE_STATUS_HSE);
+
+    LL_RCC_SetSMPSClockSource(LL_RCC_SMPS_CLKSOURCE_HSE);
 /* USER CODE END ExitLowPower_1 */
   }
   else
   {
 /* If the application is not running on HSE restore the clock configuration in this user section */
 /* USER CODE BEGIN ExitLowPower_2 */
-
+    /* CPU2 kept HSE running, so EnterLowPower() never switched the core to
+       HSI and there is nothing to restore */
 /* USER CODE END ExitLowPower_2 */
   }
 

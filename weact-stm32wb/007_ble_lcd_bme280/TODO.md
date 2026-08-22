@@ -1164,7 +1164,7 @@ confirm notifications only arrive on meaningful change.
 - [x] 10-second timeout
 - [x] OLED shutdown
 - [x] OLED normally off
-- [x] button interrupt — **needs a CubeMX change, see below**
+- [x] button interrupt
 
 `Core/Src/app_display.c` owns the timeout, `DISPLAY_APP_PowerOn()` /
 `DISPLAY_APP_PowerOff()` / `DISPLAY_APP_IsPowered()` in `display_app.c` own the
@@ -1172,29 +1172,21 @@ power abstraction. The panel is powered off at the end of `APP_DISPLAY_Init()`
 and only relit by `APP_ENV_OnUserInteraction()`. A frame is recomposed only
 when a digit that is actually printed changes.
 
-`HAL_GPIO_EXTI_Callback()` in `main.c` is written and debounced, but it is
-compiled out until `USER_BUTTON_Pin` exists, because this `.ioc` has no button
-pin. **Do not hand-edit the `.ioc`.** In STM32CubeMX:
+The button is **PA15 to GND**, `GPIO_MODE_IT_FALLING` with the internal
+pull-up, labelled `USER_BUTTON`, on `EXTI15_10_IRQn` at preemption priority 5.
+That sits below the timer server's RTC wakeup (3) and above SysTick (15), so it
+can never preempt the BLE stack's IPCC/HSEM lines at 0. PA15 is JTDI; SWD uses
+PA13/PA14 so this is free, but do not hold the button while attaching a JTAG
+(not SWD) probe.
 
-1. Open `007_ble_lcd_bme280.ioc`, go to **Pinout & Configuration**.
-2. Pick a free pin for the button. On this UFQFPN48 build the unassigned GPIOs
-   are PA1–PA6, PA8, PA15, PB0–PB3, PB5–PB7 and PE4 (PA0 is taken by
-   `ADCx_IN5`, PA13/PA14 are SWD, PB3 is SWO). Check which of them your board
-   actually breaks out.
-3. Left-click the pin, set its mode to **GPIO_EXTI\<n\>**.
-4. **System Core → GPIO**, select that pin:
-   - GPIO mode: _External Interrupt Mode with Falling edge trigger detection_
-     (use Rising if the button pulls high).
-   - Pull-up/Pull-down: _Pull-up_ (for a button to GND).
-   - User Label: `USER_BUTTON` — this is what generates `USER_BUTTON_Pin`.
-5. **System Core → NVIC**, enable **EXTI line\<n\> interrupt**. Leave the
-   preemption priority at or below the RTC wakeup interrupt's.
-6. **Project Manager → Code Generator**, keep _Generate peripheral
-   initialization as a pair of .c/.h files_ as configured, then **Generate
-   Code**.
-
-No further firmware change is needed: the callback is inside
-`/* USER CODE BEGIN 4 */` and becomes live as soon as the macro exists.
+Debouncing cannot use `HAL_GetTick()`: `stm32_lpm_if.c` calls
+`HAL_SuspendTick()` on every STOP2 entry, so the tick barely advances while the
+device sleeps and a tick-difference test swallows presses for seconds to
+minutes at a time. `HAL_GPIO_EXTI_Callback()` in `main.c` instead masks the
+EXTI line and re-arms it from a timer server single shot, which is RTC-backed
+and keeps running in STOP2. `button_rearm_cb()` clears both the EXTI and NVIC
+pending bits so bounces that arrived while masked are discarded. The window is
+`BUTTON_DEBOUNCE_MS` in `app_config.h`.
 
 ---
 
@@ -1202,35 +1194,58 @@ No further firmware change is needed: the callback is inside
 
 - [x] no busy polling left in the main loop
 - [x] all scheduling on RTC timers, which keep running in STOP2
-- [ ] STOP2 actually enabled — **needs a CubeMX change, see below**
+- [x] STOP2 actually enabled
+- [x] clock restored on wake
 - [ ] current measured on hardware
 
-`main.c`'s `while (1)` now contains nothing but `MX_APPE_Process()`, so every
-pass ends in `UTIL_SEQ_Idle()` → `UTIL_LPM_EnterLowPower()`. That path is inert
-today: `app_conf.h` has `CFG_LPM_SUPPORTED 0`, and it is force-cleared anyway
-because `CFG_DEBUG_TRACE` is 1.
+`main.c`'s `while (1)` contains nothing but `MX_APPE_Process()`, so every pass
+ends in `UTIL_SEQ_Idle()` → `UTIL_LPM_EnterLowPower()` → `PWR_EnterStopMode()`.
+That path is live: `CFG_LPM_SUPPORTED` is 1 (`app_conf.h:477`), and it is no
+longer force-cleared because `CFG_DEBUG_BLE_TRACE` and `CFG_DEBUG_APP_TRACE`
+are both 0, which leaves `CFG_DEBUG_TRACE` undefined. `CFG_HW_USART1_ENABLED`
+is already 0 in `hw_conf.h:165`.
 
-To enable it in STM32CubeMX:
+Nothing has to hold STOP2 off for the peripherals: every I2C access in
+`bme280_app.c` and `driver_ssd1315_interface.c` is a blocking
+`HAL_I2C_Mem_Read/Write`, so no transfer is ever in flight when the sequencer
+goes idle. The BLE stack manages its own hold through
+`UTIL_LPM_SetOffMode(CFG_LPM_APP_BLE, ...)`.
 
-1. **Middleware and Software Packs → STM32_WPAN**.
-2. Under the debug/trace settings, set **CFG_DEBUG_BLE_TRACE**,
-   **CFG_DEBUG_APP_TRACE** and **CFG_DEBUG_TRACE_FULL** to _Disabled_, and set
-   **CFG_HW_USART1_ENABLED** to _Disabled_ if UART logging is not needed.
-3. Confirm **Low Power Manager (TINY_LPM)** stays enabled in
-   **Middleware → STM32_WPAN → Utilities**.
-4. Generate code, then set `CFG_LPM_SUPPORTED` to `1` in `Core/Inc/app_conf.h`
-   (line 477). Keep `CFG_DEBUGGER_SUPPORTED` at 1 only while debugging — it
-   keeps the debug domain clocked and inflates the measured current.
+**The clock restore was the real blocker.** `EnterLowPower()` switches the core
+to HSI and drops the flash to zero wait states, and CubeMX leaves the matching
+restore to the application: both `USER CODE BEGIN ExitLowPower_1` and `_2` were
+empty. This application runs on **HSE at 32 MHz** (`SystemClock_Config()`,
+`FLASH_LATENCY_1`, SMPS sourced from HSE), so without a restore the system
+stayed on HSI 16 MHz from the first STOP2 wake onwards: every peripheral clock,
+every HAL timeout and the SysTick period silently doubled. `ExitLowPower_1` now
+re-enables HSE, raises the flash latency *before* the frequency, switches
+SYSCLK back and puts the SMPS back on HSE. `ExitLowPower_2` is the case where
+CPU2 kept HSE running and the core never left it — nothing to restore.
+
+`CFG_DEBUGGER_SUPPORTED` (`app_conf.h:586`) is deliberately left at **1**. It
+keeps the debug domain clocked in STOP2 and inflates the measured current by
+roughly a milliamp, so it must be set to 0 for the measurement below — and back
+to 1 to attach a probe again. Note what that switch does: the `#else` branch of
+`APPD_Init()` in `app_debug.c` puts the JTAG-only pins in analog mode, and PA15
+is the user button on this board, so `GPIO_PIN_15` has been removed from that
+list. PA13/PA14 (SWD) and PB3/PB4 still go analog as intended.
 
 Then verify, in this order, before claiming anything:
 
 1. RTC wakes the application: sampling cadence unchanged with LPM on.
 2. BLE stays connected across sleep cycles.
-3. The button wakes the application (needs Phase 5's pin). Any GPIO EXTI line
-   wakes the CPU from STOP2 on STM32WB — the dedicated PWR WKUP pins only
-   matter for Standby/Shutdown, which this design does not use.
-4. Measure the actual current with a Joulescope/PPK across a full
+3. The button wakes the application. Any GPIO EXTI line wakes the CPU from
+   STOP2 on STM32WB — the dedicated PWR WKUP pins only matter for
+   Standby/Shutdown, which this design does not use.
+4. I2C still clocks correctly after a wake — a half-rate bus is the symptom
+   that the clock restore regressed.
+5. Set `CFG_DEBUGGER_SUPPORTED` to 0, `LED_NOTIFY_BLINK` to 0, then measure the
+   actual current with a Joulescope/PPK across a full
    STABLE → ACTIVE → INTERACTIVE → STABLE cycle.
+
+Still on the table if the measurement disappoints, both `.ioc` changes:
+USB (`MX_USB_PCD_Init`) and its HSI48 are initialized but unused, and ADC1 is
+initialized but never converted.
 
 ---
 

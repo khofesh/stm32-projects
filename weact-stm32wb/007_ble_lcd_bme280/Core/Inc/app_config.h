@@ -93,6 +93,17 @@ extern "C" {
    toggle a pin around the sensor measurement for scope based power profiling */
 #define APP_POWER_TRACE_ENABLED                0
 
+/* Blink the board LED (PE4) once per BLE notification the stack accepted.
+   A debug aid only: the LED draws roughly 1-2 mA while lit, which averages
+   about 30 uA at the 1 Hz ACTIVE notify rate - several times the STOP2 budget
+   this design targets. Keep it at 0 for any current measurement. */
+#define LED_NOTIFY_BLINK                       0
+#define LED_NOTIFY_BLINK_MS                   20U
+
+/* 1 when the LED lights on a high level, 0 when the cathode side is driven.
+   Check the board schematic; a wrong value leaves the LED permanently lit */
+#define LED_ACTIVE_HIGH                        1
+
 #ifdef __cplusplus
 }
 #endif
