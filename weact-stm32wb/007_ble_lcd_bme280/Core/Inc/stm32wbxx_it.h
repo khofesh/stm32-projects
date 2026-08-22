@@ -62,6 +62,7 @@ void USB_LP_IRQHandler(void);
 void I2C3_EV_IRQHandler(void);
 void I2C3_ER_IRQHandler(void);
 void USART1_IRQHandler(void);
+void EXTI15_10_IRQHandler(void);
 void IPCC_C1_RX_IRQHandler(void);
 void IPCC_C1_TX_IRQHandler(void);
 void HSEM_IRQHandler(void);
