@@ -30,7 +30,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - No dynamic allocation (`malloc`/`free`); use static buffers with explicit sizes
 - Keep ISRs short — set flags, defer work to the main loop; shared ISR variables must be `volatile`
 - No blocking `HAL_Delay()` in ISRs or long-running paths; prefer non-blocking / DMA / interrupt-driven APIs
-- Header guards via `#ifndef __FILE_H` / `#define __FILE_H`, matching CubeMX style
+- Header guards: CubeMX-generated headers use `__FILE_H`; hand-written drivers use plain `FILE_H` (e.g. `SSCMA_STM32L5_H`) — match the file you are editing
 - Minimal inline comments — only for genuinely complex logic or hardware quirks (register timing, errata)
 
 ## Context Retrieval Policy
@@ -92,8 +92,9 @@ rtk docker logs <c>     # Deduplicated logs
 
 ## Graphify - Codebase context & knowledge graph protocol
 
-A pre-computed AST knowledge graph (`graph.json`) is available at: `graphify-out/graph.json`
-Use `graph.json` before searching or reading multiple source files.
+An AST knowledge graph, when present, lives at `graphify-out/graph.json`.
+It is not committed and may be absent — check for it first, and regenerate it with `/graphify` if it is missing or stale.
+When it exists, use it before searching or reading multiple source files.
 
 Workflow:
 
@@ -157,17 +158,20 @@ Clean build:
 cd Debug && make clean
 ```
 
+A `Release` configuration also exists in `.cproject` (same defines minus `DEBUG`), but only `Debug/` has generated makefiles checked in.
+
 The project is configured for STM32CubeIDE - the preferred method is to import and build within the IDE.
 
 ## Hardware Configuration
 
 - **MCU**: STM32L552ZETxQ (Cortex-M33, 110MHz)
 - **Board**: NUCLEO-L552ZE-Q
-- **Peripherals configured**:
-  - I2C1: Grove Vision AI communication
-  - UART4 with DMA: Grove Vision AI communication (alternative)
+- **Peripherals configured** (CubeMX, `MX_*_Init()` in `main.c`):
+  - I2C1: Grove Vision AI communication (SCL PG14, SDA PG13)
+  - UART4: Grove Vision AI communication (alternative), 115200 baud, RX on DMA1_Channel1 in circular mode
   - SPI1: Grove Vision AI communication (alternative)
-  - LPUART1 (COM1): Debug output at 115200 baud
+  - ICACHE, DMA, GPIO
+- **Debug output**: LPUART1 via the ST-LINK VCP, brought up by the BSP as `BSP_COM_Init(COM1, ...)` at 115200 baud (pins PG7/PG8). It is not a CubeMX peripheral — there is no `MX_LPUART1_Init()`; `printf` is retargeted through it.
 
 ## Architecture
 
@@ -189,7 +193,7 @@ Key driver features:
 
 ### External Dependencies
 
-- **jsmn**: Lightweight JSON parser (linked from `../../libraries/jsmn`)
+- **jsmn**: header-only JSON parser (`jsmn.h`). Not vendored — `.cproject` adds `../../libraries/jsmn` (absolute path) as an include directory for both Debug and Release. Per `README.md`, drag that folder onto `Drivers` in STM32CubeIDE when importing the project.
 
 ### STM32 HAL Layer
 
