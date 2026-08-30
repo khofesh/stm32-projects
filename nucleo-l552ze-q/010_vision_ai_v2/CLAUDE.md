@@ -173,6 +173,8 @@ The project is configured for STM32CubeIDE - the preferred method is to import a
 
 ### SSCMA Driver (`Drivers/sscma/`)
 
+original sscma driver: `/media/wdhome/github/khofesh/stm32-projects-libs/Seeed_Arduino_SSCMA`
+
 The custom driver communicates with Seeed SenseCraft Model Assistant (SSCMA) devices:
 
 - `sscma_stm32l5.h/c`: Main driver supporting I2C, UART, and SPI interfaces
