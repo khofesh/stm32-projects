@@ -22,6 +22,25 @@ HAS_IDF_PREREQUISITES=1 ./build.py install
 ./build.py -p /dev/ttyACM0 flash
 ```
 
+## esp32 board
+
+![esp32 with at firmware](./6097974703097057265.jpg)
+
+Pins from the top (A-E)
+
+- GND
+- EN
+- 14
+- 12
+- 13
+- 15
+- 2
+- 4
+- ignore
+- 5v
+- ignore
+- ignore
+
 ## pin mapping
 
 Host is SDMMC1 in SDIO mode. The bus is currently held at 1-bit for bring-up
