@@ -132,6 +132,55 @@ int sscma_parse_get_keypoints(const char *json, size_t json_len,
                               int max_points_per_keypoint);
 
 /**
+ * @brief Get nested integer value (data.key)
+ * @param json JSON string
+ * @param json_len Length of JSON string
+ * @param key Key within "data" object
+ * @param value Pointer to store value
+ * @return 0 on success, -1 if key not found
+ */
+int sscma_parse_get_data_int(const char *json, size_t json_len,
+                             const char *key, int *value);
+
+/**
+ * @brief Get doubly-nested string value (data.config.key)
+ * @param json JSON string
+ * @param json_len Length of JSON string
+ * @param key Key within "data"."config" object
+ * @param value Buffer to store value
+ * @param value_size Size of value buffer
+ * @return 0 on success, -1 if key not found
+ */
+int sscma_parse_get_config_string(const char *json, size_t json_len,
+                                  const char *key, char *value, size_t value_size);
+
+/**
+ * @brief Get doubly-nested integer value (data.config.key)
+ * @param json JSON string
+ * @param json_len Length of JSON string
+ * @param key Key within "data"."config" object
+ * @param value Pointer to store value
+ * @return 0 on success, -1 if key not found
+ */
+int sscma_parse_get_config_int(const char *json, size_t json_len,
+                               const char *key, int *value);
+
+/**
+ * @brief Locate a value inside "data" without copying it
+ *
+ * Useful for large payloads such as the Base64 image blob.
+ *
+ * @param json JSON string
+ * @param json_len Length of JSON string
+ * @param key Key within "data" object
+ * @param offset Pointer to store byte offset of the value within json
+ * @param length Pointer to store value length in bytes
+ * @return 0 on success, -1 if key not found
+ */
+int sscma_parse_get_data_token(const char *json, size_t json_len,
+                               const char *key, size_t *offset, size_t *length);
+
+/**
  * @brief Check if JSON contains a key
  * @param json JSON string
  * @param json_len Length of JSON string

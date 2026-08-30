@@ -43,8 +43,9 @@ _Min_Stack_Size = 0x400;	/* required amount of stack */
 /* Memories definition */
 MEMORY
 {
-  RAM	(xrw)	: ORIGIN = 0x20000000,	LENGTH = 192K
-  RAM2	(xrw)	: ORIGIN = 0x20030000,	LENGTH = 64K
+  /* SRAM1 (192K @ 0x20000000) and SRAM2 (64K @ 0x20030000) are contiguous and
+     are merged into a single region so the heap can span both */
+  RAM	(xrw)	: ORIGIN = 0x20000000,	LENGTH = 256K
 }
 
 /* Sections */
