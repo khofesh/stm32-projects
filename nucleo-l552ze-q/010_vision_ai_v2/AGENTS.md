@@ -1,13 +1,3 @@
-<!--
-You can leave out this comment section in your actual AGENTS.md file.
-
-Prerequisites:
-- tree (https://formulae.brew.sh/formula/tree)
-- rtk (https://github.com/rtk-ai/rtk)
-- Graphify (https://github.com/safishamsi/graphify)
-- ast-grep (https://github.com/ast-grep/ast-grep)
--->
-
 # agents
 
 ## STM32CubeMX
@@ -56,8 +46,6 @@ Preferred order:
 
 Avoid reading entire directories or the whole repository unless explicitly requested.
 
-<!-- rtk-instructions v2 -->
-
 ## RTK (Rust Token Killer) - Token-Optimized CLI
 
 `rtk` is a CLI proxy that filters and compresses command outputs, saving 60-90% tokens.
@@ -99,8 +87,6 @@ rtk docker ps           # Compact container list
 rtk docker images       # Compact image list
 rtk docker logs <c>     # Deduplicated logs
 ```
-
-<!-- /rtk-instructions -->
 
 ## Graphify - Codebase context & knowledge graph protocol
 
