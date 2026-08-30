@@ -1,0 +1,541 @@
+<title>SDIO pull-up network — NUCLEO-H533RE ↔ ESP32</title>
+<style>
+  :root {
+    --bg:      #F1F3F2;
+    --surface: #FBFCFB;
+    --sunk:    #E8ECEB;
+    --ink:     #131A1D;
+    --ink-2:   #4C5A5E;
+    --line:    #C9D3D2;
+    --bus:     #1F6E7B;
+    --rail:    #A76D18;
+    --fault:   #A82A21;
+    --ok:      #2C6B4B;
+    --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:      #0E1416;
+      --surface: #151D20;
+      --sunk:    #101819;
+      --ink:     #E6EDEB;
+      --ink-2:   #9AAAAD;
+      --line:    #2B3639;
+      --bus:     #5BC0CE;
+      --rail:    #E0A94A;
+      --fault:   #F0776C;
+      --ok:      #6FC08F;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:      #0E1416;
+    --surface: #151D20;
+    --sunk:    #101819;
+    --ink:     #E6EDEB;
+    --ink-2:   #9AAAAD;
+    --line:    #2B3639;
+    --bus:     #5BC0CE;
+    --rail:    #E0A94A;
+    --fault:   #F0776C;
+    --ok:      #6FC08F;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    line-height: 1.6;
+    margin: 0;
+    padding: 3rem 1.25rem 5rem;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 60rem; margin: 0 auto; display: flex; flex-direction: column; gap: 3.25rem; }
+  header { display: flex; flex-direction: column; gap: 0.9rem; }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--bus);
+  }
+  h1 {
+    font-size: clamp(1.9rem, 4.5vw, 2.9rem);
+    line-height: 1.1;
+    margin: 0;
+    font-weight: 620;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  .lede { max-width: 62ch; margin: 0; color: var(--ink-2); font-size: 1.06rem; }
+  h2 {
+    font-size: 1.32rem;
+    margin: 0;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  h3 {
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    margin: 0;
+    font-weight: 600;
+  }
+  section { display: flex; flex-direction: column; gap: 1.1rem; }
+  p { margin: 0; max-width: 66ch; }
+  .fig {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 1.25rem;
+    overflow-x: auto;
+  }
+  .fig svg { display: block; width: 100%; height: auto; min-width: 22rem; }
+  figure { margin: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+  figcaption {
+    font-size: 0.86rem;
+    color: var(--ink-2);
+    max-width: 62ch;
+  }
+  .pair { display: grid; gap: 1.1rem; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); }
+
+  /* schematic ink */
+  .wire   { stroke: var(--bus);  stroke-width: 2;   fill: none; }
+  .lead   { stroke: var(--rail); stroke-width: 2;   fill: none; }
+  .body   { stroke: var(--rail); stroke-width: 2;   fill: var(--surface); }
+  .railbar{ stroke: var(--rail); stroke-width: 3;   fill: none; stroke-linecap: round; }
+  .dot    { fill: var(--bus); }
+  .pad    { fill: var(--surface); stroke: var(--ink-2); stroke-width: 1.6; }
+  .bad    { stroke: var(--fault); stroke-width: 3.4; fill: none; stroke-linecap: round; }
+  .open   { fill: var(--surface); stroke: var(--fault); stroke-width: 2; }
+  .ghost  { stroke: var(--line); stroke-width: 2; fill: none; }
+  .hole   { fill: var(--sunk); stroke: var(--line); stroke-width: 1.2; }
+  text {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    fill: var(--ink);
+  }
+  .t-dim  { fill: var(--ink-2); font-size: 12px; }
+  .t-rail { fill: var(--rail); font-size: 12px; }
+  .t-bad  { fill: var(--fault); font-size: 12px; }
+  .t-head { fill: var(--ink-2); font-size: 12px; letter-spacing: 0.08em; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  caption { text-align: left; color: var(--ink-2); font-size: 0.86rem; padding-bottom: 0.5rem; }
+  th, td {
+    text-align: left;
+    padding: 0.55rem 0.9rem 0.55rem 0;
+    border-bottom: 1px solid var(--line);
+    font-variant-numeric: tabular-nums;
+  }
+  th {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    font-weight: 600;
+  }
+  td.mono, th.mono { font-family: var(--font-mono); }
+  .tbl-wrap { overflow-x: auto; }
+
+  pre {
+    background: var(--sunk);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--ok);
+    border-radius: 3px;
+    padding: 1rem 1.1rem;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    line-height: 1.65;
+    margin: 0;
+  }
+  .note {
+    border-left: 3px solid var(--rail);
+    padding: 0.15rem 0 0.15rem 1rem;
+    color: var(--ink-2);
+    font-size: 0.92rem;
+    max-width: 64ch;
+  }
+  ul { margin: 0; padding-left: 1.1rem; max-width: 64ch; display: flex; flex-direction: column; gap: 0.4rem; }
+  code { font-family: var(--font-mono); font-size: 0.9em; }
+  .k-bus { color: var(--bus); }
+  .k-fault { color: var(--fault); }
+  footer { color: var(--ink-2); font-size: 0.85rem; border-top: 1px solid var(--line); padding-top: 1.25rem; }
+</style>
+
+<div class="page">
+
+  <header>
+    <div class="eyebrow">NUCLEO-H533RE · SDMMC1 ↔ ESP32-WROOM-32 · SDIO slave</div>
+    <h1>The pull-up network, wired correctly</h1>
+    <p class="lede">
+      Each resistor sits <em>between</em> 3V3 and its signal, never in line with it. The signal
+      wire from the STM32 and the wire to the ESP32 meet at the resistor's lower lead — that
+      junction is the net. Get that node wrong and the host can never pull the line down.
+    </p>
+  </header>
+
+  <section>
+    <h2>Correct topology</h2>
+    <p>
+      Five 10 kΩ pull-ups, one per net: CMD and D0–D3. CK gets no pull-up because it is driven by
+      the host only; add one 22–100 Ω series resistor in the CK wire, close to the STM32 pin.
+    </p>
+    <figure>
+      <div class="fig">
+        <svg viewBox="0 0 820 700" role="img" aria-label="Schematic: six SDIO nets between the STM32 and the ESP32, five of them with a 10 kilohm resistor to 3V3 tapped onto the net.">
+          <text class="t-head" x="30" y="44">NUCLEO-H533RE</text>
+          <text class="t-head" x="790" y="44" text-anchor="end">ESP32-WROOM-32</text>
+
+          <!-- CMD -->
+          <g>
+            <line class="lead" x1="410" y1="140" x2="410" y2="118"/>
+            <rect class="body" x="400" y="88" width="20" height="30" rx="1"/>
+            <line class="lead" x1="410" y1="88" x2="410" y2="70"/>
+            <line class="railbar" x1="392" y1="70" x2="428" y2="70"/>
+            <text class="t-rail" x="410" y="58" text-anchor="middle">3V3</text>
+            <text class="t-dim" x="436" y="110">R1  10 kΩ</text>
+            <line class="wire" x1="114" y1="140" x2="706" y2="140"/>
+            <circle class="dot" cx="410" cy="140" r="4.5"/>
+            <rect class="pad" x="96" y="131" width="18" height="18" rx="1"/>
+            <rect class="pad" x="706" y="131" width="18" height="18" rx="1"/>
+            <text x="88" y="145" text-anchor="end">PB2</text>
+            <text x="732" y="145">GPIO15</text>
+            <text class="t-dim" x="200" y="128">CMD</text>
+          </g>
+
+          <!-- D0 -->
+          <g>
+            <line class="lead" x1="410" y1="240" x2="410" y2="218"/>
+            <rect class="body" x="400" y="188" width="20" height="30" rx="1"/>
+            <line class="lead" x1="410" y1="188" x2="410" y2="170"/>
+            <line class="railbar" x1="392" y1="170" x2="428" y2="170"/>
+            <text class="t-rail" x="410" y="158" text-anchor="middle">3V3</text>
+            <text class="t-dim" x="436" y="210">R2  10 kΩ</text>
+            <line class="wire" x1="114" y1="240" x2="706" y2="240"/>
+            <circle class="dot" cx="410" cy="240" r="4.5"/>
+            <rect class="pad" x="96" y="231" width="18" height="18" rx="1"/>
+            <rect class="pad" x="706" y="231" width="18" height="18" rx="1"/>
+            <text x="88" y="245" text-anchor="end">PB13</text>
+            <text x="732" y="245">GPIO2</text>
+            <text class="t-dim" x="200" y="228">D0</text>
+          </g>
+
+          <!-- D1 -->
+          <g>
+            <line class="lead" x1="410" y1="340" x2="410" y2="318"/>
+            <rect class="body" x="400" y="288" width="20" height="30" rx="1"/>
+            <line class="lead" x1="410" y1="288" x2="410" y2="270"/>
+            <line class="railbar" x1="392" y1="270" x2="428" y2="270"/>
+            <text class="t-rail" x="410" y="258" text-anchor="middle">3V3</text>
+            <text class="t-dim" x="436" y="310">R3  10 kΩ</text>
+            <line class="wire" x1="114" y1="340" x2="706" y2="340"/>
+            <circle class="dot" cx="410" cy="340" r="4.5"/>
+            <rect class="pad" x="96" y="331" width="18" height="18" rx="1"/>
+            <rect class="pad" x="706" y="331" width="18" height="18" rx="1"/>
+            <text x="88" y="345" text-anchor="end">PC9</text>
+            <text x="732" y="345">GPIO4</text>
+            <text class="t-dim" x="200" y="328">D1 · slave IRQ</text>
+          </g>
+
+          <!-- D2 -->
+          <g>
+            <line class="lead" x1="410" y1="440" x2="410" y2="418"/>
+            <rect class="body" x="400" y="388" width="20" height="30" rx="1"/>
+            <line class="lead" x1="410" y1="388" x2="410" y2="370"/>
+            <line class="railbar" x1="392" y1="370" x2="428" y2="370"/>
+            <text class="t-rail" x="410" y="358" text-anchor="middle">3V3</text>
+            <text class="t-dim" x="436" y="410">R4  10 kΩ</text>
+            <line class="wire" x1="114" y1="440" x2="706" y2="440"/>
+            <circle class="dot" cx="410" cy="440" r="4.5"/>
+            <rect class="pad" x="96" y="431" width="18" height="18" rx="1"/>
+            <rect class="pad" x="706" y="431" width="18" height="18" rx="1"/>
+            <text x="88" y="445" text-anchor="end">PC10</text>
+            <text x="732" y="445">GPIO12</text>
+            <text class="t-dim" x="200" y="428">D2 · strapping</text>
+          </g>
+
+          <!-- D3 -->
+          <g>
+            <line class="lead" x1="410" y1="540" x2="410" y2="518"/>
+            <rect class="body" x="400" y="488" width="20" height="30" rx="1"/>
+            <line class="lead" x1="410" y1="488" x2="410" y2="470"/>
+            <line class="railbar" x1="392" y1="470" x2="428" y2="470"/>
+            <text class="t-rail" x="410" y="458" text-anchor="middle">3V3</text>
+            <text class="t-dim" x="436" y="510">R5  10 kΩ</text>
+            <line class="wire" x1="114" y1="540" x2="706" y2="540"/>
+            <circle class="dot" cx="410" cy="540" r="4.5"/>
+            <rect class="pad" x="96" y="531" width="18" height="18" rx="1"/>
+            <rect class="pad" x="706" y="531" width="18" height="18" rx="1"/>
+            <text x="88" y="545" text-anchor="end">PC11</text>
+            <text x="732" y="545">GPIO13</text>
+            <text class="t-dim" x="200" y="528">D3</text>
+          </g>
+
+          <!-- CK -->
+          <g>
+            <line class="wire" x1="114" y1="630" x2="192" y2="630"/>
+            <rect class="body" x="192" y="620" width="46" height="20" rx="1"/>
+            <line class="wire" x1="238" y1="630" x2="706" y2="630"/>
+            <rect class="pad" x="96" y="621" width="18" height="18" rx="1"/>
+            <rect class="pad" x="706" y="621" width="18" height="18" rx="1"/>
+            <text x="88" y="635" text-anchor="end">PC12</text>
+            <text x="732" y="635">GPIO14</text>
+            <text class="t-dim" x="200" y="618">CK</text>
+            <text class="t-dim" x="215" y="658" text-anchor="middle">22–100 Ω</text>
+            <text class="t-dim" x="450" y="618" text-anchor="middle">no pull-up fitted</text>
+          </g>
+
+          <!-- GND -->
+          <g>
+            <line class="wire" x1="114" y1="676" x2="706" y2="676"/>
+            <text x="88" y="681" text-anchor="end">GND</text>
+            <text x="732" y="681">GND</text>
+            <text class="t-dim" x="410" y="666" text-anchor="middle">common ground — required</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>
+        The filled dot is a real electrical junction: three conductors meet there. Everything on
+        that horizontal line is one net, at one potential.
+      </figcaption>
+    </figure>
+
+    <div class="tbl-wrap">
+      <table>
+        <caption>Bill of materials — five pull-ups plus one CK damping resistor.</caption>
+        <thead>
+          <tr>
+            <th>Ref</th><th>Value</th><th>Between</th><th>and</th><th>Signal</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono">R1</td><td class="mono">10 kΩ</td><td class="mono">3V3</td><td class="mono">PB2 ↔ GPIO15</td><td>CMD</td></tr>
+          <tr><td class="mono">R2</td><td class="mono">10 kΩ</td><td class="mono">3V3</td><td class="mono">PB13 ↔ GPIO2</td><td>D0</td></tr>
+          <tr><td class="mono">R3</td><td class="mono">10 kΩ</td><td class="mono">3V3</td><td class="mono">PC9 ↔ GPIO4</td><td>D1</td></tr>
+          <tr><td class="mono">R4</td><td class="mono">10 kΩ</td><td class="mono">3V3</td><td class="mono">PC10 ↔ GPIO12</td><td>D2</td></tr>
+          <tr><td class="mono">R5</td><td class="mono">10 kΩ</td><td class="mono">3V3</td><td class="mono">PC11 ↔ GPIO13</td><td>D3</td></tr>
+          <tr><td class="mono">R6</td><td class="mono">22–100 Ω</td><td class="mono">PC12</td><td class="mono">GPIO14</td><td>CK series, close to STM32</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>CK series resistor</h2>
+    <p>
+      Cut only the CK wire. Put the resistor in series with CK, with one lead at STM32 PC12 and the
+      other lead continuing to ESP32 GPIO14. Keep the PC12-to-resistor length short.
+    </p>
+    <figure>
+      <div class="fig">
+        <svg viewBox="0 0 720 260" role="img" aria-label="CK series resistor placement: STM32 PC12 connects to a 22 to 100 ohm resistor placed close to the STM32, then the wire continues to ESP32 GPIO14.">
+          <text class="t-head" x="44" y="42">NUCLEO-H533RE</text>
+          <text class="t-head" x="676" y="42" text-anchor="end">ESP32-WROOM-32</text>
+
+          <rect class="pad" x="80" y="116" width="24" height="24" rx="1"/>
+          <text x="68" y="133" text-anchor="end">PC12</text>
+          <line class="wire" x1="104" y1="128" x2="170" y2="128"/>
+          <rect class="body" x="170" y="114" width="64" height="28" rx="1"/>
+          <line class="wire" x1="234" y1="128" x2="616" y2="128"/>
+          <rect class="pad" x="616" y="116" width="24" height="24" rx="1"/>
+          <text x="652" y="133">GPIO14</text>
+
+          <text class="t-dim" x="202" y="102" text-anchor="middle">R6  22–100 Ω</text>
+          <path class="lead" d="M 202 148 L 202 184 L 118 184 L 118 148"/>
+          <text class="t-rail" x="202" y="208" text-anchor="middle">place here: close to STM32</text>
+
+          <line class="wire" x1="104" y1="210" x2="616" y2="210"/>
+          <text x="68" y="215" text-anchor="end">GND</text>
+          <text x="652" y="215">GND</text>
+          <text class="t-dim" x="360" y="198" text-anchor="middle">common ground next to the SDIO wires</text>
+        </svg>
+      </div>
+      <figcaption>
+        This is not a pull-up. It is a small resistor in line with the clock driver to damp CK edge
+        ringing and reduce CK-to-CMD coupling at the ESP32 input.
+      </figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>The node, close up</h2>
+    <p>
+      One net, three conductors, one point. This is the whole fix: the STM32 wire and the ESP32
+      wire land on the resistor's <em>lower</em> lead — the side away from 3V3.
+    </p>
+    <figure>
+      <div class="fig">
+        <svg viewBox="0 0 620 300" role="img" aria-label="Detail of a single pull-up node: resistor from 3V3 down to a junction where the STM32 wire and the ESP32 wire meet.">
+          <line class="railbar" x1="292" y1="52" x2="328" y2="52"/>
+          <text class="t-rail" x="310" y="38" text-anchor="middle">3V3</text>
+          <line class="lead" x1="310" y1="52" x2="310" y2="86"/>
+          <rect class="body" x="298" y="86" width="24" height="46" rx="1"/>
+          <line class="lead" x1="310" y1="132" x2="310" y2="186"/>
+          <text class="t-dim" x="336" y="115">10 kΩ</text>
+
+          <line class="wire" x1="90" y1="186" x2="530" y2="186"/>
+          <circle class="dot" cx="310" cy="186" r="6"/>
+          <rect class="pad" x="72" y="177" width="18" height="18" rx="1"/>
+          <rect class="pad" x="530" y="177" width="18" height="18" rx="1"/>
+
+          <text x="72" y="222" text-anchor="start">PB2</text>
+          <text class="t-dim" x="72" y="240">STM32 drives 0 here</text>
+          <text x="548" y="222" text-anchor="end">GPIO15</text>
+          <text class="t-dim" x="548" y="240" text-anchor="end">ESP32 answers here</text>
+
+          <text class="t-dim" x="310" y="222" text-anchor="middle">one junction</text>
+          <text class="t-dim" x="310" y="268" text-anchor="middle">idle 3.3 V · pulled to 0 V by either end</text>
+        </svg>
+      </div>
+      <figcaption>
+        The 10 kΩ only has to hold the line high while nobody drives it. When the STM32 asserts,
+        it sinks 0.33 mA through the resistor and the net goes to 0 V. That is what an open-drain
+        bus needs, and what a hard tie to 3V3 makes impossible.
+      </figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>What the board is doing instead</h2>
+    <p>
+      The host measures all five nets as a near-zero-ohm path to 3.3 V. Two wiring mistakes
+      produce that, and both look correct at a glance.
+    </p>
+    <div class="pair">
+      <figure>
+        <div class="fig">
+          <svg viewBox="0 0 380 260" role="img" aria-label="Failure mode one: a solder bridge across the resistor shorts the signal to 3V3.">
+            <line class="railbar" x1="172" y1="46" x2="208" y2="46"/>
+            <text class="t-rail" x="190" y="32" text-anchor="middle">3V3</text>
+            <line class="lead" x1="190" y1="46" x2="190" y2="84"/>
+            <rect class="body" x="178" y="84" width="24" height="46" rx="1"/>
+            <line class="lead" x1="190" y1="130" x2="190" y2="176"/>
+            <path class="bad" d="M 190 60 C 238 78, 238 138, 190 160"/>
+            <text class="t-bad" x="248" y="112">bridged</text>
+            <line class="wire" x1="46" y1="176" x2="334" y2="176"/>
+            <circle class="dot" cx="190" cy="176" r="5"/>
+            <rect class="pad" x="28" y="167" width="18" height="18" rx="1"/>
+            <rect class="pad" x="334" y="167" width="18" height="18" rx="1"/>
+            <text class="t-dim" x="28" y="212">STM32</text>
+            <text class="t-dim" x="352" y="212" text-anchor="end">ESP32</text>
+            <text class="t-bad" x="190" y="238" text-anchor="middle">net = 3V3, always</text>
+          </svg>
+        </div>
+        <figcaption><strong>Solder bridge.</strong> A blob across the resistor body, or a part fitted where a 0 Ω link used to sit.</figcaption>
+      </figure>
+
+      <figure>
+        <div class="fig">
+          <svg viewBox="0 0 380 260" role="img" aria-label="Failure mode two: the signal wires land on the supply side of the resistor, leaving its lower lead unconnected.">
+            <line class="railbar" x1="172" y1="46" x2="208" y2="46"/>
+            <text class="t-rail" x="190" y="32" text-anchor="middle">3V3</text>
+            <line class="lead" x1="190" y1="46" x2="190" y2="84"/>
+            <rect class="body" x="178" y="84" width="24" height="46" rx="1"/>
+            <line class="ghost" x1="190" y1="130" x2="190" y2="156"/>
+            <circle class="open" cx="190" cy="162" r="6"/>
+            <text class="t-bad" x="212" y="152">open</text>
+            <path class="bad" d="M 46 176 L 46 66 L 172 66"/>
+            <path class="bad" d="M 334 176 L 334 66 L 208 66"/>
+            <rect class="pad" x="28" y="167" width="18" height="18" rx="1"/>
+            <rect class="pad" x="334" y="167" width="18" height="18" rx="1"/>
+            <text class="t-dim" x="28" y="212">STM32</text>
+            <text class="t-dim" x="352" y="212" text-anchor="end">ESP32</text>
+            <text class="t-bad" x="190" y="238" text-anchor="middle">signals landed on the supply side</text>
+          </svg>
+        </div>
+        <figcaption><strong>Wrong side of the resistor.</strong> Every jumper meets on the 3V3 lead, so the resistors dangle and the nets are the rail.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>On a breadboard</h2>
+    <p>
+      This is where the second failure mode comes from. The five-hole column is the node; the
+      long red strip beside it is the supply rail. They are not the same thing.
+    </p>
+    <figure>
+      <div class="fig">
+        <svg viewBox="0 0 620 280" role="img" aria-label="Breadboard layout: resistor from the plus rail into a five-hole column, with both jumpers in that same column.">
+          <!-- supply rail -->
+          <line class="railbar" x1="40" y1="56" x2="580" y2="56"/>
+          <text class="t-rail" x="40" y="40">+ rail · 3V3</text>
+          <circle class="hole" cx="120" cy="56" r="5"/>
+          <circle class="hole" cx="152" cy="56" r="5"/>
+          <circle class="hole" cx="184" cy="56" r="5"/>
+          <circle class="hole" cx="216" cy="56" r="5"/>
+          <circle class="hole" cx="248" cy="56" r="5"/>
+          <circle class="hole" cx="280" cy="56" r="5"/>
+
+          <!-- resistor from rail into the node -->
+          <line class="lead" x1="184" y1="56" x2="184" y2="96"/>
+          <rect class="body" x="172" y="96" width="24" height="40" rx="1"/>
+          <line class="lead" x1="184" y1="136" x2="184" y2="168"/>
+          <text class="t-dim" x="208" y="122">10 kΩ</text>
+
+          <!-- the node: five holes in one column -->
+          <rect x="160" y="160" width="48" height="104" rx="3" fill="none" stroke="var(--bus)" stroke-width="1.5" stroke-dasharray="4 4"/>
+          <circle class="hole" cx="184" cy="176" r="5"/>
+          <circle class="hole" cx="184" cy="196" r="5"/>
+          <circle class="hole" cx="184" cy="216" r="5"/>
+          <circle class="hole" cx="184" cy="236" r="5"/>
+          <circle class="hole" cx="184" cy="252" r="5"/>
+          <text class="t-dim" x="222" y="182">one 5-hole node = one net</text>
+
+          <!-- jumpers -->
+          <path class="wire" d="M 184 216 L 420 216 L 420 190"/>
+          <path class="wire" d="M 184 236 L 460 236 L 460 262"/>
+          <circle class="dot" cx="184" cy="216" r="4"/>
+          <circle class="dot" cx="184" cy="236" r="4"/>
+          <text x="432" y="184">to PB2</text>
+          <text x="472" y="266">to GPIO15</text>
+        </svg>
+      </div>
+      <figcaption>
+        Resistor: one leg in the + rail, one leg in the node. Both jumpers: in the node, in any
+        of its remaining holes. No jumper ever goes into the + rail. Repeat five times, one column
+        per signal.
+      </figcaption>
+    </figure>
+    <div class="note">
+      Two strapping consequences of these pull-ups, unchanged by the rework: GPIO2 (D0) must be
+      held low while flashing the ESP32 over serial, and GPIO12 (D2) needs the 3.3 V flash-voltage
+      eFuse already burned on this module.
+    </div>
+  </section>
+
+  <section>
+    <h2>Confirming the rework</h2>
+    <p>
+      The host tests this at every boot before it clocks the bus. Power up with the STM32 console
+      open — a good network reads:
+    </p>
+<pre>host ready, start initializing slave...
+E sdio_driver: pin diag: control CTRL(PA5) drive0=ok drive1=ok
+E sdio_driver: pin diag: pull-up census (expect 'high' on CMD and D0-D3)
+E sdio_driver:   CMD(PB2): high  (something pulls this net up)
+E sdio_driver:   D0(PB13): high  (something pulls this net up)
+E sdio_driver:   D1(PC9): high  (something pulls this net up)
+E sdio_driver:   D2(PC10): high  (something pulls this net up)
+E sdio_driver:   D3(PC11): high  (something pulls this net up)
+E sdio_driver: pin diag: short matrix
+E sdio_driver: pin diag: wiring looks sane from the host side</pre>
+    <ul>
+      <li>Every net still reads <code>high</code> at idle — that is the pull-up doing its job.</li>
+      <li>The short matrix stays silent. Any <code class="k-fault">driven low but reads high</code> line means that net is still tied to the rail.</li>
+      <li>Once the matrix is clean, enumeration proceeds and CMD5 should return a response instead of <code>err=0x00000004</code>.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Pin mapping per <code>README.md</code>; measurements and the fault trail in <code>ERROR.md</code>.
+    Diagnostic lives in <code>Core/Src/at_sdio/platform/sdio_driver_port.c</code>, gated by
+    <code>SDIO_PORT_PIN_DIAG</code>.
+  </footer>
+
+</div>
