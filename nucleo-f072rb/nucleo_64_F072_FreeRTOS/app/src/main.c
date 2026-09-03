@@ -6,28 +6,35 @@
  */
 
 #include "stm32f0xx.h"
+#include "bsp.h"
 
 static void SystemClock_Config();
 
 int main()
 {
-	uint32_t i;
-
+	int i = 0;
 	SystemClock_Config();
 
-	// start GPIOA clock
-	RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
+	// init LED pin
+	BSP_LED_Init();
+	BSP_PB_Init();
 
-	// configure PA5 as output
-	GPIOA->MODER &= ~GPIO_MODER_MODER5_Msk;
-	GPIOA->MODER |= (0x01 <<GPIO_MODER_MODER5_Pos);
+	// turn led on
+	BSP_LED_On();
+
+	// turn led off
+	BSP_LED_Off();
 
 	while(1)
 	{
-		// LED toggle
-		GPIOA->ODR ^= GPIO_ODR_5;
-
-		for (i=0; i < 1000000; i++);
+		if (BSP_PB_GetState() == 1)
+		{
+			BSP_LED_On();
+		}
+		else
+		{
+			BSP_LED_Off();
+		}
 	}
 }
 
