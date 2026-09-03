@@ -7,33 +7,42 @@
 
 #include "stm32f0xx.h"
 #include "bsp.h"
+#include "main.h"
 
 static void SystemClock_Config();
 
 int main()
 {
-	int i = 0;
+	uint8_t i, sent;
+
 	SystemClock_Config();
 
-	// init LED pin
 	BSP_LED_Init();
 	BSP_PB_Init();
+	BSP_Console_Init();
 
-	// turn led on
-	BSP_LED_On();
-
-	// turn led off
-	BSP_LED_Off();
+	my_printf("Console ready!\r\n");
+	sent = 0;
+	i = 0;
 
 	while(1)
 	{
 		if (BSP_PB_GetState() == 1)
 		{
 			BSP_LED_On();
+
+			// send '#' only once
+			if (sent == 0)
+			{
+				my_printf("#%d\r\n", i);
+				sent = 1;
+				i++;
+			}
 		}
 		else
 		{
 			BSP_LED_Off();
+			sent = 0;
 		}
 	}
 }
@@ -125,3 +134,5 @@ static void SystemClock_Config()
 	// Update SystemCoreClock global variable
 	SystemCoreClockUpdate();
 }
+
+
