@@ -1,6 +1,4 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+# claude
 
 ## STM32CubeMX
 
@@ -30,7 +28,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - No dynamic allocation (`malloc`/`free`); use static buffers with explicit sizes
 - Keep ISRs short — set flags, defer work to the main loop; shared ISR variables must be `volatile`
 - No blocking `HAL_Delay()` in ISRs or long-running paths; prefer non-blocking / DMA / interrupt-driven APIs
-- Header guards: CubeMX-generated headers use `__FILE_H`; hand-written drivers use plain `FILE_H` (e.g. `SSCMA_STM32L5_H`) — match the file you are editing
+- Header guards via `#ifndef __FILE_H` / `#define __FILE_H`, matching CubeMX style
 - Minimal inline comments — only for genuinely complex logic or hardware quirks (register timing, errata)
 
 ## Context Retrieval Policy
@@ -92,9 +90,8 @@ rtk docker logs <c>     # Deduplicated logs
 
 ## Graphify - Codebase context & knowledge graph protocol
 
-An AST knowledge graph, when present, lives at `graphify-out/graph.json`.
-It is not committed and may be absent — check for it first, and regenerate it with `/graphify` if it is missing or stale.
-When it exists, use it before searching or reading multiple source files.
+A pre-computed AST knowledge graph (`graph.json`) is available at: `graphify-out/graph.json`
+Use `graph.json` before searching or reading multiple source files.
 
 Workflow:
 
@@ -139,80 +136,3 @@ Use `grep` only for:
 - plain-text configuration
 
 Avoid using `grep` to search programming language source code when `ast-grep` can answer the query.
-
-## Project Overview
-
-STM32L5 firmware project for interfacing with the Grove Vision AI Module V2. Built for the NUCLEO-L552ZE-Q board using STM32CubeIDE and the ARM GCC toolchain.
-
-## Build Commands
-
-Build from the Debug directory using `make`:
-
-```bash
-cd Debug && make all
-```
-
-Clean build:
-
-```bash
-cd Debug && make clean
-```
-
-A `Release` configuration also exists in `.cproject` (same defines minus `DEBUG`), but only `Debug/` has generated makefiles checked in.
-
-The project is configured for STM32CubeIDE - the preferred method is to import and build within the IDE.
-
-## Hardware Configuration
-
-- **MCU**: STM32L552ZETxQ (Cortex-M33, 110MHz)
-- **Board**: NUCLEO-L552ZE-Q
-- **Peripherals configured** (CubeMX, `MX_*_Init()` in `main.c`):
-  - I2C1: Grove Vision AI communication (SCL PG14, SDA PG13)
-  - UART4: Grove Vision AI communication (alternative), 115200 baud, RX on DMA1_Channel1 in circular mode
-  - SPI1: Grove Vision AI communication (alternative)
-  - ICACHE, DMA, GPIO
-- **Debug output**: LPUART1 via the ST-LINK VCP, brought up by the BSP as `BSP_COM_Init(COM1, ...)` at 115200 baud (pins PG7/PG8). It is not a CubeMX peripheral — there is no `MX_LPUART1_Init()`; `printf` is retargeted through it.
-
-## Architecture
-
-### SSCMA Driver (`Drivers/sscma/`)
-
-original sscma driver: `/media/wdhome/github/khofesh/stm32-projects-libs/Seeed_Arduino_SSCMA`
-
-The custom driver communicates with Seeed SenseCraft Model Assistant (SSCMA) devices:
-
-- `sscma_stm32l5.h/c`: Main driver supporting I2C, UART, and SPI interfaces
-- `sscma_parser.h/c`: JSMN-based JSON parser for SSCMA responses
-
-Key driver features:
-
-- Multiple interface support via `sscma_begin_i2c()`, `sscma_begin_uart()`, `sscma_begin_spi()`
-- Inference results: bounding boxes, classifications, points, keypoints (pose estimation)
-- Non-blocking fetch with `sscma_fetch()` for periodic polling
-- AT command protocol with JSON responses
-
-### External Dependencies
-
-- **jsmn**: header-only JSON parser (`jsmn.h`). Not vendored — `.cproject` adds `../../libraries/jsmn` (absolute path) as an include directory for both Debug and Release. Per `README.md`, drag that folder onto `Drivers` in STM32CubeIDE when importing the project.
-
-### STM32 HAL Layer
-
-Standard STM32CubeMX-generated structure:
-
-- `Core/Src/main.c`: Application entry point and peripheral initialization
-- `Core/Inc/stm32l5xx_hal_conf.h`: HAL module configuration
-- `Drivers/STM32L5xx_HAL_Driver/`: HAL driver sources
-- `Drivers/BSP/STM32L5xx_Nucleo/`: Board support package
-
-## Code Conventions
-
-- User code sections marked with `/* USER CODE BEGIN */` and `/* USER CODE END */` are preserved during STM32CubeMX regeneration
-- Peripheral initialization follows STM32CubeMX naming: `MX_<PERIPHERAL>_Init()`
-- Project uses compile-time configuration via preprocessor defines in `.cproject`
-
-## Preprocessor Defines
-
-- `STM32L552xx`: Target MCU
-- `USE_HAL_DRIVER`: Enable HAL drivers
-- `USE_NUCLEO_144`: Board configuration
-- `DEBUG`: Debug build (Debug configuration only)

@@ -1,12 +1,10 @@
 /*
 ******************************************************************************
 **
-**  File        : LinkerScript.ld (debug in RAM dedicated)
+**  File        : LinkerScript.ld
 **
-**  Author      : STM32CubeIDE
-**
-**  Abstract    : Linker script for STM32L5x2xx Device from STM32L5 series
-**                      256Kbytes RAM
+**  Abstract    : Linker script for STM32F072RBTx series
+**                128Kbytes FLASH and 16Kbytes RAM
 **
 **                Set heap size, stack size and stack location according
 **                to application requirements.
@@ -15,18 +13,12 @@
 **
 **  Target      : STMicroelectronics STM32
 **
-**  Distribution: The file is distributed as is without any warranty
+**  Distribution: The file is distributed as is, without any warranty
 **                of any kind.
 **
 *****************************************************************************
-** @attention
 **
-** Copyright (c) 2025 STMicroelectronics.
-** All rights reserved.
-**
-** This software is licensed under terms that can be found in the LICENSE file
-** in the root directory of this software component.
-** If no LICENSE file comes with this software, it is provided AS-IS.
+**  File provided by SW4STM32
 **
 *****************************************************************************
 */
@@ -35,31 +27,30 @@
 ENTRY(Reset_Handler)
 
 /* Highest address of the user mode stack */
-_estack = ORIGIN(RAM) + LENGTH(RAM);	/* end of "RAM" Ram type memory */
+_estack = 0x20004000;    /* end of RAM */
+/* Generate a link error if heap and stack don't fit into RAM */
+_Min_Heap_Size = 0x200;      /* required amount of heap  */
+_Min_Stack_Size = 0x400; /* required amount of stack */
 
-_Min_Heap_Size = 0x200;	/* required amount of heap  */
-_Min_Stack_Size = 0x1000;	/* required amount of stack */
-
-/* Memories definition */
+/* Specify the memory areas */
 MEMORY
 {
-  /* SRAM1 (192K @ 0x20000000) and SRAM2 (64K @ 0x20030000) are contiguous and
-     are merged into a single region so the heap can span both */
-  RAM	(xrw)	: ORIGIN = 0x20000000,	LENGTH = 256K
+FLASH (rx)      : ORIGIN = 0x08000000, LENGTH = 128K
+RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 16K
 }
 
-/* Sections */
+/* Define output sections */
 SECTIONS
 {
-  /* The startup code into "RAM" Ram type memory */
+  /* The startup code goes first into FLASH */
   .isr_vector :
   {
     . = ALIGN(4);
     KEEP(*(.isr_vector)) /* Startup code */
     . = ALIGN(4);
-  } >RAM
+  } >FLASH
 
-  /* The program code and other data into "RAM" Ram type memory */
+  /* The program code and other data goes into FLASH */
   .text :
   {
     . = ALIGN(4);
@@ -68,74 +59,56 @@ SECTIONS
     *(.glue_7)         /* glue arm to thumb code */
     *(.glue_7t)        /* glue thumb to arm code */
     *(.eh_frame)
-    *(.RamFunc)        /* .RamFunc sections */
-    *(.RamFunc*)       /* .RamFunc* sections */
 
     KEEP (*(.init))
     KEEP (*(.fini))
 
     . = ALIGN(4);
     _etext = .;        /* define a global symbols at end of code */
-  } >RAM
+  } >FLASH
 
-  /* Constant data into "RAM" Ram type memory */
+  /* Constant data goes into FLASH */
   .rodata :
   {
     . = ALIGN(4);
     *(.rodata)         /* .rodata sections (constants, strings, etc.) */
     *(.rodata*)        /* .rodata* sections (constants, strings, etc.) */
     . = ALIGN(4);
-  } >RAM
+  } >FLASH
 
-  .ARM.extab (READONLY) : /* The READONLY keyword is only supported in GCC11 and later, remove it if using GCC10 or earlier. */
-  {
-    . = ALIGN(4);
-    *(.ARM.extab* .gnu.linkonce.armextab.*)
-    . = ALIGN(4);
-  } >RAM
-  .ARM (READONLY) : /* The READONLY keyword is only supported in GCC11 and later, remove it if using GCC10 or earlier. */
-  {
-    . = ALIGN(4);
+  .ARM.extab   : { *(.ARM.extab* .gnu.linkonce.armextab.*) } >FLASH
+  .ARM : {
     __exidx_start = .;
     *(.ARM.exidx*)
     __exidx_end = .;
-    . = ALIGN(4);
-  } >RAM
+  } >FLASH
 
-  .preinit_array (READONLY) : /* The READONLY keyword is only supported in GCC11 and later, remove it if using GCC10 or earlier. */
+  .preinit_array     :
   {
-    . = ALIGN(4);
     PROVIDE_HIDDEN (__preinit_array_start = .);
     KEEP (*(.preinit_array*))
     PROVIDE_HIDDEN (__preinit_array_end = .);
-    . = ALIGN(4);
-  } >RAM
-
-  .init_array (READONLY) : /* The READONLY keyword is only supported in GCC11 and later, remove it if using GCC10 or earlier. */
+  } >FLASH
+  .init_array :
   {
-    . = ALIGN(4);
     PROVIDE_HIDDEN (__init_array_start = .);
     KEEP (*(SORT(.init_array.*)))
     KEEP (*(.init_array*))
     PROVIDE_HIDDEN (__init_array_end = .);
-    . = ALIGN(4);
-  } >RAM
-
-  .fini_array (READONLY) : /* The READONLY keyword is only supported in GCC11 and later, remove it if using GCC10 or earlier. */
+  } >FLASH
+  .fini_array :
   {
-    . = ALIGN(4);
     PROVIDE_HIDDEN (__fini_array_start = .);
     KEEP (*(SORT(.fini_array.*)))
     KEEP (*(.fini_array*))
     PROVIDE_HIDDEN (__fini_array_end = .);
-    . = ALIGN(4);
-  } >RAM
+  } >FLASH
 
-  /* Used by the startup to initialize data */
+  /* used by the startup to initialize data */
   _sidata = LOADADDR(.data);
 
-  /* Initialized data sections into "RAM" Ram type memory */
-  .data :
+  /* Initialized data sections goes into RAM, load LMA copy after code */
+  .data : 
   {
     . = ALIGN(4);
     _sdata = .;        /* create a global symbol at data start */
@@ -144,10 +117,10 @@ SECTIONS
 
     . = ALIGN(4);
     _edata = .;        /* define a global symbol at data end */
+  } >RAM AT> FLASH
 
-  } >RAM
-
-  /* Uninitialized data section into "RAM" Ram type memory */
+  
+  /* Uninitialized data section */
   . = ALIGN(4);
   .bss :
   {
@@ -163,7 +136,7 @@ SECTIONS
     __bss_end__ = _ebss;
   } >RAM
 
-  /* User_heap_stack section, used to check that there is enough "RAM" Ram  type memory left */
+  /* User_heap_stack section, used to check that there is enough RAM left */
   ._user_heap_stack :
   {
     . = ALIGN(8);
@@ -174,7 +147,9 @@ SECTIONS
     . = ALIGN(8);
   } >RAM
 
-  /* Remove information from the compiler libraries */
+  
+
+  /* Remove information from the standard libraries */
   /DISCARD/ :
   {
     libc.a ( * )

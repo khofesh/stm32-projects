@@ -72,6 +72,10 @@ static void spi_cmd(sscma_handle_t *handle, uint8_t feature, uint8_t cmd,
                     uint16_t len, uint8_t *data);
 
 /* Response handling */
+static void parse_wifi_config(sscma_handle_t *handle, const char *json, size_t len);
+static void parse_mqtt_config(sscma_handle_t *handle, const char *json, size_t len);
+static void store_image(sscma_handle_t *handle, const char *json, size_t len);
+
 static sscma_err_t wait_response(sscma_handle_t *handle, int type, const char *cmd,
                                  uint32_t timeout);
 static void parse_event(sscma_handle_t *handle, const char *json, size_t len);
@@ -244,6 +248,8 @@ void sscma_deinit(sscma_handle_t *handle)
         free(handle->image_buf);
         handle->image_buf = NULL;
     }
+    handle->image_buf_size = 0;
+    handle->image_len = 0;
 
     handle->iface_type = SSCMA_IFACE_NONE;
 }
@@ -364,9 +370,9 @@ void sscma_fetch(sscma_handle_t *handle)
     int len = sscma_available(handle);
     if (len == 0) return;
 
-    /* Ensure we don't overflow buffer */
-    if (len + handle->rx_end > handle->rx_buf_size) {
-        len = handle->rx_buf_size - handle->rx_end;
+    /* Ensure we don't overflow buffer; reserve one byte for the NUL below */
+    if (len + handle->rx_end >= handle->rx_buf_size) {
+        len = (int)handle->rx_buf_size - (int)handle->rx_end - 1;
         if (len <= 0) {
             handle->rx_end = 0;
             return;
@@ -502,12 +508,31 @@ sscma_err_t sscma_wifi_get_config(sscma_handle_t *handle, sscma_wifi_t *wifi)
 
     if (!handle || !wifi) return SSCMA_EINVAL;
 
+    memset(wifi, 0, sizeof(*wifi));
+
     snprintf(cmd, sizeof(cmd), SSCMA_CMD_PREFIX "%s?" SSCMA_CMD_SUFFIX, CMD_AT_WIFI);
     sscma_write(handle, cmd, strlen(cmd));
 
-    if (wait_response(handle, SSCMA_CMD_TYPE_RESPONSE, "WIFI?",
+    handle->rsp_ctx = wifi;
+    sscma_err_t ret = wait_response(handle, SSCMA_CMD_TYPE_RESPONSE, "WIFI?",
+                                    handle->timeout_ms);
+    handle->rsp_ctx = NULL;
+
+    return ret;
+}
+
+sscma_err_t sscma_wifi_set_version(sscma_handle_t *handle, const char *version)
+{
+    char cmd[64];
+
+    if (!handle || !version) return SSCMA_EINVAL;
+
+    snprintf(cmd, sizeof(cmd), SSCMA_CMD_PREFIX "%s=\"%s\"" SSCMA_CMD_SUFFIX,
+             CMD_AT_WIFI_VER, version);
+    sscma_write(handle, cmd, strlen(cmd));
+
+    if (wait_response(handle, SSCMA_CMD_TYPE_RESPONSE, CMD_AT_WIFI_VER,
                       handle->timeout_ms) == SSCMA_OK) {
-        /* WiFi config parsed in wait_response via parse_event */
         return SSCMA_OK;
     }
 
@@ -550,15 +575,17 @@ sscma_err_t sscma_mqtt_get_config(sscma_handle_t *handle, sscma_mqtt_t *mqtt)
 
     if (!handle || !mqtt) return SSCMA_EINVAL;
 
+    memset(mqtt, 0, sizeof(*mqtt));
+
     snprintf(cmd, sizeof(cmd), SSCMA_CMD_PREFIX "%s?" SSCMA_CMD_SUFFIX, CMD_AT_MQTTSERVER);
     sscma_write(handle, cmd, strlen(cmd));
 
-    if (wait_response(handle, SSCMA_CMD_TYPE_RESPONSE, "MQTTSERVER?",
-                      handle->timeout_ms) == SSCMA_OK) {
-        return SSCMA_OK;
-    }
+    handle->rsp_ctx = mqtt;
+    sscma_err_t ret = wait_response(handle, SSCMA_CMD_TYPE_RESPONSE, "MQTTSERVER?",
+                                    handle->timeout_ms);
+    handle->rsp_ctx = NULL;
 
-    return SSCMA_ETIMEDOUT;
+    return ret;
 }
 
 sscma_err_t sscma_mqtt_set_status(sscma_handle_t *handle, sscma_mqtt_status_t *status)
@@ -1003,9 +1030,9 @@ static sscma_err_t wait_response(sscma_handle_t *handle, int type, const char *c
             continue;
         }
 
-        /* Ensure we don't overflow buffer */
-        if (len + handle->rx_end > handle->rx_buf_size) {
-            len = handle->rx_buf_size - handle->rx_end;
+        /* Ensure we don't overflow buffer; reserve one byte for the NUL below */
+        if (len + handle->rx_end >= handle->rx_buf_size) {
+            len = (int)handle->rx_buf_size - (int)handle->rx_end - 1;
             if (len <= 0) {
                 handle->rx_end = 0;
                 continue;
@@ -1064,6 +1091,10 @@ static sscma_err_t wait_response(sscma_handle_t *handle, int type, const char *c
                     } else if (strcmp(cmd, CMD_AT_INFO) == 0) {
                         sscma_parse_get_data_string(payload, strlen(payload), "info",
                                                     handle->info, sizeof(handle->info));
+                    } else if (strcmp(cmd, "WIFI?") == 0 && handle->rsp_ctx) {
+                        parse_wifi_config(handle, payload, strlen(payload));
+                    } else if (strcmp(cmd, "MQTTSERVER?") == 0 && handle->rsp_ctx) {
+                        parse_mqtt_config(handle, payload, strlen(payload));
                     }
 
                     free(payload);
@@ -1123,6 +1154,75 @@ static void parse_invoke_results(sscma_handle_t *handle, const char *json, size_
     num = sscma_parse_get_keypoints(json, len, handle->results.keypoints,
                                      SSCMA_MAX_KEYPOINTS, SSCMA_MAX_KEYPOINTS_POINTS);
     handle->results.num_keypoints = (num > 0) ? (uint8_t)num : 0;
+
+    /* Cache the Base64 image blob, if the module sent one */
+    store_image(handle, json, len);
+}
+
+static void parse_wifi_config(sscma_handle_t *handle, const char *json, size_t len)
+{
+    sscma_wifi_t *wifi = (sscma_wifi_t *)handle->rsp_ctx;
+    int val = 0;
+
+    if (sscma_parse_get_data_int(json, len, "status", &val) == 0) {
+        wifi->status = val;
+    }
+    if (sscma_parse_get_config_int(json, len, "security", &val) == 0) {
+        wifi->security = val;
+    }
+    sscma_parse_get_config_string(json, len, "name", wifi->ssid, sizeof(wifi->ssid));
+    sscma_parse_get_config_string(json, len, "password", wifi->password,
+                                  sizeof(wifi->password));
+}
+
+static void parse_mqtt_config(sscma_handle_t *handle, const char *json, size_t len)
+{
+    sscma_mqtt_t *mqtt = (sscma_mqtt_t *)handle->rsp_ctx;
+    int val = 0;
+
+    if (sscma_parse_get_data_int(json, len, "status", &val) == 0) {
+        mqtt->status = val;
+    }
+    if (sscma_parse_get_config_int(json, len, "port", &val) == 0) {
+        mqtt->port = (uint16_t)val;
+    }
+    if (sscma_parse_get_config_int(json, len, "use_ssl", &val) == 0) {
+        mqtt->use_ssl = (val == 1);
+    }
+    sscma_parse_get_config_string(json, len, "address", mqtt->server, sizeof(mqtt->server));
+    sscma_parse_get_config_string(json, len, "username", mqtt->username,
+                                  sizeof(mqtt->username));
+    sscma_parse_get_config_string(json, len, "password", mqtt->password,
+                                  sizeof(mqtt->password));
+    sscma_parse_get_config_string(json, len, "client_id", mqtt->client_id,
+                                  sizeof(mqtt->client_id));
+}
+
+static void store_image(sscma_handle_t *handle, const char *json, size_t len)
+{
+    size_t offset = 0;
+    size_t img_len = 0;
+
+    if (sscma_parse_get_data_token(json, len, "image", &offset, &img_len) != 0) {
+        return;  /* no image in this event; keep the previous one */
+    }
+
+    handle->image_len = 0;
+
+    if (img_len == 0 || img_len > SSCMA_MAX_IMAGE_SIZE) {
+        return;
+    }
+
+    if (handle->image_buf_size < img_len + 1) {
+        char *buf = (char *)realloc(handle->image_buf, img_len + 1);
+        if (!buf) return;
+        handle->image_buf = buf;
+        handle->image_buf_size = img_len + 1;
+    }
+
+    memcpy(handle->image_buf, json + offset, img_len);
+    handle->image_buf[img_len] = '\0';
+    handle->image_len = img_len;
 }
 
 /* ============================================================================
