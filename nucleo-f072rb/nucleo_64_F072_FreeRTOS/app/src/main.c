@@ -22,6 +22,7 @@ int main()
 	BSP_Console_Init();
 
 	my_printf("Console ready!\r\n");
+	my_printf("SYSCLK = %d\r\n", SystemCoreClock);
 	sent = 0;
 	i = 0;
 
