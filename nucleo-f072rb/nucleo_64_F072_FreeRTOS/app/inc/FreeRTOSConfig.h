@@ -69,7 +69,7 @@ extern uint32_t    SystemCoreClock;
 
 /* configTICK_RATE_HZ sets frequency of the tick interrupt in Hz, normally
  * calculated from the configCPU_CLOCK_HZ value. */
-#define configTICK_RATE_HZ                         100
+#define configTICK_RATE_HZ                         1000
 
 /* Set configUSE_PREEMPTION to 1 to use pre-emptive scheduling.  Set
  * configUSE_PREEMPTION to 0 to use co-operative scheduling.
@@ -279,7 +279,7 @@ extern uint32_t    SystemCoreClock;
  * or heap_4.c are included in the build.  This value is defaulted to 4096 bytes
  * but it must be tailored to each application.  Note the heap will appear in
  * the .bss section.  See https://www.freertos.org/a00111.html. */
-#define configTOTAL_HEAP_SIZE                        4096
+#define configTOTAL_HEAP_SIZE                        6144
 
 /* Set configAPPLICATION_ALLOCATED_HEAP to 1 to have the application allocate
  * the array used as the FreeRTOS heap.  Set to 0 to have the linker allocate
@@ -319,7 +319,7 @@ extern uint32_t    SystemCoreClock;
 
 /* Another name for configMAX_SYSCALL_INTERRUPT_PRIORITY - the name used depends
  * on the FreeRTOS port. */
-#define configMAX_API_CALL_INTERRUPT_PRIORITY    0
+#define configMAX_API_CALL_INTERRUPT_PRIORITY    5
 
 /******************************************************************************/
 /* Hook and callback function related definitions. ****************************/

@@ -6,9 +6,6 @@
  */
 
 #include "stm32f0xx.h"
-#include "FreeRTOS.h"
-#include "task.h"
-#include "bsp.h"
 #include "main.h"
 
 static void SystemClock_Config();
