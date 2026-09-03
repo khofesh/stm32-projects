@@ -17,40 +17,27 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char * pcTaskName )
 	for(;;) {}
 }
 
+//FreeRTOS tasks
+void vTask1(void *pvParameters);
+void vTask2(void *pvParameters);
+
 int main()
 {
-	uint8_t i, sent;
-
 	SystemClock_Config();
 
 	BSP_LED_Init();
 	BSP_PB_Init();
 	BSP_Console_Init();
 
-	my_printf("Console ready!\r\n");
-	my_printf("SYSCLK = %d\r\n", SystemCoreClock);
-	sent = 0;
-	i = 0;
+	xTaskCreate(vTask1, "Task_1", 256, NULL, 1, NULL);
+	xTaskCreate(vTask2, "Task_2", 256, NULL, 2, NULL);
+
+	// start the scheduler
+	vTaskStartScheduler();
 
 	while(1)
 	{
-		if (BSP_PB_GetState() == 1)
-		{
-			BSP_LED_On();
 
-			// send '#' only once
-			if (sent == 0)
-			{
-				my_printf("#%d\r\n", i);
-				sent = 1;
-				i++;
-			}
-		}
-		else
-		{
-			BSP_LED_Off();
-			sent = 0;
-		}
 	}
 }
 
@@ -142,4 +129,29 @@ static void SystemClock_Config()
 	SystemCoreClockUpdate();
 }
 
+/*
+ *	Task1 toggles LED every 300ms
+ */
+void vTask1(void *pvParameters)
+{
+	while(1)
+	{
+		BSP_LED_Toggle();
+		vTaskDelay(300);
+	}
+}
 
+/*
+ *	Task2 sends a message to console every 1s
+ */
+void vTask2(void *pvParameters)
+{
+	uint16_t count;
+	count = 0;
+	while(1)
+	{
+		my_printf("Hello %2d from task2\r\n", count);
+		count++;
+		vTaskDelay(1000);
+	}
+}
