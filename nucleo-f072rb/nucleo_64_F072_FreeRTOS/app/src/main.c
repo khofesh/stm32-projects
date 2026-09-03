@@ -6,10 +6,19 @@
  */
 
 #include "stm32f0xx.h"
+#include "FreeRTOS.h"
+#include "task.h"
 #include "bsp.h"
 #include "main.h"
 
 static void SystemClock_Config();
+
+void vApplicationStackOverflowHook( TaskHandle_t xTask, char * pcTaskName )
+{
+	(void)xTask;
+	my_printf("STACK OVERFLOW: %s\r\n", pcTaskName);
+	for(;;) {}
+}
 
 int main()
 {

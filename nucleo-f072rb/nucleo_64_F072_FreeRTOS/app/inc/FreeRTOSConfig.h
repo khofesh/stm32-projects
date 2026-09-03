@@ -572,7 +572,7 @@ extern uint32_t    SystemCoreClock;
  * respectively. The application can provide its own implementation of
  * vApplicationGetIdleTaskMemory() and vApplicationGetTimerTaskMemory() by
  * setting configKERNEL_PROVIDED_STATIC_MEMORY to 0 or leaving it undefined. */
-#define configKERNEL_PROVIDED_STATIC_MEMORY    0
+#define configKERNEL_PROVIDED_STATIC_MEMORY    1
 
 /******************************************************************************/
 /* ARMv8-M port Specific Configuration definitions. ***************************/
@@ -593,7 +593,7 @@ extern uint32_t    SystemCoreClock;
 
 /* Set configENABLE_MPU to 1 to enable the Memory Protection Unit (MPU), or 0
  * to leave the Memory Protection Unit disabled. */
-#define configENABLE_MPU                  1
+#define configENABLE_MPU                  0
 
 /* Set configENABLE_FPU to 1 to enable the Floating Point Unit (FPU), or 0
  * to leave the Floating Point Unit disabled. */
