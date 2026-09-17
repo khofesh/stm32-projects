@@ -22,7 +22,7 @@ void vTask1(void *pvParameters);
 void vTask2(void *pvParameters);
 
 // kernel objects
-SemaphoreHandle_t xSem;
+SemaphoreHandle_t xConsoleMutex;
 
 int main()
 {
@@ -32,8 +32,8 @@ int main()
 	BSP_PB_Init();
 	BSP_Console_Init();
 
-	// create semaphore object
-	xSem = xSemaphoreCreateBinary();
+	// a mutex
+	xConsoleMutex = xSemaphoreCreateMutex();
 
 	xTaskCreate(vTask1, "Task_1", 256, NULL, 1, NULL);
 	xTaskCreate(vTask2, "Task_2", 256, NULL, 2, NULL);
@@ -138,57 +138,39 @@ static void SystemClock_Config()
 /*
  *	Task1 toggles LED every 300ms
  */
-void vTask1(void *pvParameters)
+void vTask1 (void *pvParameters)
 {
-	TickType_t xLastWakeTime;
-	uint16_t count;
-	count = 0;
-
-	xLastWakeTime = xTaskGetTickCount();
-
-	while (1)
+	while(1)
 	{
-		BSP_LED_Toggle();
-		count++;
-		// Release semaphore every 10 count
-		if (count == 10)
-		{
-			xSemaphoreGive(xSem);
-			count = 0;
-		}
-		// Wait here for 10ms since last wakeup
-		vTaskDelayUntil (&xLastWakeTime, (10/portTICK_PERIOD_MS));
+		// Take Mutex
+		xSemaphoreTake(xConsoleMutex, portMAX_DELAY);
+
+		// Send message to console
+		my_printf("With great power comes great responsibility\r\n");
+
+		// Release Mutex
+		xSemaphoreGive(xConsoleMutex);
+
+		vTaskDelay(20);
 	}
 }
 
 /*
  *	Task2 sends a message to console every 1s
  */
-void vTask2(void *pvParameters)
+void vTask2 (void *pvParameters)
 {
-	portBASE_TYPE   xStatus;
-	uint16_t count;
-	count = 0;
-	// take the sempahore once to make it's empty
-	xSemaphoreTake(xSem, 0);
-
 	while(1)
 	{
-		// wait for sempahore endlessly
-		xStatus = xSemaphoreTake(xSem, 2000); // this is where the semaphore is taken
-		// Test the result of the take attempt
-		if (xStatus == pdPASS)
-		{
-			// The semaphore was taken as expected
-			// Display console message
-			my_printf("Hello %2d from task2\r\n", count);
-			count++;
-		}
-		else
-		{
-			// The 2s timeout elapsed without Semaphore being taken
-			// Display another message
-			my_printf("Hey! Where is my semaphore?\r\n");
-		}
+		// Take Mutex
+		xSemaphoreTake(xConsoleMutex, portMAX_DELAY);
+
+		// Send message to console
+		my_printf("#");
+
+		// Release Mutex
+		xSemaphoreGive(xConsoleMutex);
+
+		vTaskDelay(1);
 	}
 }
