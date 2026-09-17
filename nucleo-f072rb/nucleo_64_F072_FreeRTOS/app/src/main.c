@@ -140,24 +140,24 @@ static void SystemClock_Config()
  */
 void vTask1(void *pvParameters)
 {
+	TickType_t xLastWakeTime;
 	uint16_t count;
 	count = 0;
 
-	while(1)
-	{
-		if (BSP_PB_GetState() == 0)
-		{
-			BSP_LED_Toggle();
-			count++;
-		}
+	xLastWakeTime = xTaskGetTickCount();
 
+	while (1)
+	{
+		BSP_LED_Toggle();
+		count++;
+		// Release semaphore every 10 count
 		if (count == 10)
 		{
 			xSemaphoreGive(xSem);
 			count = 0;
 		}
-
-		vTaskDelay(10);
+		// Wait here for 10ms since last wakeup
+		vTaskDelayUntil (&xLastWakeTime, (10/portTICK_PERIOD_MS));
 	}
 }
 
