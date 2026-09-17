@@ -21,6 +21,9 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char * pcTaskName )
 void vTask1(void *pvParameters);
 void vTask2(void *pvParameters);
 
+// kernel objects
+SemaphoreHandle_t xSem;
+
 int main()
 {
 	SystemClock_Config();
@@ -28,6 +31,9 @@ int main()
 	BSP_LED_Init();
 	BSP_PB_Init();
 	BSP_Console_Init();
+
+	// create semaphore object
+	xSem = xSemaphoreCreateBinary();
 
 	xTaskCreate(vTask1, "Task_1", 256, NULL, 1, NULL);
 	xTaskCreate(vTask2, "Task_2", 256, NULL, 2, NULL);
@@ -134,10 +140,24 @@ static void SystemClock_Config()
  */
 void vTask1(void *pvParameters)
 {
+	uint16_t count;
+	count = 0;
+
 	while(1)
 	{
-		BSP_LED_Toggle();
-		vTaskDelay(300);
+		if (BSP_PB_GetState() == 0)
+		{
+			BSP_LED_Toggle();
+			count++;
+		}
+
+		if (count == 10)
+		{
+			xSemaphoreGive(xSem);
+			count = 0;
+		}
+
+		vTaskDelay(10);
 	}
 }
 
@@ -146,12 +166,29 @@ void vTask1(void *pvParameters)
  */
 void vTask2(void *pvParameters)
 {
+	portBASE_TYPE   xStatus;
 	uint16_t count;
 	count = 0;
+	// take the sempahore once to make it's empty
+	xSemaphoreTake(xSem, 0);
+
 	while(1)
 	{
-		my_printf("Hello %2d from task2\r\n", count);
-		count++;
-		vTaskDelay(1000);
+		// wait for sempahore endlessly
+		xStatus = xSemaphoreTake(xSem, 2000); // this is where the semaphore is taken
+		// Test the result of the take attempt
+		if (xStatus == pdPASS)
+		{
+			// The semaphore was taken as expected
+			// Display console message
+			my_printf("Hello %2d from task2\r\n", count);
+			count++;
+		}
+		else
+		{
+			// The 2s timeout elapsed without Semaphore being taken
+			// Display another message
+			my_printf("Hey! Where is my semaphore?\r\n");
+		}
 	}
 }
