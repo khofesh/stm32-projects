@@ -105,6 +105,8 @@ void HardFault_Handler(void)
   */
 void EXTI4_15_IRQHandler()
 {
+	portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
+
 	// Test for line 13 pending interrupt
 	if ((EXTI->PR & EXTI_PR_PR13_Msk) != 0)
 	{
@@ -112,7 +114,10 @@ void EXTI4_15_IRQHandler()
 		EXTI->PR = EXTI_PR_PR13;
 
 		// Release the semaphore
-		xSemaphoreGiveFromISR(xSem, NULL);
+		xSemaphoreGiveFromISR(xSem, &xHigherPriorityTaskWoken);
+
+	    // Perform a context switch to the waiting task
+	    portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
 	}
 }
 
