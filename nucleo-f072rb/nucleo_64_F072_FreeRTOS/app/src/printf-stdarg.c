@@ -196,6 +196,9 @@ int my_printf(const char *format, ...)
 int my_sprintf(char *out, const char *format, ...)
 {
 	va_list args;
+	int pc;
 	va_start(args, format);
-	return print(&out, format, args);
+	pc = print(&out, format, args);
+	*out = '\0';
+	return pc;
 }
