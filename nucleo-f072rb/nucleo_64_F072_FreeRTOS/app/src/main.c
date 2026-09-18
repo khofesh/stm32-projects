@@ -20,8 +20,8 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char * pcTaskName )
 //FreeRTOS tasks
 void vTask1(void *pvParameters);
 void vTask2(void *pvParameters);
-void vTaskConsole(void *pvParameters);
 
+SemaphoreHandle_t xSem;
 
 int main()
 {
@@ -31,6 +31,8 @@ int main()
 	BSP_PB_Init();
 	BSP_Console_Init();
 	BSP_NVIC_Init();
+
+	xSem = xSemaphoreCreateBinary();
 
 	xTaskCreate(vTask1, "Task_1", 256, NULL, 1, NULL);
 	xTaskCreate(vTask2, "Task_2", 256, NULL, 2, NULL);
@@ -154,15 +156,29 @@ void vTask1 (void *pvParameters)
  */
 void vTask2 (void *pvParameters)
 {
-	TickType_t xLastWakeTime;
-
-	xLastWakeTime = xTaskGetTickCount();
+	portBASE_TYPE	xStatus;
 
 	while(1)
 	{
-		my_printf(".");
+		// Wait here for Semaphore with 100ms timeout
+		xStatus = xSemaphoreTake(xSem, 100);
 
-		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(100));
+		// Test the result of the take attempt
+		if (xStatus == pdPASS)
+		{
+			// The semaphore was taken as expected
+
+			// Display console message
+			my_printf("#");
+		}
+
+		else
+		{
+			// The 100ms timeout elapsed without Semaphore being taken
+
+			// Display another message
+			my_printf(".");
+		}
 	}
 }
 

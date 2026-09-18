@@ -22,6 +22,7 @@
 #include "main.h"
 #include "stm32f0xx_it.h"
 
+extern SemaphoreHandle_t xSem;
 
 /** @addtogroup STM32F0xx_HAL_Examples
   * @{
@@ -110,8 +111,8 @@ void EXTI4_15_IRQHandler()
 		// Clear pending bit 13 by writing a '1'
 		EXTI->PR = EXTI_PR_PR13;
 
-		// Do what you need
-		my_printf("#");
+		// Release the semaphore
+		xSemaphoreGiveFromISR(xSem, NULL);
 	}
 }
 
