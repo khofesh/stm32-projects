@@ -23,7 +23,7 @@ void BSP_LED_Toggle(void);
  */
 void BSP_PB_Init(void);
 uint8_t BSP_PB_GetState(void);
-
+void BSP_NVIC_Init();
 /*
  * Debug Console init
  */

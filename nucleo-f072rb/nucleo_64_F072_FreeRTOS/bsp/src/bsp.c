@@ -6,6 +6,7 @@
  */
 
 #include "bsp.h"
+#include "FreeRTOSConfig.h"
 
 /*
  * BSP_LED_Init()
@@ -77,6 +78,20 @@ void BSP_PB_Init()
 
 	// Disable PC13 Pull-up/Pull-down
 	GPIOC->PUPDR &= ~GPIO_PUPDR_PUPDR13_Msk;
+
+	// enable SYSCFG clock
+	RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
+
+	// Select Port C as interrupt source for EXTI line 13
+	SYSCFG->EXTICR[3] &= ~ SYSCFG_EXTICR4_EXTI13_Msk;
+	SYSCFG->EXTICR[3] |=   SYSCFG_EXTICR4_EXTI13_PC;
+
+	// Enable EXTI line 13
+	EXTI->IMR |= EXTI_IMR_IM13;
+
+	// Disable Rising / Enable Falling trigger
+	EXTI->RTSR &= ~EXTI_RTSR_RT13;
+	EXTI->FTSR |=  EXTI_FTSR_FT13;
 }
 
 /*
@@ -144,5 +159,18 @@ void BSP_Console_Init()
 
 	// Enable USART2
 	USART2->CR1 |= USART_CR1_UE;
+}
+
+/*
+ * BSP_NVIC_Init()
+ * Setup NVIC controller for desired interrupts
+ */
+void BSP_NVIC_Init()
+{
+	// Set maximum priority for EXTI line 4 to 15 interrupts
+	NVIC_SetPriority(EXTI4_15_IRQn, configMAX_API_CALL_INTERRUPT_PRIORITY + 0);
+
+	// Enable EXTI line 4 to 15 (user button on line 13) interrupts
+	NVIC_EnableIRQ(EXTI4_15_IRQn);
 }
 

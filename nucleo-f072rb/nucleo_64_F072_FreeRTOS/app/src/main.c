@@ -22,11 +22,6 @@ void vTask1(void *pvParameters);
 void vTask2(void *pvParameters);
 void vTaskConsole(void *pvParameters);
 
-// kernel objects
-QueueHandle_t xConsoleQueue;
-
-// define the message_t type as an array of 64 char
-typedef uint8_t msg_t[64];
 
 int main()
 {
@@ -35,12 +30,10 @@ int main()
 	BSP_LED_Init();
 	BSP_PB_Init();
 	BSP_Console_Init();
+	BSP_NVIC_Init();
 
-	xConsoleQueue = xQueueCreate(4, sizeof(msg_t *));
-
-	xTaskCreate(vTask1, "Task_1", 256, NULL, 3, NULL);
+	xTaskCreate(vTask1, "Task_1", 256, NULL, 1, NULL);
 	xTaskCreate(vTask2, "Task_2", 256, NULL, 2, NULL);
-	xTaskCreate(vTaskConsole, 	"Task_Console", 256, NULL, 1, NULL);
 
 	// start the scheduler
 	vTaskStartScheduler();
@@ -144,21 +137,15 @@ static void SystemClock_Config()
  */
 void vTask1 (void *pvParameters)
 {
-	msg_t msg;
-	msg_t *pmsg = NULL;
-
 	TickType_t xLastWakeTime;
 
 	xLastWakeTime = xTaskGetTickCount();
 
 	while(1)
 	{
-		my_sprintf((char*)msg, "with great power comes great responsibility\r\n");
-		pmsg = &msg;
+		BSP_LED_Toggle();
 
-		xQueueSendToBack(xConsoleQueue, &pmsg, 0);
-
-		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(20));
+		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(200));
 	}
 }
 
@@ -167,40 +154,16 @@ void vTask1 (void *pvParameters)
  */
 void vTask2 (void *pvParameters)
 {
-	msg_t msg;
-	msg_t *pmsg = NULL;
-	uint8_t index = 0;
 	TickType_t xLastWakeTime;
 
 	xLastWakeTime = xTaskGetTickCount();
 
 	while(1)
 	{
-		my_sprintf((char*)msg, "%d# ", index);
-		pmsg = &msg;
+		my_printf(".");
 
-		xQueueSendToBack(xConsoleQueue, &pmsg, 0);
-
-		(index == 9) ? index = 0 : index++;
-
-		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(2));
+		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(100));
 	}
 }
 
-/*
- * Task_Console
- */
-void vTaskConsole (void *pvParameters)
-{
-	msg_t *pmsg = NULL;
-
-	while(1)
-	{
-		// Wait for something in the message Queue
-		xQueueReceive(xConsoleQueue, &pmsg, portMAX_DELAY);
-
-		// Send message to console
-		my_printf((char *)pmsg);
-	}
-}
 

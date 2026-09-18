@@ -100,6 +100,22 @@ void HardFault_Handler(void)
 /******************************************************************************/
 
 /**
+  * This function handles EXTI line 13 interrupt request.
+  */
+void EXTI4_15_IRQHandler()
+{
+	// Test for line 13 pending interrupt
+	if ((EXTI->PR & EXTI_PR_PR13_Msk) != 0)
+	{
+		// Clear pending bit 13 by writing a '1'
+		EXTI->PR = EXTI_PR_PR13;
+
+		// Do what you need
+		my_printf("#");
+	}
+}
+
+/**
   * @brief  This function handles PPP interrupt request.
   * @param  None
   * @retval None
