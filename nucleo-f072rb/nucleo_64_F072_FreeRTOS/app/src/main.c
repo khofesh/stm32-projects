@@ -36,7 +36,7 @@ int main()
 	BSP_PB_Init();
 	BSP_Console_Init();
 
-	xConsoleQueue = xQueueCreate(4, sizeof(msg_t));
+	xConsoleQueue = xQueueCreate(4, sizeof(msg_t *));
 
 	xTaskCreate(vTask1, "Task_1", 256, NULL, 3, NULL);
 	xTaskCreate(vTask2, "Task_2", 256, NULL, 2, NULL);
@@ -145,6 +145,8 @@ static void SystemClock_Config()
 void vTask1 (void *pvParameters)
 {
 	msg_t msg;
+	msg_t *pmsg = NULL;
+
 	TickType_t xLastWakeTime;
 
 	xLastWakeTime = xTaskGetTickCount();
@@ -152,8 +154,9 @@ void vTask1 (void *pvParameters)
 	while(1)
 	{
 		my_sprintf((char*)msg, "with great power comes great responsibility\r\n");
+		pmsg = &msg;
 
-		xQueueSendToBack(xConsoleQueue, &msg, 0);
+		xQueueSendToBack(xConsoleQueue, &pmsg, 0);
 
 		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(20));
 	}
@@ -165,6 +168,7 @@ void vTask1 (void *pvParameters)
 void vTask2 (void *pvParameters)
 {
 	msg_t msg;
+	msg_t *pmsg = NULL;
 	uint8_t index = 0;
 	TickType_t xLastWakeTime;
 
@@ -173,8 +177,9 @@ void vTask2 (void *pvParameters)
 	while(1)
 	{
 		my_sprintf((char*)msg, "%d# ", index);
+		pmsg = &msg;
 
-		xQueueSendToBack(xConsoleQueue, &msg, 0);
+		xQueueSendToBack(xConsoleQueue, &pmsg, 0);
 
 		(index == 9) ? index = 0 : index++;
 
@@ -187,15 +192,15 @@ void vTask2 (void *pvParameters)
  */
 void vTaskConsole (void *pvParameters)
 {
-	msg_t msg;
+	msg_t *pmsg = NULL;
 
 	while(1)
 	{
 		// Wait for something in the message Queue
-		xQueueReceive(xConsoleQueue, &msg, portMAX_DELAY);
+		xQueueReceive(xConsoleQueue, &pmsg, portMAX_DELAY);
 
 		// Send message to console
-		my_printf((char *)msg);
+		my_printf((char *)pmsg);
 	}
 }
 
