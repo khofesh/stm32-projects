@@ -20,9 +20,13 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char * pcTaskName )
 //FreeRTOS tasks
 void vTask1(void *pvParameters);
 void vTask2(void *pvParameters);
+void vTaskConsole(void *pvParameters);
 
 // kernel objects
-SemaphoreHandle_t xConsoleMutex;
+QueueHandle_t xConsoleQueue;
+
+// define the message_t type as an array of 64 char
+typedef uint8_t msg_t[64];
 
 int main()
 {
@@ -32,11 +36,11 @@ int main()
 	BSP_PB_Init();
 	BSP_Console_Init();
 
-	// a mutex
-	xConsoleMutex = xSemaphoreCreateMutex();
+	xConsoleQueue = xQueueCreate(4, sizeof(msg_t));
 
-	xTaskCreate(vTask1, "Task_1", 256, NULL, 1, NULL);
+	xTaskCreate(vTask1, "Task_1", 256, NULL, 3, NULL);
 	xTaskCreate(vTask2, "Task_2", 256, NULL, 2, NULL);
+	xTaskCreate(vTaskConsole, 	"Task_Console", 256, NULL, 1, NULL);
 
 	// start the scheduler
 	vTaskStartScheduler();
@@ -136,41 +140,62 @@ static void SystemClock_Config()
 }
 
 /*
- *	Task1 toggles LED every 300ms
+ *	Task1
  */
 void vTask1 (void *pvParameters)
 {
+	msg_t msg;
+	TickType_t xLastWakeTime;
+
+	xLastWakeTime = xTaskGetTickCount();
+
 	while(1)
 	{
-		// Take Mutex
-		xSemaphoreTake(xConsoleMutex, portMAX_DELAY);
+		my_sprintf((char*)msg, "with great power comes great responsibility\r\n");
 
-		// Send message to console
-		my_printf("With great power comes great responsibility\r\n");
+		xQueueSendToBack(xConsoleQueue, &msg, 0);
 
-		// Release Mutex
-		xSemaphoreGive(xConsoleMutex);
-
-		vTaskDelay(20);
+		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(20));
 	}
 }
 
 /*
- *	Task2 sends a message to console every 1s
+ *	Task2
  */
 void vTask2 (void *pvParameters)
 {
+	msg_t msg;
+	uint8_t index = 0;
+	TickType_t xLastWakeTime;
+
+	xLastWakeTime = xTaskGetTickCount();
+
 	while(1)
 	{
-		// Take Mutex
-		xSemaphoreTake(xConsoleMutex, portMAX_DELAY);
+		my_sprintf((char*)msg, "%d# ", index);
 
-		// Send message to console
-		my_printf("#");
+		xQueueSendToBack(xConsoleQueue, &msg, 0);
 
-		// Release Mutex
-		xSemaphoreGive(xConsoleMutex);
+		(index == 9) ? index = 0 : index++;
 
-		vTaskDelay(1);
+		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(2));
 	}
 }
+
+/*
+ * Task_Console
+ */
+void vTaskConsole (void *pvParameters)
+{
+	msg_t msg;
+
+	while(1)
+	{
+		// Wait for something in the message Queue
+		xQueueReceive(xConsoleQueue, &msg, portMAX_DELAY);
+
+		// Send message to console
+		my_printf((char *)msg);
+	}
+}
+
