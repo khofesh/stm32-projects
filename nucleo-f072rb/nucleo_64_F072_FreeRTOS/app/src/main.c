@@ -30,7 +30,6 @@ int main()
 	BSP_LED_Init();
 	BSP_PB_Init();
 	BSP_Console_Init();
-	BSP_NVIC_Init();
 
 	xSem = xSemaphoreCreateBinary();
 
@@ -157,6 +156,13 @@ void vTask1 (void *pvParameters)
 void vTask2 (void *pvParameters)
 {
 	portBASE_TYPE	xStatus;
+
+	// Initialize the user Push-Button
+	BSP_PB_Init();
+
+	// Set priority for EXTI line 4 to 15, and enable interrupt
+	NVIC_SetPriority(EXTI4_15_IRQn, configMAX_API_CALL_INTERRUPT_PRIORITY + 0);
+	NVIC_EnableIRQ(EXTI4_15_IRQn);
 
 	while(1)
 	{

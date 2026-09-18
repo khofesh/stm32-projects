@@ -167,10 +167,6 @@ void BSP_Console_Init()
  */
 void BSP_NVIC_Init()
 {
-	// Set maximum priority for EXTI line 4 to 15 interrupts
-	NVIC_SetPriority(EXTI4_15_IRQn, configMAX_API_CALL_INTERRUPT_PRIORITY + 0);
 
-	// Enable EXTI line 4 to 15 (user button on line 13) interrupts
-	NVIC_EnableIRQ(EXTI4_15_IRQn);
 }
 
