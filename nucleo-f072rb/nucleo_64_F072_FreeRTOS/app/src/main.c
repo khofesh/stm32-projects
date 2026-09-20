@@ -17,6 +17,12 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char * pcTaskName )
 	for(;;) {}
 }
 
+void vApplicationMallocFailedHook( void )
+{
+	my_printf("MALLOC FAILED\r\n");
+	for(;;) {}
+}
+
 //FreeRTOS tasks
 void vTask1(void *pvParameters);
 void vTask2(void *pvParameters);
