@@ -138,7 +138,8 @@ static void SystemClock_Config()
  */
 void vTask1(void *pvParameters)
 {
-	uint8_t count = 0;
+	uint16_t count = 0;
+	uint32_t time = 0;
 	TickType_t xLastWakeTime;
 
 	xLastWakeTime = xTaskGetTickCount();
@@ -148,11 +149,12 @@ void vTask1(void *pvParameters)
 		BSP_LED_Toggle();
 
 		count++;
+		time++;
 		// notify task_2 every 10 count
 		if (count == 10)
 		{
 			// direct notification to task_2
-			xTaskNotifyGive(vTask2_handle);
+			xTaskNotify(vTask2_handle, time, eSetValueWithOverwrite );
 			count = 0;
 		}
 
@@ -166,15 +168,16 @@ void vTask1(void *pvParameters)
  */
 void vTask2(void *pvParameters)
 {
-	uint16_t 	count;
-	count = 0;
+	uint16_t count = 0;
+	uint32_t time = 0;
+
 	while(1)
 	{
 		// Wait here for a notification
-		ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+		time = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 		// Reaching this point means that a notification has been received
         // Display console message
-        my_printf("Hello %2d from task2\r\n", count);
+        my_printf("Hello %2d from task2 - Time @task1 = %d\r\n", count, time);
 		count++;
 	}
 }
