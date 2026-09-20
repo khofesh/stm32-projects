@@ -210,16 +210,27 @@ void vTask2 (void *pvParameters)
  */
 void vTask3 (void *pvParameters)
 {
+	EventBits_t		evb_result, evb_msk;
+
+	// Prepare a mask for testing event bits
+	evb_msk = BIT1|BIT0;
+
 	while(1)
 	{
 		// Wait for myEventGroup
 		// - bit #0, bit #1
 		// - Clear on Exit
 		// - Do not Wait for All bits (OR)
-		xEventGroupWaitBits(myEventGroup, (BIT0 | BIT1), pdTRUE, pdFALSE, portMAX_DELAY);
+		evb_result = xEventGroupWaitBits(myEventGroup, (BIT0 | BIT1), pdTRUE, pdFALSE, portMAX_DELAY);
 
-		// If the bit is set
-		my_printf("-");
+		// If BIT0 is set
+		if ((evb_result & evb_msk) == BIT0) 	my_printf("[0]");
+
+		// If BIT1 is set
+		if ((evb_result & evb_msk) == BIT1) 	my_printf("[1]");
+
+		// If both BIT0 and BIT1 are set
+		if ((evb_result & evb_msk) == evb_msk)	my_printf("[A]\r\n");
 	}
 }
 
