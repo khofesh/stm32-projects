@@ -20,29 +20,66 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char * pcTaskName )
 //FreeRTOS tasks
 void vTask1(void *pvParameters);
 void vTask2(void *pvParameters);
-void vTaskTimer(TimerHandle_t xTimer);
+void vTaskHWM(void *pvParameters);
 
-// Declare Timer Object
-TimerHandle_t	my_timer;
-TickType_t	ticks;
+TaskHandle_t vTask1_handle;
+TaskHandle_t vTask2_handle;
+TaskHandle_t vTaskHWM_handle;
+
+SemaphoreHandle_t xSem;
+SemaphoreHandle_t xConsoleMutex;
+QueueHandle_t xConsoleQueue;
+
+// Define the message_t type as an array of 64 char
+typedef uint8_t message_t[64];
 
 int main()
 {
+	uint32_t free_heap_size;
+
 	SystemClock_Config();
 
 	BSP_LED_Init();
 	BSP_PB_Init();
 	BSP_Console_Init();
 
-	my_timer = xTimerCreate("my_timer", 200, pdTRUE, NULL, vTaskTimer);
-	// start timer
-	xTimerStart(my_timer, 0);
-	ticks = xTimerGetExpiryTime(my_timer);
+	// Report Free Heap Size
+	free_heap_size = xPortGetFreeHeapSize();
+	my_printf("\r\nFree Heap Size is %d bytes\r\n", free_heap_size);
 
-	xTaskCreate(vTask1,		"Task_1", 		256, NULL, 1, NULL);
-	xTaskCreate(vTask2,		"Task_2", 		256, NULL, 2, NULL);
+	// Create Semaphore object (this is not a 'give')
+	my_printf("\r\nNow creating Binary Semaphore...\r\n");
+	xSem = xSemaphoreCreateBinary();
+	free_heap_size = xPortGetFreeHeapSize();
+	my_printf("Free Heap Size is %d bytes\r\n", free_heap_size);
 
-	// start the scheduler
+	// Create Queue to hold console messages
+	my_printf("\r\nNow creating Message Queue...\r\n");
+	xConsoleQueue = xQueueCreate(4, sizeof(message_t));
+	free_heap_size = xPortGetFreeHeapSize();
+	my_printf("Free Heap Size is %d bytes\r\n", free_heap_size);
+
+	// Create a Mutex for accessing the console
+	my_printf("\r\nNow creating Mutex...\r\n");
+	xConsoleMutex = xSemaphoreCreateMutex();
+	free_heap_size = xPortGetFreeHeapSize();
+	my_printf("Free Heap Size is %d bytes\r\n", free_heap_size);
+
+	// Register the Trace User Event Channels
+	my_printf("\r\nNow registering Trace events...\r\n");
+	free_heap_size = xPortGetFreeHeapSize();
+	my_printf("Free Heap Size is %d bytes\r\n", free_heap_size);
+
+	// Create Tasks
+	my_printf("\r\nNow creating Tasks...\r\n");
+	xTaskCreate(vTask1,	"Task_1",	128, NULL, 2, &vTask1_handle);
+	xTaskCreate(vTask2,	"Task_2",	128, NULL, 3, &vTask2_handle);
+	xTaskCreate(vTaskHWM,	"Task_HWM",	128, NULL, 1, &vTaskHWM_handle);
+	free_heap_size = xPortGetFreeHeapSize();
+	my_printf("Free Heap Size is %d bytes\r\n", free_heap_size);
+
+	// Start the Scheduler
+	my_printf("\r\nNow Starting Scheduler...\r\n");
 	vTaskStartScheduler();
 
 	while(1)
@@ -141,7 +178,6 @@ static void SystemClock_Config()
 
 /*
  *	Task_1
- *	- Sends a notification to Task_3 every 500ms
  */
 void vTask1(void *pvParameters)
 {
@@ -149,15 +185,13 @@ void vTask1(void *pvParameters)
 
 	while(1)
 	{
-		my_printf("-");
 
-		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(500));
+		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(100));
 	}
 }
 
 /*
  *	Task_2
- *	- Sends a notification to Task_3 every 1000ms
  */
 void vTask2(void *pvParameters)
 {
@@ -165,20 +199,27 @@ void vTask2(void *pvParameters)
 
 	while(1)
 	{
-		my_printf("#");
 		// Wait
-		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(1000));
+		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(100));
 	}
 }
 
 /*
- * Timer Callback
+ * vTaskHWM
  */
-void vTaskTimer (TimerHandle_t xTimer)
+void vTaskHWM (void *pvParameters)
 {
-	my_printf("\tTimer callback\r\n");
+	uint32_t	free_heap_size;
+	TickType_t xLastWakeTime = xTaskGetTickCount();
 
-	ticks = xTimerGetExpiryTime(my_timer);
-	BSP_LED_Toggle();
+	while(1)
+	{
+		// Periodically Report Free Heap size after scheduler has started
+		free_heap_size = xPortGetFreeHeapSize();
+		my_printf("Free Heap Size is %d bytes\r\n", free_heap_size);
+
+		// Wait for 500ms
+		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(500));
+	}
 }
 
