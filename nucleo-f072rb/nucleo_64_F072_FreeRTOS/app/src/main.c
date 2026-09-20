@@ -20,12 +20,9 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char * pcTaskName )
 //FreeRTOS tasks
 void vTask1(void *pvParameters);
 void vTask2(void *pvParameters);
-void vTask3 (void *pvParameters);
 
-EventGroupHandle_t myEventGroup;
-
-#define	BIT0	( (EventBits_t)( 0x01 <<0) )   // This is not mandatory but it provides
-#define BIT1	( (EventBits_t)( 0x01 <<1) )   // friendly alias for individual event
+TaskHandle_t vTask1_handle;
+TaskHandle_t vTask2_handle;
 
 int main()
 {
@@ -34,12 +31,10 @@ int main()
 	BSP_LED_Init();
 	BSP_PB_Init();
 	BSP_Console_Init();
+	my_printf("Console Ready!\r\n");
 
-	myEventGroup = xEventGroupCreate();
-
-	xTaskCreate(vTask1, "Task_1", 256, NULL, 1, NULL);
-	xTaskCreate(vTask2, "Task_2", 256, NULL, 2, NULL);
-	xTaskCreate(vTask3, "Task_3",  256, NULL, 3, NULL);
+	xTaskCreate(vTask1,	"Task_1", 128, NULL, 2, &vTask1_handle);
+	xTaskCreate(vTask2,	"Task_2", 128, NULL, 1, &vTask2_handle);
 
 	// start the scheduler
 	vTaskStartScheduler();
@@ -141,9 +136,9 @@ static void SystemClock_Config()
 /*
  *	Task1
  */
-void vTask1 (void *pvParameters)
+void vTask1(void *pvParameters)
 {
-	uint8_t state = 0;
+	uint8_t count = 0;
 	TickType_t xLastWakeTime;
 
 	xLastWakeTime = xTaskGetTickCount();
@@ -152,85 +147,35 @@ void vTask1 (void *pvParameters)
 	{
 		BSP_LED_Toggle();
 
-		switch(state)
+		count++;
+		// notify task_2 every 10 count
+		if (count == 10)
 		{
-		case 0:
-		{
-			xEventGroupClearBits(myEventGroup, BIT0 | BIT1); // [0 0]
-			state = 1;
-			break;
-		}
-		case 1:
-		{
-			xEventGroupSetBits(myEventGroup, BIT0);          // [x 1]
-
-			state = 2;
-			break;
-		}
-		case 2:
-		{
-			xEventGroupSetBits(myEventGroup, BIT1);          // [1 x]
-
-			state = 3;
-			break;
-		}
-		case 3:
-		{
-			xEventGroupSetBits(myEventGroup, BIT0 | BIT1);  // [1 1]
-
-			state = 0;
-			break;
-		}
+			// direct notification to task_2
+			xTaskNotifyGive(vTask2_handle);
+			count = 0;
 		}
 
-		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(2));
+		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(100));
 	}
 }
 
 /*
- *	Task2
+ *	Task_2
+ *	- Sends a message to console when a notification is received
  */
-void vTask2 (void *pvParameters)
+void vTask2(void *pvParameters)
 {
+	uint16_t 	count;
+	count = 0;
 	while(1)
 	{
-		// Wait for myEventGroup :
-		// - bit #0, bit #1
-		// - Clear on Exit
-		// - Wait for All bits (AND)
-		xEventGroupWaitBits(myEventGroup, (BIT0 | BIT1), pdTRUE, pdTRUE, portMAX_DELAY);
-
-		// If the bit is set
-		my_printf("#");
-	}
-}
-
-/*
- * Task 3
- */
-void vTask3 (void *pvParameters)
-{
-	EventBits_t		evb_result, evb_msk;
-
-	// Prepare a mask for testing event bits
-	evb_msk = BIT1|BIT0;
-
-	while(1)
-	{
-		// Wait for myEventGroup
-		// - bit #0, bit #1
-		// - Clear on Exit
-		// - Do not Wait for All bits (OR)
-		evb_result = xEventGroupWaitBits(myEventGroup, (BIT0 | BIT1), pdTRUE, pdFALSE, portMAX_DELAY);
-
-		// If BIT0 is set
-		if ((evb_result & evb_msk) == BIT0) 	my_printf("[0]");
-
-		// If BIT1 is set
-		if ((evb_result & evb_msk) == BIT1) 	my_printf("[1]");
-
-		// If both BIT0 and BIT1 are set
-		if ((evb_result & evb_msk) == evb_msk)	my_printf("[A]\r\n");
+		// Wait here for a notification
+		ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+		// Reaching this point means that a notification has been received
+        // Display console message
+        my_printf("Hello %2d from task2\r\n", count);
+		count++;
 	}
 }
 
