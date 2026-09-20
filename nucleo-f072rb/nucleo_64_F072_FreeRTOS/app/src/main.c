@@ -20,9 +20,11 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char * pcTaskName )
 //FreeRTOS tasks
 void vTask1(void *pvParameters);
 void vTask2(void *pvParameters);
+void vTask3(void *pvParameters);
 
 TaskHandle_t vTask1_handle;
 TaskHandle_t vTask2_handle;
+TaskHandle_t vTask3_handle;
 
 int main()
 {
@@ -33,8 +35,9 @@ int main()
 	BSP_Console_Init();
 	my_printf("Console Ready!\r\n");
 
-	xTaskCreate(vTask1,	"Task_1", 128, NULL, 2, &vTask1_handle);
-	xTaskCreate(vTask2,	"Task_2", 128, NULL, 1, &vTask2_handle);
+	xTaskCreate(vTask1,	"Task_1", 128, NULL, 3, &vTask1_handle);
+	xTaskCreate(vTask2,	"Task_2", 128, NULL, 2, &vTask2_handle);
+	xTaskCreate(vTask3,	"Task_3", 128, NULL, 1, &vTask3_handle);
 
 	// start the scheduler
 	vTaskStartScheduler();
@@ -134,52 +137,65 @@ static void SystemClock_Config()
 }
 
 /*
- *	Task1
+ *	Task_1
+ *	- Sends a notification to Task_3 every 500ms
  */
 void vTask1(void *pvParameters)
 {
-	uint16_t count = 0;
-	uint32_t time = 0;
-	TickType_t xLastWakeTime;
-
-	xLastWakeTime = xTaskGetTickCount();
+	uint8_t msg[] = "hello frm task #1\r\n";
+	TickType_t xLastWakeTime = xTaskGetTickCount();
 
 	while(1)
 	{
-		BSP_LED_Toggle();
+		// Notify Task_3 on slot #0
+		xTaskNotifyIndexed(vTask3_handle, 0, (uint32_t)msg, eSetValueWithOverwrite );
 
-		count++;
-		time++;
-		// notify task_2 every 10 count
-		if (count == 10)
-		{
-			// direct notification to task_2
-			xTaskNotify(vTask2_handle, time, eSetValueWithOverwrite );
-			count = 0;
-		}
-
-		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(100));
+		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(500));
 	}
 }
 
 /*
  *	Task_2
- *	- Sends a message to console when a notification is received
+ *	- Sends a notification to Task_3 every 1000ms
  */
 void vTask2(void *pvParameters)
 {
-	uint16_t count = 0;
-	uint32_t time = 0;
+	uint8_t	msg[] = "Hello from task #2\r\n";
+	TickType_t xLastWakeTime = xTaskGetTickCount();
 
 	while(1)
 	{
-		// Wait here for a notification
-		time = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-		// Reaching this point means that a notification has been received
-        // Display console message
-        my_printf("Hello %2d from task2 - Time @task1 = %d\r\n", count, time);
-		count++;
+		// Notify Task_3 on slot #1
+		xTaskNotifyIndexed(vTask3_handle, 1, (uint32_t)msg, eSetValueWithOverwrite );
+		// Wait
+		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(1000));
 	}
 }
 
+/*
+ *	Task_3
+ *	- Sends a message to console when a notification is received
+ */
+void vTask3(void *pvParameters)
+{
+	BaseType_t	notif_pending;
+	uint8_t		*pmsg;
+	uint8_t		slot_index;
 
+	while(1)
+	{
+		BSP_LED_Toggle();
+		for(slot_index = 0; slot_index<2; slot_index++)
+		{
+			// Poll notification on slot #0 with no timeout
+			notif_pending = xTaskNotifyWaitIndexed(slot_index, 0, 0, (uint32_t *)&pmsg, 0);
+			// If a notification was received
+			if (notif_pending == pdPASS)
+			{
+		        my_printf("Notification received on slot[%d] : %s", slot_index, pmsg);
+			}
+		}
+		// Polling period
+		vTaskDelay(100);;
+	}
+}
