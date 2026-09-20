@@ -22,7 +22,6 @@
 #include "main.h"
 #include "stm32f0xx_it.h"
 
-extern SemaphoreHandle_t xSem;
 
 /** @addtogroup STM32F0xx_HAL_Examples
   * @{
@@ -105,20 +104,7 @@ void HardFault_Handler(void)
   */
 void EXTI4_15_IRQHandler()
 {
-	portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
 
-	// Test for line 13 pending interrupt
-	if ((EXTI->PR & EXTI_PR_PR13_Msk) != 0)
-	{
-		// Clear pending bit 13 by writing a '1'
-		EXTI->PR = EXTI_PR_PR13;
-
-		// Release the semaphore
-		xSemaphoreGiveFromISR(xSem, &xHigherPriorityTaskWoken);
-
-	    // Perform a context switch to the waiting task
-	    portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
-	}
 }
 
 /**

@@ -20,8 +20,12 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char * pcTaskName )
 //FreeRTOS tasks
 void vTask1(void *pvParameters);
 void vTask2(void *pvParameters);
+void vTask3 (void *pvParameters);
 
-SemaphoreHandle_t xSem;
+EventGroupHandle_t myEventGroup;
+
+#define	BIT0	( (EventBits_t)( 0x01 <<0) )   // This is not mandatory but it provides
+#define BIT1	( (EventBits_t)( 0x01 <<1) )   // friendly alias for individual event
 
 int main()
 {
@@ -31,10 +35,11 @@ int main()
 	BSP_PB_Init();
 	BSP_Console_Init();
 
-	xSem = xSemaphoreCreateBinary();
+	myEventGroup = xEventGroupCreate();
 
 	xTaskCreate(vTask1, "Task_1", 256, NULL, 1, NULL);
 	xTaskCreate(vTask2, "Task_2", 256, NULL, 2, NULL);
+	xTaskCreate(vTask3, "Task_3",  256, NULL, 3, NULL);
 
 	// start the scheduler
 	vTaskStartScheduler();
@@ -138,6 +143,7 @@ static void SystemClock_Config()
  */
 void vTask1 (void *pvParameters)
 {
+	uint8_t state = 0;
 	TickType_t xLastWakeTime;
 
 	xLastWakeTime = xTaskGetTickCount();
@@ -146,7 +152,38 @@ void vTask1 (void *pvParameters)
 	{
 		BSP_LED_Toggle();
 
-		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(200));
+		switch(state)
+		{
+		case 0:
+		{
+			xEventGroupClearBits(myEventGroup, BIT0 | BIT1); // [0 0]
+			state = 1;
+			break;
+		}
+		case 1:
+		{
+			xEventGroupSetBits(myEventGroup, BIT0);          // [x 1]
+
+			state = 2;
+			break;
+		}
+		case 2:
+		{
+			xEventGroupSetBits(myEventGroup, BIT1);          // [1 x]
+
+			state = 3;
+			break;
+		}
+		case 3:
+		{
+			xEventGroupSetBits(myEventGroup, BIT0 | BIT1);  // [1 1]
+
+			state = 0;
+			break;
+		}
+		}
+
+		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(2));
 	}
 }
 
@@ -155,36 +192,34 @@ void vTask1 (void *pvParameters)
  */
 void vTask2 (void *pvParameters)
 {
-	portBASE_TYPE	xStatus;
-
-	// Initialize the user Push-Button
-	BSP_PB_Init();
-
-	// Set priority for EXTI line 4 to 15, and enable interrupt
-	NVIC_SetPriority(EXTI4_15_IRQn, configMAX_API_CALL_INTERRUPT_PRIORITY + 0);
-	NVIC_EnableIRQ(EXTI4_15_IRQn);
-
 	while(1)
 	{
-		// Wait here for Semaphore with 100ms timeout
-		xStatus = xSemaphoreTake(xSem, 100);
+		// Wait for myEventGroup :
+		// - bit #0
+		// - Clear on Exit
+		// - Wait for All bits (AND)
+		xEventGroupWaitBits(myEventGroup, BIT0, pdTRUE, pdTRUE, portMAX_DELAY);
 
-		// Test the result of the take attempt
-		if (xStatus == pdPASS)
-		{
-			// The semaphore was taken as expected
+		// If the bit is set
+		my_printf("#");
+	}
+}
 
-			// Display console message
-			my_printf("#");
-		}
+/*
+ * Task 3
+ */
+void vTask3 (void *pvParameters)
+{
+	while(1)
+	{
+		// Wait for myEventGroup
+		// - bit #0
+		// - Clear on Exit
+		// - Wait for All bits (AND)
+		xEventGroupWaitBits(myEventGroup, BIT0, pdTRUE, pdTRUE, portMAX_DELAY);
 
-		else
-		{
-			// The 100ms timeout elapsed without Semaphore being taken
-
-			// Display another message
-			my_printf(".");
-		}
+		// If the bit is set
+		my_printf("-");
 	}
 }
 
