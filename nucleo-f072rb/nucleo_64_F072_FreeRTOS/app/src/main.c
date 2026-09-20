@@ -20,11 +20,11 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char * pcTaskName )
 //FreeRTOS tasks
 void vTask1(void *pvParameters);
 void vTask2(void *pvParameters);
-void vTask3(void *pvParameters);
+void vTaskTimer(TimerHandle_t xTimer);
 
-TaskHandle_t vTask1_handle;
-TaskHandle_t vTask2_handle;
-TaskHandle_t vTask3_handle;
+// Declare Timer Object
+TimerHandle_t	my_timer;
+TickType_t	ticks;
 
 int main()
 {
@@ -33,11 +33,14 @@ int main()
 	BSP_LED_Init();
 	BSP_PB_Init();
 	BSP_Console_Init();
-	my_printf("Console Ready!\r\n");
 
-	xTaskCreate(vTask1,	"Task_1", 128, NULL, 3, &vTask1_handle);
-	xTaskCreate(vTask2,	"Task_2", 128, NULL, 2, &vTask2_handle);
-	xTaskCreate(vTask3,	"Task_3", 128, NULL, 1, &vTask3_handle);
+	my_timer = xTimerCreate("my_timer", 200, pdTRUE, NULL, vTaskTimer);
+	// start timer
+	xTimerStart(my_timer, 0);
+	ticks = xTimerGetExpiryTime(my_timer);
+
+	xTaskCreate(vTask1,		"Task_1", 		256, NULL, 1, NULL);
+	xTaskCreate(vTask2,		"Task_2", 		256, NULL, 2, NULL);
 
 	// start the scheduler
 	vTaskStartScheduler();
@@ -142,13 +145,11 @@ static void SystemClock_Config()
  */
 void vTask1(void *pvParameters)
 {
-	uint8_t msg[] = "hello frm task #1\r\n";
 	TickType_t xLastWakeTime = xTaskGetTickCount();
 
 	while(1)
 	{
-		// Notify Task_3 on slot #0
-		xTaskNotifyIndexed(vTask3_handle, 0, (uint32_t)msg, eSetValueWithOverwrite );
+		my_printf("-");
 
 		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(500));
 	}
@@ -160,42 +161,24 @@ void vTask1(void *pvParameters)
  */
 void vTask2(void *pvParameters)
 {
-	uint8_t	msg[] = "Hello from task #2\r\n";
 	TickType_t xLastWakeTime = xTaskGetTickCount();
 
 	while(1)
 	{
-		// Notify Task_3 on slot #1
-		xTaskNotifyIndexed(vTask3_handle, 1, (uint32_t)msg, eSetValueWithOverwrite );
+		my_printf("#");
 		// Wait
 		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(1000));
 	}
 }
 
 /*
- *	Task_3
- *	- Sends a message to console when a notification is received
+ * Timer Callback
  */
-void vTask3(void *pvParameters)
+void vTaskTimer (TimerHandle_t xTimer)
 {
-	BaseType_t	notif_pending;
-	uint8_t		*pmsg;
-	uint8_t		slot_index;
+	my_printf("\tTimer callback\r\n");
 
-	while(1)
-	{
-		BSP_LED_Toggle();
-		for(slot_index = 0; slot_index<2; slot_index++)
-		{
-			// Poll notification on slot #0 with no timeout
-			notif_pending = xTaskNotifyWaitIndexed(slot_index, 0, 0, (uint32_t *)&pmsg, 0);
-			// If a notification was received
-			if (notif_pending == pdPASS)
-			{
-		        my_printf("Notification received on slot[%d] : %s", slot_index, pmsg);
-			}
-		}
-		// Polling period
-		vTaskDelay(100);;
-	}
+	ticks = xTimerGetExpiryTime(my_timer);
+	BSP_LED_Toggle();
 }
+
