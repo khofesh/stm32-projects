@@ -186,7 +186,7 @@ void vTask1(void *pvParameters)
 	while(1)
 	{
 
-		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(100));
+		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(20));
 	}
 }
 
@@ -200,7 +200,7 @@ void vTask2(void *pvParameters)
 	while(1)
 	{
 		// Wait
-		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(100));
+		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(30));
 	}
 }
 
@@ -209,17 +209,72 @@ void vTask2(void *pvParameters)
  */
 void vTaskHWM (void *pvParameters)
 {
-	uint32_t	free_heap_size;
 	TickType_t xLastWakeTime = xTaskGetTickCount();
+
+	uint32_t	count;
+	uint16_t	hwm_Task1, hwm_Task2, hwm_TaskHWM;
+	uint32_t	free_heap_size;
+
+	count = 0;
+
+	// Prepare console layout using ANSI escape sequences
+	my_printf("%c[0m",   0x1B);	// Remove all text attributes
+	my_printf("%c[2J",   0x1B); 	// Clear console
+	my_printf("%c[1;0H", 0x1B);	// Move cursor [1:0]
+
+	my_printf("High Water Marks console");
+
+	my_printf("%c[3;0H", 0x1B);	// Move cursor line 3
+	my_printf("Iteration");
+
+	my_printf("%c[4;0H", 0x1B);	// Move cursor line 4
+	my_printf("Task1");
+
+	my_printf("%c[5;0H", 0x1B);	// Move cursor line 5
+	my_printf("Task2");
+
+	my_printf("%c[6;0H", 0x1B);	// Move cursor line 6
+	my_printf("TaskHWM");
+
+	my_printf("%c[7;0H", 0x1B);	// Move cursor line 7
+	my_printf("Free Heap");
 
 	while(1)
 	{
-		// Periodically Report Free Heap size after scheduler has started
-		free_heap_size = xPortGetFreeHeapSize();
-		my_printf("Free Heap Size is %d bytes\r\n", free_heap_size);
+		  // Gather High Water Marks
+		  hwm_Task1	= uxTaskGetStackHighWaterMark(vTask1_handle);
+		  hwm_Task2 	= uxTaskGetStackHighWaterMark(vTask2_handle);
+		  hwm_TaskHWM	= uxTaskGetStackHighWaterMark(vTaskHWM_handle);
+
+		  // Get free Heap size
+		  free_heap_size = xPortGetFreeHeapSize();
+
+		  // Display results into console
+		  my_printf("%c[0;31;40m", 0x1B); 	// Red over black
+
+		  my_printf("%c[3;12H", 0x1B);
+		  my_printf("%5d", count);
+
+		  my_printf("%c[1;33;44m", 0x1B); 	// Yellow over blue
+
+		  my_printf("%c[4;12H", 0x1B);
+		  my_printf("%5d", hwm_Task1);
+
+		  my_printf("%c[5;12H", 0x1B);
+		  my_printf("%5d", hwm_Task2);
+
+		  my_printf("%c[6;12H", 0x1B);
+		  my_printf("%5d", hwm_TaskHWM);
+
+		  my_printf("%c[1;35;40m", 0x1B); 	// Majenta over black
+		  my_printf("%c[7;12H", 0x1B);
+		  my_printf("%5d", free_heap_size);
+
+		  my_printf("%c[0m", 0x1B); 		// Remove all text attributes
+		  count++;
 
 		// Wait for 500ms
-		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(500));
+		vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(200));
 	}
 }
 
