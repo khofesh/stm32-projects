@@ -28,7 +28,8 @@ extern "C" {
  * ============================================================================ */
 
 #ifndef SSCMA_MAX_RX_SIZE
-#define SSCMA_MAX_RX_SIZE           (8 * 1024)  /* RX buffer size */
+#define SSCMA_MAX_RX_SIZE           (32 * 1024) /* RX buffer size; >=16K to allow
+                                                   sscma_invoke(show=true) */
 #endif
 
 #ifndef SSCMA_MAX_TX_SIZE
@@ -53,6 +54,10 @@ extern "C" {
 
 #ifndef SSCMA_MAX_KEYPOINTS_POINTS
 #define SSCMA_MAX_KEYPOINTS_POINTS  17          /* Max points per keypoint */
+#endif
+
+#ifndef SSCMA_MAX_IMAGE_SIZE
+#define SSCMA_MAX_IMAGE_SIZE        (32 * 1024) /* Max Base64 image blob kept */
 #endif
 
 /* ============================================================================
@@ -285,6 +290,10 @@ typedef struct {
     /* Image data (Base64 encoded, if available) */
     char    *image_buf;
     uint32_t image_len;
+    uint32_t image_buf_size;
+
+    /* Destination struct for the command currently being waited on */
+    void    *rsp_ctx;
 
     /* User callback */
     sscma_response_cb_t response_cb;
@@ -462,6 +471,14 @@ const char* sscma_get_info(sscma_handle_t *handle, bool use_cache);
  * @return SSCMA_OK on success
  */
 sscma_err_t sscma_wifi_get_config(sscma_handle_t *handle, sscma_wifi_t *wifi);
+
+/**
+ * @brief Report the WiFi firmware version to the module
+ * @param handle Pointer to SSCMA handle
+ * @param version Version string
+ * @return SSCMA_OK on success
+ */
+sscma_err_t sscma_wifi_set_version(sscma_handle_t *handle, const char *version);
 
 /**
  * @brief Set WiFi status

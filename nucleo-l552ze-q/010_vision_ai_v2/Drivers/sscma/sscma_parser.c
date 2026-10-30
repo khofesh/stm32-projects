@@ -55,6 +55,10 @@ static int tok_to_int(const char *json, const jsmntok_t *tok)
     char buf[16];
     size_t len = tok->end - tok->start;
 
+    /* JSON booleans arrive as primitives; atoi() would yield 0 for both */
+    if (len && json[tok->start] == 't') return 1;
+    if (len && (json[tok->start] == 'f' || json[tok->start] == 'n')) return 0;
+
     if (len >= sizeof(buf)) len = sizeof(buf) - 1;
 
     memcpy(buf, json + tok->start, len);
@@ -514,6 +518,104 @@ int sscma_parse_get_keypoints(const char *json, size_t json_len,
     }
 
     return count;
+}
+
+/**
+ * @brief Tokenize and return the index of the "data" value token
+ * @return Index of the "data" value, or -1 on error
+ */
+static int find_data_object(const char *json, size_t json_len, int *num_tokens_out)
+{
+    jsmn_parser parser;
+    jsmn_init(&parser);
+
+    int num_tokens = jsmn_parse(&parser, json, json_len, tokens, SSCMA_MAX_JSON_TOKENS);
+    if (num_tokens <= 0 || tokens[0].type != JSMN_OBJECT) return -1;
+
+    if (num_tokens_out) *num_tokens_out = num_tokens;
+
+    return find_key(json, tokens, num_tokens, 0, "data");
+}
+
+int sscma_parse_get_data_int(const char *json, size_t json_len,
+                             const char *key, int *value)
+{
+    if (!json || json_len == 0 || !key || !value) return -1;
+
+    int num_tokens = 0;
+    int data_idx = find_data_object(json, json_len, &num_tokens);
+    if (data_idx < 0 || tokens[data_idx].type != JSMN_OBJECT) return -1;
+
+    int idx = find_key(json, tokens, num_tokens, data_idx, key);
+    if (idx < 0 || tokens[idx].type != JSMN_PRIMITIVE) return -1;
+
+    *value = tok_to_int(json, &tokens[idx]);
+    return 0;
+}
+
+/**
+ * @brief Locate the "config" object nested inside "data"
+ */
+static int find_config_object(const char *json, size_t json_len, int *num_tokens_out)
+{
+    int num_tokens = 0;
+    int data_idx = find_data_object(json, json_len, &num_tokens);
+    if (data_idx < 0 || tokens[data_idx].type != JSMN_OBJECT) return -1;
+
+    int cfg_idx = find_key(json, tokens, num_tokens, data_idx, "config");
+    if (cfg_idx < 0 || tokens[cfg_idx].type != JSMN_OBJECT) return -1;
+
+    if (num_tokens_out) *num_tokens_out = num_tokens;
+    return cfg_idx;
+}
+
+int sscma_parse_get_config_string(const char *json, size_t json_len,
+                                  const char *key, char *value, size_t value_size)
+{
+    if (!json || json_len == 0 || !key || !value || value_size == 0) return -1;
+
+    int num_tokens = 0;
+    int cfg_idx = find_config_object(json, json_len, &num_tokens);
+    if (cfg_idx < 0) return -1;
+
+    int idx = find_key(json, tokens, num_tokens, cfg_idx, key);
+    if (idx < 0 || tokens[idx].type != JSMN_STRING) return -1;
+
+    tok_copy(json, &tokens[idx], value, value_size);
+    return 0;
+}
+
+int sscma_parse_get_config_int(const char *json, size_t json_len,
+                               const char *key, int *value)
+{
+    if (!json || json_len == 0 || !key || !value) return -1;
+
+    int num_tokens = 0;
+    int cfg_idx = find_config_object(json, json_len, &num_tokens);
+    if (cfg_idx < 0) return -1;
+
+    int idx = find_key(json, tokens, num_tokens, cfg_idx, key);
+    if (idx < 0 || tokens[idx].type != JSMN_PRIMITIVE) return -1;
+
+    *value = tok_to_int(json, &tokens[idx]);
+    return 0;
+}
+
+int sscma_parse_get_data_token(const char *json, size_t json_len,
+                               const char *key, size_t *offset, size_t *length)
+{
+    if (!json || json_len == 0 || !key || !offset || !length) return -1;
+
+    int num_tokens = 0;
+    int data_idx = find_data_object(json, json_len, &num_tokens);
+    if (data_idx < 0 || tokens[data_idx].type != JSMN_OBJECT) return -1;
+
+    int idx = find_key(json, tokens, num_tokens, data_idx, key);
+    if (idx < 0) return -1;
+
+    *offset = (size_t)tokens[idx].start;
+    *length = (size_t)(tokens[idx].end - tokens[idx].start);
+    return 0;
 }
 
 bool sscma_parse_has_key(const char *json, size_t json_len, const char *key)
