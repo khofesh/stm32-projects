@@ -16,11 +16,47 @@
 - No unsolicited suggestions or improvements beyond what was asked.
 - Use short variable names where meaning is clear from context.
 
+## Project Structure
+
+Spec: `SPEC.md` (CubeMX + CMake + Ninja + arm-none-eabi-gcc variant). Target: STM32F3DISCOVERY (STM32F303VCT6) + BMP280.
+
+| Path | Owner | Edit |
+|---|---|---|
+| `010_9dof_bmp280_cmake.ioc` | CubeMX | Never by hand — give step-by-step CubeMX guide |
+| `CMakeLists.txt` (root) | User | Yes — attach all our targets here |
+| `CMakePresets.json` | User | Yes |
+| `cmake/gcc-arm-none-eabi.cmake` | User | Rarely |
+| `cmake/starm-clang.cmake` | CubeMX | No (unused) |
+| `cmake/stm32cubemx/CMakeLists.txt` | CubeMX | No |
+| `STM32F303xx_FLASH.ld`, `startup_stm32f303xc.s` | CubeMX | No |
+| `Core/`, `Drivers/` | CubeMX | Only inside `USER CODE` blocks |
+| `Bsp/{Inc,Src}` | User | I2C/SPI/time HAL wrappers |
+| `Sensors/{Inc,Src}` | User | LSM303DLHC, L3GD20, BMP280 drivers |
+| `Fusion/{Inc,Src}` | User | Madgwick, baro filter, axis map |
+| `App/{Inc,Src}` | User | Calibration, telemetry, scheduler |
+| `tests/` | User | Host-only CMake tree (CTest), stubs in `tests/stubs/` |
+| `tools/` | User | `log.py`, `plot.py`, `size_check.py`, `regenerate.txt` |
+| `docs/` | User | toolchain, hardware, calibration, test log |
+
+CMake targets: `stm32cubemx` (INTERFACE, generated) ← `bsp`, `sensors`, `fusion`, `app` (STATIC) → executable `010_9dof_bmp280_cmake` + post-build `.hex`/`.bin`.
+
+## Build
+
+```bash
+cmake --preset Debug && cmake --build --preset Debug      # or Release
+cmake -S tests -B build/tests && cmake --build build/tests && ctest --test-dir build/tests --output-on-failure
+```
+
+Output in `build/<Preset>/`. Do not add `.cproject`/Eclipse metadata.
+
 ## Code Style
 
-- C (C11), STM32CubeIDE / GCC ARM toolchain, HAL drivers
+- C (C11), CMake + arm-none-eabi-gcc toolchain, HAL drivers
 - Never write outside the `/* USER CODE BEGIN X */` ... `/* USER CODE END X */` markers in CubeMX-generated files — code outside is lost on regeneration
-- Application code goes in `Core/Src` and `Core/Inc`; reusable drivers in their own `.c`/`.h` pair
+- Application code goes in `App/`, `Sensors/`, `Fusion/`, `Bsp/` (each with `Inc/` + `Src/`), not `Core/`; register new sources in the root `CMakeLists.txt`
+- Portable modules (`Sensors/`, `Fusion/`) must not include `stm32f3xx_hal.h` outside `#ifndef HOST_TEST`; hardware access goes through `Bsp/`
+- Every numeric algorithm gets a host test vector in `tests/`
+- Warnings for our code: `-Wall -Wextra -Wshadow -Wundef -Wdouble-promotion -Wfloat-equal`; budget flash < 64 KB, RAM < 12 KB
 - Use fixed-width types from `<stdint.h>` (`uint8_t`, `int32_t`), not `int`/`long`
 - `static` for file-local functions and variables; no globals unless shared across translation units
 - Peripheral handles (`huart1`, `hi2c1`, ...) come from CubeMX — declare with `extern` in headers, never redefine
