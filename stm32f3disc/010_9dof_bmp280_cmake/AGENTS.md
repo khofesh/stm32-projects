@@ -18,7 +18,7 @@
 
 ## Project Structure
 
-Spec: `SPEC.md` (CubeMX + CMake + Ninja + arm-none-eabi-gcc variant). Target: STM32F3DISCOVERY (STM32F303VCT6) + BMP280.
+Spec: `docs/SPEC.md` (CubeMX + CMake + Ninja + arm-none-eabi-gcc variant). Target: STM32F3DISCOVERY (STM32F303VCT6) + BMP280.
 
 | Path | Owner | Edit |
 |---|---|---|

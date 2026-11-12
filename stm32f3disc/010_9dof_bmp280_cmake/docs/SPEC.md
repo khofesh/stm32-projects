@@ -195,7 +195,7 @@ The root `CMakeLists.txt` creates the executable target and links the generated 
 
 | Peripheral | Setting |
 |---|---|
-| RCC | HSI 8 MHz, PLL /2 ×18 → 72 MHz; AHB /1; APB1 /2 (36 MHz); APB2 /1 |
+| RCC | HSE bypass 8 MHz (ST-LINK MCO on PF0), PREDIV /1, PLL ×9 → 72 MHz; AHB /1; APB1 /2 (36 MHz); APB2 /1; USB /1.5 (48 MHz); I2C1/I2C2 ← HSI; USART1 ← PCLK2 |
 | Flash | 2 wait states, prefetch on, I-cache on |
 | I2C1 | PB6/PB7, fast mode 400 kHz, analog filter on, digital filter 0 (LSM303DLHC, on-board) |
 | I2C2 | PA9 SCL / PA10 SDA (AF4, open-drain, no internal pull), fast mode 400 kHz, analog filter on, digital filter 0 (BMP280) |
