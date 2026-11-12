@@ -37,6 +37,21 @@ add_executable(${CMAKE_PROJECT_NAME})
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
 
+set(OUR_WARNINGS -Wall -Wextra -Wshadow -Wundef -Wdouble-promotion -Wfloat-equal)
+
+add_library(sensors STATIC
+    Sensors/BMP280/driver_bmp280.c
+    Sensors/l3gd20/l3gd20.c
+    Sensors/lsm303dlhc/lsm303dlhc.c
+)
+target_include_directories(sensors PUBLIC
+    Sensors/BMP280
+    Sensors/l3gd20
+    Sensors/lsm303dlhc
+    Sensors/Common
+)
+target_compile_options(sensors PRIVATE ${OUR_WARNINGS})
+
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined library search paths
@@ -65,4 +80,5 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
 
     # Add user defined libraries
+    sensors
 )
