@@ -1,4 +1,4 @@
-# BSP L3GD20 Component
+# BSP I3G4250D Component
 
 ## Overview
 
@@ -17,17 +17,17 @@ Two models of publication are proposed for the STM32Cube embedded software:
 
 ## Description
 
-This **l3gd20** MCU component repository is one element **common to all** STM32Cube MCU embedded software packages, providing the **L3GD20** BSP MEMS component part.
+This **i3g4250d** MCU component repository is one element **common to all** STM32Cube MCU embedded software packages, providing the **I3G4250D** BSP MEMS component part.
 
 ## License
 
-Copyright (c) 2015 STMicroelectronics
+Copyright (c) 2020 STMicroelectronics
 
 This software component is licensed by STMicroelectronics under the **BSD-3-Clause** license. You may not use this software except in compliance with this license. You may obtain a copy of the license [here](https://opensource.org/licenses/BSD-3-Clause).
 
 ## Release note
 
-Details about the content of this release are available in the release note [here](https://htmlpreview.github.io/?https://github.com/STMicroelectronics/l3gd20/blob/main/Release_Notes.html).
+Details about the content of this release are available in the release note [here](https://htmlpreview.github.io/?https://github.com/STMicroelectronics/i3g4250d/blob/main/Release_Notes.html).
 
 ## Compatibility information
 
@@ -35,6 +35,6 @@ Please refer to the repository of the BSP **board** driver you are using to know
 
 ## Troubleshooting
 
-If you have any issue with the **software content** of this repository, you can file an issue [here](https://github.com/STMicroelectronics/l3gd20/issues/new/choose).
+If you have any issue with the **software content** of this repository, you can file an issue [here](https://github.com/STMicroelectronics/i3g4250d/issues/new/choose).
 
 For any other question related to the product, the tools, the environment, you can submit a topic to the [ST Community](https://community.st.com/s/).

@@ -91,20 +91,20 @@ uint8_t BSP_ACCELERO_Init(void)
   ACCELERO_InitTypeDef         Accelero_InitStructure;
   ACCELERO_FilterConfigTypeDef Accelero_FilterStructure = {0};
 
-  if(Lsm303dlhcDrv.ReadID() == I_AM_LMS303DLHC)
+  if(Lsm303agrDrv.ReadID() == I_AM_LSM303AGR)
   {
     /* Initialize the accelerometer driver structure */
-    AccelerometerDrv = &Lsm303dlhcDrv;
+    AccelerometerDrv = &Lsm303agrDrv;
 
     /* MEMS configuration ----------------------------------------------------*/
     /* Fill the accelerometer structure */
-    Accelero_InitStructure.Power_Mode         = LSM303DLHC_NORMAL_MODE;
-    Accelero_InitStructure.AccOutput_DataRate = LSM303DLHC_ODR_50_HZ;
-    Accelero_InitStructure.Axes_Enable        = LSM303DLHC_AXES_ENABLE;
-    Accelero_InitStructure.AccFull_Scale      = LSM303DLHC_FULLSCALE_2G;
-    Accelero_InitStructure.BlockData_Update   = LSM303DLHC_BlockUpdate_Continous;
-    Accelero_InitStructure.Endianness         = LSM303DLHC_BLE_LSB;
-    Accelero_InitStructure.High_Resolution    = LSM303DLHC_HR_ENABLE;
+    Accelero_InitStructure.Power_Mode         = LSM303AGR_NORMAL_MODE;
+    Accelero_InitStructure.AccOutput_DataRate = LSM303AGR_ODR_50_HZ;
+    Accelero_InitStructure.Axes_Enable        = LSM303AGR_AXES_ENABLE;
+    Accelero_InitStructure.AccFull_Scale      = LSM303AGR_FULLSCALE_2G;
+    Accelero_InitStructure.BlockData_Update   = LSM303AGR_BlockUpdate_Continous;
+    Accelero_InitStructure.Endianness         = LSM303AGR_BLE_LSB;
+    Accelero_InitStructure.High_Resolution    = LSM303AGR_HR_ENABLE;
 
     /* Configure MEMS: data rate, power mode, full scale and axes */
     ctrl |= (Accelero_InitStructure.Power_Mode | Accelero_InitStructure.AccOutput_DataRate | \
@@ -117,10 +117,10 @@ uint8_t BSP_ACCELERO_Init(void)
     AccelerometerDrv->Init(ctrl);
 
     /* Fill the accelerometer LPF structure */
-    Accelero_FilterStructure.HighPassFilter_Mode_Selection   = LSM303DLHC_HPM_NORMAL_MODE;
-    Accelero_FilterStructure.HighPassFilter_CutOff_Frequency = LSM303DLHC_HPFCF_16;
-    Accelero_FilterStructure.HighPassFilter_AOI1             = LSM303DLHC_HPF_AOI1_DISABLE;
-    Accelero_FilterStructure.HighPassFilter_AOI2             = LSM303DLHC_HPF_AOI2_DISABLE;
+    Accelero_FilterStructure.HighPassFilter_Mode_Selection   = LSM303AGR_HPM_NORMAL_MODE;
+    Accelero_FilterStructure.HighPassFilter_CutOff_Frequency = LSM303AGR_HPFCF_16;
+    Accelero_FilterStructure.HighPassFilter_AOI1             = LSM303AGR_HPF_AOI1_DISABLE;
+    Accelero_FilterStructure.HighPassFilter_AOI2             = LSM303AGR_HPF_AOI2_DISABLE;
 
     /* Configure MEMS: mode, cutoff frquency, Filter status, Click, AOI1 and AOI2 */
     ctrl = (uint8_t) (Accelero_FilterStructure.HighPassFilter_Mode_Selection   |\

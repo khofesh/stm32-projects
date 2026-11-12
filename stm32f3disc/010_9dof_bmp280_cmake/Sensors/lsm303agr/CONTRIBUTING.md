@@ -8,7 +8,7 @@ This guide mainly focuses on steps to be followed to submit an issue or a pull-r
 ### 1. Before opening an issue
 
 To report a bug or a request please file an issue in the right repository
-(example for [lsm303dlhc](https://github.com/STMicroelectronics/lsm303dlhc/issues/new/choose)).
+(example for [lsm303agr](https://github.com/STMicroelectronics/lsm303agr/issues/new/choose)).
 
 Please check the following boxes before posting an issue:
 - [ ] `Make sure you are using the latest commit (major releases are tagged, but corrections are available as new commits).`

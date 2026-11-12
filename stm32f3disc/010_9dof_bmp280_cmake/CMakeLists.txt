@@ -41,13 +41,13 @@ set(OUR_WARNINGS -Wall -Wextra -Wshadow -Wundef -Wdouble-promotion -Wfloat-equal
 
 add_library(sensors STATIC
     Sensors/BMP280/driver_bmp280.c
-    Sensors/l3gd20/l3gd20.c
-    Sensors/lsm303dlhc/lsm303dlhc.c
+    Sensors/i3g4250d/i3g4250d.c
+    Sensors/lsm303agr/lsm303agr.c
 )
 target_include_directories(sensors PUBLIC
     Sensors/BMP280
-    Sensors/l3gd20
-    Sensors/lsm303dlhc
+    Sensors/i3g4250d
+    Sensors/lsm303agr
     Sensors/Common
 )
 target_compile_options(sensors PRIVATE ${OUR_WARNINGS})

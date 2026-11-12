@@ -3,18 +3,19 @@
 
 | Field | Value |
 |---|---|
-| Document | `SPEC-CMAKE.md` |
-| Revision | 1.0 (draft) |
+| Document | `docs/SPEC.md` |
+| Revision | 1.1 (draft) |
 | Status | Proposed |
 | Toolchain | STM32CubeMX → CMake → Ninja → arm-none-eabi-gcc |
 | Target | STM32F3DISCOVERY (STM32F303VCT6) + external BMP280 breakout |
-| Relationship | Build-system variant of `SPEC.md` (CubeIDE). See §2 |
+| Board | MB1035-F303C-E02 (I3G4250D + LSM303AGR, ST-LINK/V2-1 with VCP) |
+| Relationship | Self-contained: build system (Part A) + product (Part B). See §2 |
 
 ---
 
 ## 1. Purpose
 
-Produce the same 10-DOF inertial measurement node as `SPEC.md`, but with a fully IDE-independent, command-line-first build:
+Produce a 10-DOF inertial measurement node (Part B) with a fully IDE-independent, command-line-first build (Part A):
 
 - **STM32CubeMX** generates the project, startup code, HAL and `CMakeLists.txt`.
 - **CMake + Ninja** drive the build; no `.cproject`, no Eclipse metadata.
@@ -41,22 +42,16 @@ The deliverable is a repository that a clean machine can clone, configure, build
 
 ---
 
-## 2. Relationship to `SPEC.md`
+## 2. Document structure
 
-| Area | Status |
-|---|---|
-| §3 Hardware, wiring, pinout | **Inherited unchanged** (restated in §4 for convenience) |
-| §5 Software architecture, APIs | **Inherited unchanged** |
-| §6 Calibration | **Inherited unchanged** |
-| §7 Performance requirements (NFR-01…15) | **Inherited unchanged** (summarised in §5) |
-| §8 Telemetry frame format | **Inherited unchanged** |
-| §11 Test cases T-01…T-15 | **Inherited unchanged**, plus build tests in §16 |
-| §4 CubeMX/CubeIDE configuration | **Superseded** by §6–§9 of this document |
-| §10 Build and configuration | **Superseded** by §6–§15 |
-| §12 Risks | **Extended** in §18 |
-| §14 Future revisions | Unchanged |
+The CubeIDE baseline `SPEC.md` is not available; this document is self-contained.
 
-If this variant is adopted, `SPEC.md` remains authoritative for everything except build, debug and CI. Do not maintain two divergent copies of the requirement tables.
+| Part | Sections | Scope |
+|---|---|---|
+| A — Build system | §1–§20 | toolchain, CubeMX, CMake, debug, tests, CI |
+| B — Product | §21–§25 | software architecture, calibration, telemetry, test cases T-01…T-15 |
+
+Earlier references to "`SPEC.md` §x" map as: §3/§4 hardware → §4; §5 architecture → §21; §6 calibration → §22; §7 NFRs → §5; §8 telemetry → §23; §11 tests → §24.
 
 ---
 
@@ -65,8 +60,8 @@ If this variant is adopted, `SPEC.md` remains authoritative for everything excep
 ```
                         ┌────────────────────────────────────────┐
                         │        STM32F303VCT6 @ 72 MHz           │
-  LSM303DLHC ──I2C1─────►  accel + mag                             │
-  L3GD20     ──SPI1─────►  gyro                                    │
+  LSM303AGR  ──I2C1─────►  accel + mag                             │
+  I3G4250D   ──SPI1─────►  gyro                                    │
   BMP280     ──I2C2─────►  pressure / temperature                  │
                         │  calibration → fusion → telemetry        │
                         └───────────┬────────────────────────────┘
@@ -87,17 +82,19 @@ Repository is built by `cmake --preset Release`; output is `build/Release/10dof.
 | GND | GND | — |
 | SCL | PA9 | I2C2_SCL (AF4), 400 kHz, external 4.7 kΩ pull-up on breakout |
 | SDA | PA10 | I2C2_SDA (AF4), 400 kHz, external 4.7 kΩ pull-up on breakout |
-| SDO | GND | address `0x76` |
+| SDO | pulled high on breakout | address `0x77` (Adafruit BMP280) |
 | CSB | **3V** | must be high |
 
 | Device | Bus | Address |
 |---|---|---|
-| LSM303DLHC accel | I2C1 | `0x18` / `0x19` |
-| LSM303DLHC mag | I2C1 | `0x1E` |
-| BMP280 | I2C2 | `0x76` / `0x77` |
-| L3GD20 / I3G4250D | SPI1, CS=PE3 | — |
+| LSM303AGR accel | I2C1 | `0x19` (WHO_AM_I_A `0x0F` = `0x33`) |
+| LSM303AGR mag | I2C1 | `0x1E` (WHO_AM_I_M `0x4F` = `0x40`) |
+| BMP280 | I2C2 | `0x77` (chip ID `0xD0` = `0x58`) |
+| I3G4250D | SPI1, CS=PE3 | WHO_AM_I `0x0F` = `0xD3` |
 
-Pinout, clock tree and peripheral parameters: identical to `SPEC.md` §3–§4, with the CubeMX settings expressed as code in §7.3 below.
+Board revision MB1035-F303C-E02, identity confirmed by reading WHO_AM_I on hardware (2026-11-12). Earlier revisions (L3GD20 `0xD4`, LSM303DLHC) are not supported.
+
+Peripheral parameters: §7.3. Telemetry goes over USART1 PC4/PC5 to the ST-LINK/V2-1 virtual COM port.
 
 ---
 
@@ -109,15 +106,19 @@ Pinout, clock tree and peripheral parameters: identical to `SPEC.md` §3–§4, 
 | NFR-02 | Static attitude noise | < 0.3° RMS |
 | NFR-03 | Dynamic roll/pitch error | < 2° RMS |
 | NFR-04 | Calibrated heading error | < 3° |
+| NFR-05 | Gyro-only yaw drift (mag disabled, calibrated) | < 10°/min |
 | NFR-06 | Relative altitude noise | < 0.1 m RMS |
 | NFR-07 | Relative altitude drift (15 min) | < 0.5 m |
+| NFR-08 | Telemetry frame rate | 50 Hz ± 0.1 % |
 | NFR-09 | Sensor-to-UART latency | < 20 ms |
 | NFR-10 | 30 min run, 100 Hz, dropped frames | 0 |
 | NFR-11 | CPU load | < 30 % |
 | NFR-12 | Flash footprint | < 64 KB |
 | NFR-13 | Static RAM footprint | < 12 KB |
+| NFR-14 | Power-on to first valid frame (no calibration run) | < 2 s |
+| NFR-15 | Recovery from a sensor bus fault, no MCU reset | < 1 s |
 
-Functional behaviour, calibration procedure, telemetry frame (84 bytes, 50 Hz, CRC16-CCITT) and test cases T-01…T-15 are unchanged.
+Functional behaviour §21, calibration §22, telemetry frame (84 bytes, 50 Hz, CRC16-CCITT) §23, test cases T-01…T-15 §24.
 
 ---
 
@@ -191,20 +192,20 @@ The root `CMakeLists.txt` creates the executable target and links the generated 
 | Keep user code | Yes |
 | Delete previously generated files | **No** (protects user files) |
 
-### 7.3 Peripheral configuration (equivalent to SPEC.md §4)
+### 7.3 Peripheral configuration
 
 | Peripheral | Setting |
 |---|---|
 | RCC | HSE bypass 8 MHz (ST-LINK MCO on PF0), PREDIV /1, PLL ×9 → 72 MHz; AHB /1; APB1 /2 (36 MHz); APB2 /1; USB /1.5 (48 MHz); I2C1/I2C2 ← HSI; USART1 ← PCLK2 |
 | Flash | 2 wait states, prefetch on, I-cache on |
-| I2C1 | PB6/PB7, fast mode 400 kHz, analog filter on, digital filter 0 (LSM303DLHC, on-board) |
+| I2C1 | PB6/PB7, fast mode 400 kHz, analog filter on, digital filter 0 (LSM303AGR, on-board) |
 | I2C2 | PA9 SCL / PA10 SDA (AF4, open-drain, no internal pull), fast mode 400 kHz, analog filter on, digital filter 0 (BMP280) |
 | SPI1 | PA5/PA6/PA7, master, 8-bit, MSB first, mode 3, prescaler /16 (4.5 MHz), SW NSS |
-| GPIO | PE3 output push-pull, initial high (L3GD20 CS) |
-| USART1 | PC4 TX, PC5 RX, 460800 8N1 |
+| GPIO | PE3 output push-pull, initial high (I3G4250D CS) |
+| USART1 | PC4 TX, PC5 RX, 460800 8N1; TX on DMA1 Channel 4 (normal mode); RX interrupt (1-byte commands) |
 | TIM6 | 1 kHz update interrupt |
 | SYS | SWD, no stop debug |
-| NVIC | TIM6 prio 3; I2C1/I2C2/SPI1 event prio 2; nothing at prio 0 |
+| NVIC | TIM6 prio 3; I2C1/I2C2/SPI1 event, USART1, DMA1 Ch4 prio 2; nothing at prio 0 |
 
 ### 7.4 Headless regeneration
 
@@ -232,8 +233,6 @@ The `git diff --exit-code` step is the guard: if regeneration changes generated 
 
 ```
 /
-├── SPEC.md                  # product + CubeIDE baseline
-├── SPEC-CMAKE.md            # this document
 ├── README.md
 ├── 10dof.ioc
 ├── CMakeLists.txt           # user-owned, generated once
@@ -299,7 +298,7 @@ include(cmake/stm32cubemx/CMakeLists.txt)
 
 # --- our code ---------------------------------------------------------
 add_library(bsp     STATIC Bsp/Src/bsp_i2c.c Bsp/Src/bsp_spi.c Bsp/Src/bsp_time.c)
-add_library(sensors STATIC Sensors/Src/bmp280.c Sensors/Src/lsm303dlhc.c Sensors/Src/l3gd20.c)
+add_library(sensors STATIC Sensors/Src/bmp280.c Sensors/Src/lsm303agr.c Sensors/Src/i3g4250d.c)
 add_library(fusion  STATIC Fusion/Src/madgwick.c Fusion/Src/baro_filter.c)
 add_library(app     STATIC App/Src/app.c App/Src/telemetry.c App/Src/calibration.c)
 
@@ -638,3 +637,238 @@ Do not attempt to keep both build systems in one tree. Two build descriptions dr
 | Q-3 | Is a CubeMX CLI on CI worth the licensing friction? | Manual regeneration check at release |
 | Q-4 | Ship a Docker/Dev Container for the toolchain? | Yes, in M5 |
 | Q-5 | `-Os` or `-O2` for the release artifact? | `-O2`; revisit if the budget is tight |
+| Q-6 | Body-frame axis orientation relative to the PCB | Determined empirically in T-03, recorded in `docs/hardware.md` |
+
+---
+
+# Part B — Product specification
+
+## 21. Software architecture
+
+### 21.1 Layers
+
+```
+App      scheduler · calibration · telemetry · command parser
+Fusion   axis_map · madgwick · baro_filter · altitude
+Sensors  i3g4250d · lsm303agr · bmp280          (portable, no HAL)
+Bsp      bsp_i2c · bsp_spi · bsp_time · bsp_uart · bsp_flash   (HAL, CubeMX handles)
+Core     CubeMX-generated init, ISRs → USER CODE hooks only
+```
+
+Dependencies point downward only. `Sensors/` and `Fusion/` compile on the host with `HOST_TEST` (BR-07).
+
+### 21.2 Sensor configuration
+
+| Sensor | Mode | ODR | Range / resolution | Read at |
+|---|---|---|---|---|
+| I3G4250D | normal, BDU on, LSB at lower address | 100 Hz, BW 25 Hz | ±500 dps, 17.5 mdps/LSB | 100 Hz |
+| LSM303AGR accel | high-resolution 12-bit, BDU on | 100 Hz | ±4 g, 2 mg/LSB | 100 Hz |
+| LSM303AGR mag | continuous, offset cancellation on, BDU on | 100 Hz | 1.5 mG/LSB | 100 Hz |
+| BMP280 | normal, osrs_p ×16, osrs_t ×2, IIR 16, t_sb 0.5 ms | ≈ 26 Hz | 0.16 Pa resolution | 25 Hz |
+
+### 21.3 Scheduling
+
+TIM6 interrupts at 1 kHz; the ISR only increments a `volatile uint32_t` tick and sets due flags. The main loop is a run-to-completion cooperative scheduler:
+
+| Task | Period | Work |
+|---|---|---|
+| `imu_task` | 10 ms | read gyro + accel + mag, apply calibration and axis map, Madgwick update |
+| `baro_task` | 40 ms | read BMP280, compensate, altitude, baro filter |
+| `telemetry_task` | 20 ms | pack frame (§23), start USART1 TX DMA; skip and count if previous DMA still busy |
+| `debug_task` | 1000 ms | pack debug frame (§23.4) |
+| `cmd_task` | idle | consume bytes from the RX ring buffer (§22.4) |
+
+Rules: no `HAL_Delay()` after init; a task overrunning its slot sets `STATUS_OVERRUN` and increments `overruns`; CPU load is measured with DWT `CYCCNT` over busy time per 1 s window.
+
+### 21.4 Module APIs
+
+All functions return `int32_t` status (`0` = OK, negative = error) unless stated. Units in SI unless stated.
+
+```c
+/* Bsp */
+int32_t  bsp_i2c_read(uint8_t bus, uint8_t addr7, uint8_t reg, uint8_t *buf, uint16_t len);
+int32_t  bsp_i2c_write(uint8_t bus, uint8_t addr7, uint8_t reg, const uint8_t *buf, uint16_t len);
+int32_t  bsp_spi_read(uint8_t reg, uint8_t *buf, uint16_t len);      /* I3G4250D, CS PE3 */
+int32_t  bsp_spi_write(uint8_t reg, const uint8_t *buf, uint16_t len);
+uint32_t bsp_time_ms(void);
+uint32_t bsp_time_us(void);                                          /* DWT based */
+int32_t  bsp_uart_send_dma(const uint8_t *buf, uint16_t len);        /* -EBUSY if in flight */
+int32_t  bsp_flash_write_page(uint32_t addr, const void *data, uint16_t len);
+
+/* Sensors */
+typedef struct { float x, y, z; } vec3_t;
+int32_t i3g4250d_init(void);          int32_t i3g4250d_read(vec3_t *rad_s);
+int32_t lsm303agr_init(void);         int32_t lsm303agr_read_accel(vec3_t *m_s2);
+                                      int32_t lsm303agr_read_mag(vec3_t *uT);
+int32_t bmp280_init(void);            int32_t bmp280_read(float *pa, float *deg_c);
+
+/* Fusion */
+void  axis_map_apply(const int8_t m[3][3], const vec3_t *in, vec3_t *out);
+void  madgwick_init(float beta, float sample_hz);
+void  madgwick_update(const vec3_t *g, const vec3_t *a, const vec3_t *m);  /* m NULL → IMU-only */
+void  madgwick_get_quat(float q[4]);                                       /* w, x, y, z */
+float altitude_from_pressure(float pa, float p0_pa);                       /* 44330·(1−(p/p0)^(1/5.255)) */
+void  baro_filter_init(float alpha, float beta, float dt);
+float baro_filter_update(float alt_m);
+
+/* App */
+void app_init(void);
+void app_run(void);                   /* never returns */
+```
+
+Frames: body FRD (X forward, Y right, Z down), earth NED. Quaternion rotates body → earth. Sensor → body mapping is a signed permutation per sensor (`axis_map`), filled in from T-03.
+
+### 21.5 Fault handling
+
+A failed bus transaction marks that sensor not-OK in `status`, increments its error counter, and the task keeps running with the remaining sensors (Madgwick falls back to IMU-only without mag; altitude holds the last value). A not-OK sensor is re-initialised once per second; on success its flag is restored (NFR-15). `HAL_I2C_DeInit`/`Init` on the CubeMX handle is used to clear a stuck bus.
+
+---
+
+## 22. Calibration
+
+### 22.1 Parameters
+
+| Sensor | Model | Parameters |
+|---|---|---|
+| Gyro | `w = raw − b_g` | bias `b_g` (3) |
+| Accel | `a = S_a·(raw − b_a)` | offset `b_a` (3), diagonal scale `S_a` (3) |
+| Mag | `m = S_m·(raw − b_m)` | hard-iron `b_m` (3), diagonal soft-iron `S_m` (3) |
+| Baro | `h = altitude(p, p0)` | reference pressure `p0` |
+
+### 22.2 Procedures
+
+| Step | Command | Procedure | Acceptance |
+|---|---|---|---|
+| Gyro bias | `G` | board still, average 200 samples (2 s) | per-axis std < 0.05 °/s, else rejected |
+| Gyro bias (auto) | — | at boot, same as above if still; otherwise keep stored bias | — |
+| Accel 6-position | `A` ×6 | each face up/down, 100 samples each, any order; firmware detects the dominant axis | each orientation within 10° of an axis, all six seen |
+| Mag | `M` start / `M` stop | rotate through all orientations ≥ 20 s; min/max per axis | span per axis > 30 µT; span ratio max/min < 1.5 |
+| Baro zero | `B` | average 50 samples (2 s) → `p0` | std < 3 Pa |
+
+Results apply immediately; `S` persists them.
+
+### 22.3 Storage
+
+Last flash page (`0x0803F800`, 2 KB). Layout: `magic u32 = 0x31434C41`, `version u16`, `length u16`, parameters (`float`, little-endian), `crc16` over everything before it. Invalid magic, version or CRC → defaults (zero bias, unit scale) and `STATUS_CAL_*` bits cleared. The linker script is CubeMX-owned and not modified; NFR-12 (< 64 KB) guarantees the image never reaches this page.
+
+### 22.4 Commands (USART1 RX, single ASCII byte)
+
+| Byte | Action |
+|---|---|
+| `G` | gyro bias calibration |
+| `A` | capture one accel orientation (six needed) |
+| `M` | toggle mag calibration capture |
+| `B` | set baro reference `p0` |
+| `S` | save calibration to flash |
+| `D` | restore defaults (RAM only; `S` to persist) |
+| `R` | software reset |
+
+Unknown bytes are ignored. Calibration progress is reported in `calib_state` (§23).
+
+---
+
+## 23. Telemetry
+
+### 23.1 Link
+
+USART1 460800 8N1 → ST-LINK/V2-1 VCP. Binary frames only; `printf` text is allowed in Debug builds before the first frame and never interleaved with frames.
+
+### 23.2 Framing
+
+| Field | Value |
+|---|---|
+| Length | 84 bytes, fixed, all frame types |
+| Byte order | little-endian |
+| Sync | `0xAA 0x55` |
+| CRC | CRC16-CCITT-FALSE (poly `0x1021`, init `0xFFFF`, no reflection, no xorout) over bytes 2…81; test vector `"123456789"` → `0x29B1` |
+
+### 23.3 Data frame (type `0x01`, 50 Hz)
+
+| Offset | Size | Type | Field | Unit |
+|---|---|---|---|---|
+| 0 | 2 | u8[2] | sync `AA 55` | — |
+| 2 | 1 | u8 | type = `0x01` | — |
+| 3 | 1 | u8 | payload length = 78 | bytes |
+| 4 | 2 | u16 | sequence (wraps) | — |
+| 6 | 4 | u32 | timestamp of IMU sample | ms |
+| 10 | 16 | f32[4] | quaternion w, x, y, z | — |
+| 26 | 12 | f32[3] | accel (calibrated, body) | m/s² |
+| 38 | 12 | f32[3] | gyro (calibrated, body) | rad/s |
+| 50 | 12 | f32[3] | mag (calibrated, body) | µT |
+| 62 | 4 | f32 | pressure | Pa |
+| 66 | 4 | f32 | relative altitude (filtered) | m |
+| 70 | 2 | i16 | temperature | 0.01 °C |
+| 72 | 2 | u16 | status flags (§23.5) | — |
+| 74 | 1 | u8 | CPU load | % |
+| 75 | 1 | u8 | calib_state | — |
+| 76 | 2 | u16 | task overruns (cumulative) | — |
+| 78 | 2 | u16 | telemetry frames skipped (cumulative) | — |
+| 80 | 2 | u16 | reserved = 0 | — |
+| 82 | 2 | u16 | CRC16 | — |
+
+### 23.4 Debug frame (type `0x02`, 1 Hz)
+
+| Offset | Size | Type | Field |
+|---|---|---|---|
+| 0–9 | 10 | — | header as §23.3, type `0x02`, timestamp = uptime ms |
+| 10 | 32 | char[32] | `BUILD_GIT_DESC`, NUL-padded |
+| 42 | 2 | u16 | I2C1 error count |
+| 44 | 2 | u16 | I2C2 error count |
+| 46 | 2 | u16 | SPI1 error count |
+| 48 | 2 | u16 | max loop time (µs, reset each frame) |
+| 50 | 2 | u16 | CPU load ‰ |
+| 52 | 2 | u16 | free stack (high-water, bytes) |
+| 54 | 28 | — | reserved = 0 |
+| 82 | 2 | u16 | CRC16 |
+
+
+### 23.5 Status flags
+
+| Bit | Meaning |
+|---|---|
+| 0 | gyro OK |
+| 1 | accel OK |
+| 2 | mag OK |
+| 3 | baro OK |
+| 4 | gyro calibrated |
+| 5 | accel calibrated |
+| 6 | mag calibrated |
+| 7 | baro reference set |
+| 8 | overrun in the last 1 s |
+| 9 | calibration in progress |
+| 10 | fusion IMU-only (mag excluded) |
+| 15 | Debug build |
+
+`tools/log.py` validates sync, length, CRC and sequence continuity and writes CSV; `tools/plot.py` plots it.
+
+---
+
+## 24. Test cases
+
+| ID | Title | Procedure | Pass |
+|---|---|---|---|
+| T-01 | Boot + link | power on, run `log.py` | first valid frame < 2 s (NFR-14); debug frame shows git describe |
+| T-02 | Sensor identity | read WHO_AM_I / chip ID at init | `0xD3`, `0x33`, `0x40`, `0x58`; result in debug log |
+| T-03 | Axis mapping | board flat, then each face down; rotate +90° about each body axis | gravity on correct axis and sign; gyro sign matches right-hand rule; mag follows; mapping recorded in `docs/hardware.md` |
+| T-04 | Calibration | run §22.2; repeat static checks | gyro residual < 0.1 °/s; \|a\| = 9.81 ± 0.05 m/s² in 6 orientations; \|m\| std < 5 % over full rotation |
+| T-05 | Static attitude noise | 60 s flat and still | roll/pitch/yaw std < 0.3° (NFR-02) |
+| T-06 | Dynamic roll/pitch | tilt to ±30°, ±60° against a reference fixture | RMS error < 2° (NFR-03) |
+| T-07 | Heading | 8 compass points vs. reference compass, away from ferrous objects | max error < 3° (NFR-04) |
+| T-08 | Gyro-only yaw drift | mag disabled, 5 min still | < 10°/min (NFR-05) |
+| T-09 | Altitude noise | 60 s still, after `B` | std < 0.1 m (NFR-06) |
+| T-10 | Altitude drift | 15 min still, indoor, doors closed | \|drift\| < 0.5 m (NFR-07) |
+| T-11 | Latency | toggle a spare GPIO at IMU read; logic analyser on GPIO + USART1 TX | read → last frame byte < 20 ms (NFR-09) |
+| T-12 | Endurance | 30 min at 100 Hz fusion / 50 Hz telemetry | 0 CRC errors, 0 sequence gaps, frame rate 50 Hz ± 0.1 % (NFR-08, NFR-10) |
+| T-13 | Resources | 60 s run; `size_check.py` | CPU load < 30 % (NFR-11); flash < 64 KB, RAM < 12 KB (NFR-12/13) |
+| T-14 | Fault recovery | disconnect BMP280 SDA for 5 s, reconnect | baro-OK cleared, other data uninterrupted, flag restored < 1 s after reconnect (NFR-15) |
+| T-15 | Calibration persistence | calibrate, `S`, power-cycle | parameters identical after reboot; `D` + power-cycle without `S` keeps stored values |
+
+Host tests (§12) cover the numeric parts of T-04, T-09 and the CRC/frame layout of T-12 before hardware runs.
+
+---
+
+## 25. Change log
+
+| Rev | Date | Change |
+|---|---|---|
+| 1.1 | 2026-11-12 | Board MB1035-F303C-E02 (I3G4250D, LSM303AGR) confirmed on hardware; Part B (§21–§25) drafted to replace the unavailable baseline `SPEC.md`; NFR-05/08/14/15 defined; USART1 TX DMA added |
