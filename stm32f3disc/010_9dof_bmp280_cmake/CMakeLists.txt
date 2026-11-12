@@ -10,7 +10,7 @@ cmake_minimum_required(VERSION 3.22)
 # Setup compiler settings
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_EXTENSIONS ON)
+set(CMAKE_C_EXTENSIONS OFF)
 
 
 # Define the build type
@@ -37,30 +37,80 @@ add_executable(${CMAKE_PROJECT_NAME})
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
 
-set(OUR_WARNINGS -Wall -Wextra -Wshadow -Wundef -Wdouble-promotion -Wfloat-equal)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
-add_library(sensors STATIC
-    Sensors/BMP280/driver_bmp280.c
-    Sensors/i3g4250d/i3g4250d.c
-    Sensors/lsm303agr/lsm303agr.c
-)
-target_include_directories(sensors PUBLIC
-    Sensors/BMP280
-    Sensors/i3g4250d
-    Sensors/lsm303agr
-    Sensors/Common
-)
-target_compile_options(sensors PRIVATE ${OUR_WARNINGS})
+# ---------------------------------------------------------------------------
+# Build identity: git describe --always --dirty ("" -> unknown)
+# ---------------------------------------------------------------------------
+find_package(Git QUIET)
+set(BUILD_GIT_DESC "unknown")
+if(GIT_FOUND)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} describe --always --dirty
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        OUTPUT_VARIABLE _git_desc
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+        RESULT_VARIABLE _git_rc)
+    if(_git_rc EQUAL 0 AND _git_desc)
+        set(BUILD_GIT_DESC "${_git_desc}")
+    endif()
+endif()
+message(STATUS "Build identity: ${BUILD_GIT_DESC}")
 
-add_library(bsp STATIC
-    Bsp/stm32f3_discovery.c
-    Bsp/stm32f3_discovery_accelerometer.c
-    Bsp/stm32f3_discovery_gyroscope.c
+# Size budgets (NFR-12 / NFR-13), enforced after every link.
+set(FLASH_BUDGET 65536 CACHE STRING "Flash budget in bytes")
+set(RAM_BUDGET 12288 CACHE STRING "RAM budget in bytes")
+
+# ---------------------------------------------------------------------------
+# Our code: Bsp, Sensors, Fusion, App
+# ---------------------------------------------------------------------------
+option(OUR_WERROR "Treat warnings in our sources as errors" OFF)
+
+set(OUR_WARNINGS
+    -Wall -Wextra -Wshadow -Wundef -Wdouble-promotion -Wfloat-equal
+    -fno-common -ffunction-sections -fdata-sections)
+set(OUR_DEFINES BUILD_GIT_DESC="${BUILD_GIT_DESC}")
+if(OUR_WERROR)
+    list(APPEND OUR_WARNINGS -Werror)
+endif()
+
+function(add_our_library name dir)
+    add_library(${name} STATIC ${ARGN})
+    target_include_directories(${name} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/${dir}/Inc)
+    target_link_libraries(${name} PUBLIC stm32cubemx)
+    target_compile_options(${name} PRIVATE ${OUR_WARNINGS})
+    target_compile_definitions(${name} PRIVATE ${OUR_DEFINES})
+endfunction()
+
+add_our_library(sensors Sensors
+    Sensors/Src/i3g4250d.c
+    Sensors/Src/lsm303agr.c
+    Sensors/vendor/bmp280/driver_bmp280.c
 )
-target_include_directories(bsp PUBLIC Bsp)
-target_link_libraries(bsp PUBLIC stm32cubemx sensors)
+target_include_directories(sensors PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Sensors/vendor/bmp280)
+# ST component drivers + ST BSP are replaced in M1; LibDriver BMP280 stays.
+add_our_library(bsp Bsp
+    Bsp/Src/bsp_time.c
+    Bsp/Src/bsp_uart.c
+    Bsp/Src/stm32f3_discovery.c
+    Bsp/Src/stm32f3_discovery_accelerometer.c
+    Bsp/Src/stm32f3_discovery_gyroscope.c
+)
+target_link_libraries(bsp PUBLIC sensors)
 target_link_libraries(sensors PUBLIC bsp)
-target_compile_options(bsp PRIVATE ${OUR_WARNINGS})
+
+# Fusion: axis map now; Madgwick, baro filter and altitude arrive in M4.
+add_our_library(fusion Fusion
+    Fusion/Src/axis_map.c
+)
+
+add_our_library(app App
+    App/Src/app.c
+    App/Src/crc16.c
+    App/Src/sched.c
+)
+target_link_libraries(app PUBLIC bsp fusion)
 
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
@@ -77,11 +127,6 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
 )
 
-# Add project symbols (macros)
-target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
-    # Add user defined symbols
-)
-
 # Remove wrong libob.a library dependency when using cpp files
 list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
 
@@ -90,5 +135,45 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
 
     # Add user defined libraries
-    sensors
+    app
 )
+
+# ---------------------------------------------------------------------------
+# Artifacts (.hex/.bin) + size budget
+# ---------------------------------------------------------------------------
+add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_OBJCOPY} -O ihex
+            $<TARGET_FILE:${CMAKE_PROJECT_NAME}>
+            $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>/${CMAKE_PROJECT_NAME}.hex
+    COMMAND ${CMAKE_OBJCOPY} -O binary
+            $<TARGET_FILE:${CMAKE_PROJECT_NAME}>
+            $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>/${CMAKE_PROJECT_NAME}.bin
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/size_check.py
+            --elf $<TARGET_FILE:${CMAKE_PROJECT_NAME}>
+            --size-tool ${CMAKE_SIZE}
+            --flash-max ${FLASH_BUDGET}
+            --ram-max ${RAM_BUDGET}
+    COMMENT "Generating .hex/.bin and checking the size budget"
+    VERBATIM)
+
+set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES
+    ADDITIONAL_CLEAN_FILES
+        ${CMAKE_PROJECT_NAME}.map
+        ${CMAKE_PROJECT_NAME}.hex
+        ${CMAKE_PROJECT_NAME}.bin)
+
+# ---------------------------------------------------------------------------
+# Flash target (OpenOCD, ST-LINK/V2-1 on the F3DISCOVERY)
+# ---------------------------------------------------------------------------
+find_program(OPENOCD_EXECUTABLE openocd)
+if(OPENOCD_EXECUTABLE)
+    add_custom_target(flash
+        COMMAND ${OPENOCD_EXECUTABLE}
+                -f interface/stlink.cfg -f target/stm32f3x.cfg
+                -c "program $<TARGET_FILE:${CMAKE_PROJECT_NAME}> verify reset exit"
+        DEPENDS ${CMAKE_PROJECT_NAME}
+        COMMENT "Programming $<TARGET_FILE_NAME:${CMAKE_PROJECT_NAME}> with OpenOCD"
+        USES_TERMINAL)
+else()
+    message(WARNING "openocd not found: the 'flash' target is unavailable")
+endif()

@@ -1,0 +1,7 @@
+# tools/regenerate.txt
+# Headless STM32CubeMX regeneration. The project name is the .ioc file name.
+config load 010_9dof_bmp280_cmake.ioc
+project toolchain CMake
+project compiler GCC
+project generate
+exit

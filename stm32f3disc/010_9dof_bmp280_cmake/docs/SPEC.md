@@ -70,7 +70,7 @@ Earlier references to "`SPEC.md` §x" map as: §3/§4 hardware → §4; §5 arch
                         ST-LINK VCP → host tools/log.py
 ```
 
-Repository is built by `cmake --preset Release`; output is `build/Release/10dof.elf` plus `.bin`, `.hex`, `.map`.
+Repository is built by `cmake --preset Release`; output is `build/Release/010_9dof_bmp280_cmake.elf` plus `.bin`, `.hex`, `.map`.
 
 ---
 
@@ -184,7 +184,7 @@ The root `CMakeLists.txt` creates the executable target and links the generated 
 | Setting | Value |
 |---|---|
 | Board | STM32F3DISCOVERY |
-| Project name | `10dof` (no spaces, ASCII) |
+| Project name | `010_9dof_bmp280_cmake` (no spaces, ASCII) |
 | Toolchain / IDE | **CMake** |
 | Compiler | **GCC** |
 | Application structure | Advanced |
@@ -213,7 +213,7 @@ CubeMX can regenerate from a script, which makes the `.ioc` reviewable in CI:
 
 ```text
 # tools/regenerate.txt
-config load 10dof.ioc
+config load 010_9dof_bmp280_cmake.ioc
 project toolchain CMake
 project compiler GCC
 project generate
@@ -234,7 +234,7 @@ The `git diff --exit-code` step is the guard: if regeneration changes generated 
 ```
 /
 ├── README.md
-├── 10dof.ioc
+├── 010_9dof_bmp280_cmake.ioc
 ├── CMakeLists.txt           # user-owned, generated once
 ├── CMakePresets.json        # user-owned
 ├── STM32F303VCTx_FLASH.ld
@@ -243,10 +243,10 @@ The `git diff --exit-code` step is the guard: if regeneration changes generated 
 │   └── stm32cubemx/CMakeLists.txt     # tool-owned
 ├── Core/                    # tool-owned (USER CODE blocks only)
 ├── Drivers/                 # HAL + CMSIS (tool-owned)
-├── App/                     # our code
-├── Sensors/
-├── Fusion/
-├── Bsp/
+├── App/                     # our code, {Inc,Src}
+├── Sensors/                 # our drivers, {Inc,Src} + vendor/ (LibDriver BMP280)
+├── Fusion/                  # our code, {Inc,Src}
+├── Bsp/                     # our code, {Inc,Src}
 ├── tests/                   # host-only unit tests (separate CMake tree)
 │   ├── CMakeLists.txt
 │   ├── test_bmp280.c
@@ -259,6 +259,7 @@ The `git diff --exit-code` step is the guard: if regeneration changes generated 
 │   ├── size_check.py
 │   └── regenerate.txt
 └── docs/
+    ├── PLAN.md
     ├── toolchain.md
     ├── hardware.md
     ├── calibration.md
@@ -278,8 +279,8 @@ The `git diff --exit-code` step is the guard: if regeneration changes generated 
 | `sensors` | STATIC | `Sensors/Src/*.c` |
 | `fusion` | STATIC | `Fusion/Src/*.c` |
 | `app` | STATIC | `App/Src/*.c` |
-| `10dof` | EXECUTABLE | links `app`, `fusion`, `sensors`, `bsp`, `stm32cubemx` |
-| `10dof.hex` / `10dof.bin` | custom | post-build `objcopy` |
+| `010_9dof_bmp280_cmake` | EXECUTABLE | links `app`, `fusion`, `sensors`, `bsp`, `stm32cubemx` |
+| `010_9dof_bmp280_cmake.hex` / `.bin` | custom | post-build `objcopy` |
 
 Rationale: static libraries keep include directories honest, make host-testing trivial (link the same `fusion`/`sensors` sources natively), and give `--gc-sections` something to do.
 
@@ -287,7 +288,7 @@ Rationale: static libraries keep include directories honest, make host-testing t
 
 ```cmake
 cmake_minimum_required(VERSION 3.25)
-project(10dof C ASM)
+project(010_9dof_bmp280_cmake C ASM)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -316,19 +317,20 @@ target_link_libraries(app PUBLIC fusion sensors bsp)
 add_executable(${PROJECT_NAME}.elf Core/Src/main.c)
 target_link_libraries(${PROJECT_NAME}.elf PRIVATE app)
 target_link_options(${PROJECT_NAME}.elf PRIVATE
-    -Wl,--gc-sections -Wl,--print-memory-usage -Wl,-Map=$<TARGET_FILE_DIR:${PROJECT_NAME}.elf>/10dof.map)
+    -Wl,--gc-sections -Wl,--print-memory-usage -Wl,-Map=$<TARGET_FILE_DIR:${PROJECT_NAME}.elf>/010_9dof_bmp280_cmake.map)
 
 # --- artifacts + budget ----------------------------------------------
 add_custom_command(TARGET ${PROJECT_NAME}.elf POST_BUILD
-    COMMAND ${CMAKE_OBJCOPY} -O ihex   $<TARGET_FILE:${PROJECT_NAME}.elf> $<TARGET_FILE_DIR:${PROJECT_NAME}.elf>/10dof.hex
-    COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${PROJECT_NAME}.elf> $<TARGET_FILE_DIR:${PROJECT_NAME}.elf>/10dof.bin
+    COMMAND ${CMAKE_OBJCOPY} -O ihex   $<TARGET_FILE:${PROJECT_NAME}.elf> $<TARGET_FILE_DIR:${PROJECT_NAME}.elf>/010_9dof_bmp280_cmake.hex
+    COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${PROJECT_NAME}.elf> $<TARGET_FILE_DIR:${PROJECT_NAME}.elf>/010_9dof_bmp280_cmake.bin
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/size_check.py
             --elf $<TARGET_FILE:${PROJECT_NAME}.elf> --flash-max 65536 --ram-max 12288)
 
 # --- flash target -----------------------------------------------------
 add_custom_target(flash
     COMMAND ${CMAKE_COMMAND} -E echo "Flashing ${PROJECT_NAME}.elf"
-    COMMAND STM32_Programmer_CLI -c port=SWD -w $<TARGET_FILE:${PROJECT_NAME}.elf> -v -rst
+    COMMAND openocd -f interface/stlink.cfg -f target/stm32f3x.cfg
+            -c "program $<TARGET_FILE:${PROJECT_NAME}.elf> verify reset exit"
     DEPENDS ${PROJECT_NAME}.elf)
 ```
 
@@ -352,7 +354,8 @@ add_custom_target(flash
     { "name": "Release", "inherits": "base",
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } },
     { "name": "ci",      "inherits": "Release",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "MinSizeRel" } }
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "MinSizeRel",
+                          "OUR_WERROR": "ON" } }
   ],
   "buildPresets": [
     { "name": "Debug",   "configurePreset": "Debug" },
@@ -380,7 +383,8 @@ add_custom_target(flash
 
 `tools/size_check.py` parses `arm-none-eabi-size -A`, computes:
 
-- flash = `.isr_vector + .text + .rodata + .data`
+- flash = `.isr_vector + .text + .rodata + .init_array + .fini_array +
+  .preinit_array + .ARM.extab + .ARM + .data` (`.data` counts its flash load copy)
 - ram = `.data + .bss + ._user_heap_stack` (excluding `.ccmram`)
 
 and exits non-zero if either exceeds the budget. This turns NFR-12/NFR-13 from a review note into a build failure.
@@ -397,7 +401,7 @@ cmake --preset Debug
 cmake --build --preset Debug
 
 # artifacts
-ls build/Debug/10dof.{elf,hex,bin,map}
+ls build/Debug/010_9dof_bmp280_cmake.{elf,hex,bin,map}
 
 # flash (ST-LINK connected)
 cmake --build --preset Debug --target flash
@@ -437,11 +441,11 @@ cmake --preset Release && cmake --build --preset Release
 
 ```bash
 openocd -f interface/stlink.cfg -f target/stm32f3x.cfg \
-        -c "program build/Debug/10dof.elf verify reset exit"
+        -c "program build/Debug/010_9dof_bmp280_cmake.elf verify reset exit"
 ```
 
 ```bash
-arm-none-eabi-gdb build/Debug/10dof.elf \
+arm-none-eabi-gdb build/Debug/010_9dof_bmp280_cmake.elf \
   -ex "target extended-remote :3333" -ex "monitor reset halt" -ex "load"
 ```
 
@@ -534,9 +538,9 @@ jobs:
       - run: cmake --build --preset ci
       - run: cmake -S tests -B build/tests && cmake --build build/tests
       - run: ctest --test-dir build/tests --output-on-failure
-      - run: python3 tools/size_check.py --elf build/ci/10dof.elf --flash-max 65536 --ram-max 12288
+      - run: python3 tools/size_check.py --elf build/ci/010_9dof_bmp280_cmake.elf --flash-max 65536 --ram-max 12288
       - uses: actions/upload-artifact@v4
-        with: { name: firmware, path: build/ci/10dof.{elf,hex,bin,map} }
+        with: { name: firmware, path: build/ci/010_9dof_bmp280_cmake.{elf,hex,bin,map} }
 ```
 
 ### 14.1 CI requirements

@@ -26,7 +26,7 @@ extern "C" {
 #endif
 
 /* Includes ------------------------------------------------------------------*/
-#include "../Common/gyro.h"
+#include "Common/gyro.h"
 
 /** @addtogroup BSP
   * @{

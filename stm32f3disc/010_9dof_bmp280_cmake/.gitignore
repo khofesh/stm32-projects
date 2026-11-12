@@ -20,6 +20,7 @@ Drivers/STM32*HAL_Driver/
 #############################################
 # Build outputs
 #############################################
+build/
 *.o
 *.elf
 *.bin
@@ -172,6 +173,8 @@ docs/build/
 
 temp/
 sample/
+
+__pycache__/
 
 graphify-out/cache/
 graphify-out/.graphify_*
