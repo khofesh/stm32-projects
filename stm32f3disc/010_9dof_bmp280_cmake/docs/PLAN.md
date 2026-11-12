@@ -48,7 +48,7 @@ Each task lists files and how it is verified. Hardware checks run on the attache
 | 0.3 | `tools/size_check.py` (flash/RAM per §9.5) as post-build step, fails build on overflow | `tools/size_check.py`, `CMakeLists.txt` | BR-05: temporarily set budget 1 KB → build fails |
 | 0.4 | `flash` custom target via OpenOCD `program … verify reset exit` | `CMakeLists.txt` | BR-04 / AC-06 |
 | 0.5 | Restructure to D-2 layout; register `fusion`, `app` libs | `Bsp/`, `Sensors/`, `Fusion/`, `App/`, `CMakeLists.txt` | build clean |
-| 0.6 | `bsp_time` (ms from HAL tick, µs from DWT CYCCNT) | `Bsp/Src/bsp_time.c` | — |
+| 0.6 | `bsp_time` (ms from HAL tick, µs from HAL tick + SysTick->VAL) | `Bsp/Src/bsp_time.c` | — |
 | 0.7 | `bsp_uart`: DMA TX (`-EBUSY` if in flight), RX interrupt into 64-byte ring; `__io_putchar` for Debug-only printf | `Bsp/Src/bsp_uart.c` | banner on VCP |
 | 0.8 | `app_init()`/`app_run()`; TIM6 start + `HAL_TIM_PeriodElapsedCallback` → tick; LD3 heartbeat 1 Hz; banner with git desc | `App/Src/app.c`, `App/Src/sched.c`, `Core/Src/main.c` (USER CODE only) | LED blinks, banner seen |
 | 0.9 | `tests/` tree, harness, first test: CRC16-CCITT-FALSE `"123456789"` → `0x29B1` | `tests/CMakeLists.txt`, `tests/test_main.c`, `tests/test_crc16.c`, `App/Src/crc16.c` | AC-03 |

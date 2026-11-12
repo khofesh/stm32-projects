@@ -37,7 +37,8 @@ affected. Every link produces, in `build/<preset>/`:
   12 KB RAM (override with `-DFLASH_BUDGET=` / `-DRAM_BUDGET=`)
 
 The banner and (later) the debug frame embed `git describe --always --dirty` as
-`BUILD_GIT_DESC`, computed at configure time.
+`BUILD_GIT_DESC`, refreshed on every build into `build/<preset>/gen/build_info.h`
+(the `build_info` target; the file is rewritten only when the description changes).
 
 ## Host tests
 

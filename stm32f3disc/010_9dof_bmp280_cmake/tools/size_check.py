@@ -2,7 +2,7 @@
 """Enforce the flash/RAM budget from `arm-none-eabi-size -A` output.
 
 flash = read-only loadable sections (vector table, code, constants, init/fini
-        arrays, ARM unwind tables) + .data load copy
+        arrays, ARM unwind tables) + load copies of .data, .tdata, .ccmram
 ram   = .data + .bss + ._user_heap_stack (CCM is not part of the budget)
 """
 
@@ -20,6 +20,9 @@ FLASH_SECTIONS = (
     ".preinit_array",
     ".ARM.extab",
     ".ARM",
+    ".data",
+    ".tdata",
+    ".ccmram",
 )
 RAM_SECTIONS = (".data", ".bss", "._user_heap_stack")
 

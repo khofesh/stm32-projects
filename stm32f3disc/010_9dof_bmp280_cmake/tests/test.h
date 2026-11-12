@@ -32,6 +32,22 @@ extern int test_failures;
     }                                                                        \
   } while (0)
 
+#define CHECK_NEAR_F(actual, expected, tol)                                  \
+  do                                                                         \
+  {                                                                          \
+    float got_ = (actual);                                                   \
+    float want_ = (expected);                                                \
+    float d_ = got_ - want_;                                                 \
+    test_checks++;                                                           \
+    if ((d_ > (tol)) || (d_ < -(tol)))                                       \
+    {                                                                        \
+      test_failures++;                                                       \
+      printf("FAIL %s:%d: %s = %g, expected %g\n",                           \
+             __FILE__, __LINE__, #actual, (double)got_, (double)want_);      \
+    }                                                                        \
+  } while (0)
+
 void test_crc16(void);
+void test_axis_map(void);
 
 #endif /* __TEST_H */

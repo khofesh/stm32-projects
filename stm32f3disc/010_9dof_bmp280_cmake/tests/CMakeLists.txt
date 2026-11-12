@@ -12,7 +12,9 @@ enable_testing()
 add_executable(unit_tests
     test_main.c
     test_crc16.c
+    test_axis_map.c
     ../App/Src/crc16.c
+    ../Fusion/Src/axis_map.c
 )
 
 target_include_directories(unit_tests PRIVATE

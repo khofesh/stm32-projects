@@ -14,6 +14,7 @@ int32_t  bsp_uart_send_dma(const uint8_t *buf, uint16_t len);
 uint16_t bsp_uart_rx_available(void);
 int32_t  bsp_uart_rx_pop(uint8_t *byte);
 uint32_t bsp_uart_rx_drops(void);
+uint32_t bsp_uart_rx_arm_fails(void);
 
 #ifdef __cplusplus
 }

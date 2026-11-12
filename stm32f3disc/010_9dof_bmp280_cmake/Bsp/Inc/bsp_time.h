@@ -7,7 +7,8 @@ extern "C" {
 
 #include <stdint.h>
 
-/* ms from the HAL tick, us from DWT CYCCNT (both monotonic since boot). */
+/* ms from the HAL tick (1 kHz SysTick), us from the tick + SysTick->VAL.
+ * Both are monotonic modulo 2^32; the us counter wraps every ~71.6 min. */
 void     bsp_time_init(void);
 uint32_t bsp_time_ms(void);
 uint32_t bsp_time_us(void);

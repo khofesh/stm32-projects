@@ -40,23 +40,21 @@ add_subdirectory(cmake/stm32cubemx)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 # ---------------------------------------------------------------------------
-# Build identity: git describe --always --dirty ("" -> unknown)
+# Build identity: git describe --always --dirty, refreshed on every build
+# into gen/build_info.h (rewritten only when it changes).
 # ---------------------------------------------------------------------------
 find_package(Git QUIET)
-set(BUILD_GIT_DESC "unknown")
-if(GIT_FOUND)
-    execute_process(
-        COMMAND ${GIT_EXECUTABLE} describe --always --dirty
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        OUTPUT_VARIABLE _git_desc
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET
-        RESULT_VARIABLE _git_rc)
-    if(_git_rc EQUAL 0 AND _git_desc)
-        set(BUILD_GIT_DESC "${_git_desc}")
-    endif()
-endif()
-message(STATUS "Build identity: ${BUILD_GIT_DESC}")
+set(BUILD_INFO_DIR ${CMAKE_CURRENT_BINARY_DIR}/gen)
+set(BUILD_INFO_H ${BUILD_INFO_DIR}/build_info.h)
+add_custom_target(build_info
+    COMMAND ${CMAKE_COMMAND}
+            -DOUT=${BUILD_INFO_H}
+            -DSRC_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -DGIT_EXECUTABLE=${GIT_EXECUTABLE}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/build_info.cmake
+    BYPRODUCTS ${BUILD_INFO_H}
+    COMMENT "Refreshing build_info.h"
+    VERBATIM)
 
 # Size budgets (NFR-12 / NFR-13), enforced after every link.
 set(FLASH_BUDGET 65536 CACHE STRING "Flash budget in bytes")
@@ -70,7 +68,6 @@ option(OUR_WERROR "Treat warnings in our sources as errors" OFF)
 set(OUR_WARNINGS
     -Wall -Wextra -Wshadow -Wundef -Wdouble-promotion -Wfloat-equal
     -fno-common -ffunction-sections -fdata-sections)
-set(OUR_DEFINES BUILD_GIT_DESC="${BUILD_GIT_DESC}")
 if(OUR_WERROR)
     list(APPEND OUR_WARNINGS -Werror)
 endif()
@@ -80,7 +77,6 @@ function(add_our_library name dir)
     target_include_directories(${name} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/${dir}/Inc)
     target_link_libraries(${name} PUBLIC stm32cubemx)
     target_compile_options(${name} PRIVATE ${OUR_WARNINGS})
-    target_compile_definitions(${name} PRIVATE ${OUR_DEFINES})
 endfunction()
 
 add_our_library(sensors Sensors
@@ -97,6 +93,10 @@ add_our_library(bsp Bsp
     Bsp/Src/stm32f3_discovery_accelerometer.c
     Bsp/Src/stm32f3_discovery_gyroscope.c
 )
+# printf retarget (__io_putchar) only in Debug.
+target_compile_definitions(bsp PRIVATE $<$<CONFIG:Debug>:BSP_UART_STDIO>)
+# Temporary cycle: ST BSP calls the ST component drivers and they call back
+# into the BSP IO layer. Remove both edges with the ST code in M1 (task 1.9).
 target_link_libraries(bsp PUBLIC sensors)
 target_link_libraries(sensors PUBLIC bsp)
 
@@ -111,6 +111,8 @@ add_our_library(app App
     App/Src/sched.c
 )
 target_link_libraries(app PUBLIC bsp fusion)
+target_include_directories(app PRIVATE ${BUILD_INFO_DIR})
+add_dependencies(app build_info)
 
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE

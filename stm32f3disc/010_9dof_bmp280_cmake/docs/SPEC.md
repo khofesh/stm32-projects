@@ -695,7 +695,7 @@ int32_t  bsp_i2c_write(uint8_t bus, uint8_t addr7, uint8_t reg, const uint8_t *b
 int32_t  bsp_spi_read(uint8_t reg, uint8_t *buf, uint16_t len);      /* I3G4250D, CS PE3 */
 int32_t  bsp_spi_write(uint8_t reg, const uint8_t *buf, uint16_t len);
 uint32_t bsp_time_ms(void);
-uint32_t bsp_time_us(void);                                          /* DWT based */
+uint32_t bsp_time_us(void);                                          /* SysTick based */
 int32_t  bsp_uart_send_dma(const uint8_t *buf, uint16_t len);        /* -EBUSY if in flight */
 int32_t  bsp_flash_write_page(uint32_t addr, const void *data, uint16_t len);
 
