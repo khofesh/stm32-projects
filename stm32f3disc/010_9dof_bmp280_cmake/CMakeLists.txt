@@ -52,6 +52,16 @@ target_include_directories(sensors PUBLIC
 )
 target_compile_options(sensors PRIVATE ${OUR_WARNINGS})
 
+add_library(bsp STATIC
+    Bsp/stm32f3_discovery.c
+    Bsp/stm32f3_discovery_accelerometer.c
+    Bsp/stm32f3_discovery_gyroscope.c
+)
+target_include_directories(bsp PUBLIC Bsp)
+target_link_libraries(bsp PUBLIC stm32cubemx sensors)
+target_link_libraries(sensors PUBLIC bsp)
+target_compile_options(bsp PRIVATE ${OUR_WARNINGS})
+
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined library search paths
