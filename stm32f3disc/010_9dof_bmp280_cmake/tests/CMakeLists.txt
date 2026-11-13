@@ -13,14 +13,23 @@ add_executable(unit_tests
     test_main.c
     test_crc16.c
     test_axis_map.c
+    test_bmp280.c
+    test_frame.c
+    stubs/bsp_uart_stub.c
+    stubs/bmp280_regs_stub.c
     ../App/Src/crc16.c
+    ../App/Src/telemetry.c
     ../Fusion/Src/axis_map.c
+    ../Sensors/vendor/bmp280/driver_bmp280.c
 )
 
 target_include_directories(unit_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/stubs
     ${CMAKE_CURRENT_SOURCE_DIR}/../App/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../Bsp/Inc
     ${CMAKE_CURRENT_SOURCE_DIR}/../Sensors/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../Sensors/vendor/bmp280
     ${CMAKE_CURRENT_SOURCE_DIR}/../Fusion/Inc
 )
 

@@ -49,5 +49,7 @@ extern int test_failures;
 
 void test_crc16(void);
 void test_axis_map(void);
+void test_bmp280(void);
+void test_frame(void);
 
 #endif /* __TEST_H */

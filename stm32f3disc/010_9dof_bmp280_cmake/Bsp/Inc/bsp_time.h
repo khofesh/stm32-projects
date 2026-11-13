@@ -13,6 +13,9 @@ void     bsp_time_init(void);
 uint32_t bsp_time_ms(void);
 uint32_t bsp_time_us(void);
 
+/* Init-time only: the scheduler must never block (SPEC §21.3). */
+void     bsp_delay_ms(uint32_t ms);
+
 #ifdef __cplusplus
 }
 #endif

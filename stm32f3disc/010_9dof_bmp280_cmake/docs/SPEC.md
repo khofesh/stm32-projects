@@ -670,6 +670,8 @@ Dependencies point downward only. `Sensors/` and `Fusion/` compile on the host w
 | LSM303AGR mag | continuous, offset cancellation on, BDU on | 100 Hz | 1.5 mG/LSB | 100 Hz |
 | BMP280 | normal, osrs_p ×16, osrs_t ×2, IIR 16, t_sb 0.5 ms | ≈ 26 Hz | 0.16 Pa resolution | 25 Hz |
 
+Note: the LSM303AGR accelerometer output registers are 16-bit left-justified, with the 12-bit high-resolution value in bits 15:4 (verified on MB1035-F303C-E02 during T-02); the driver shifts right by 4.
+
 ### 21.3 Scheduling
 
 TIM6 interrupts at 1 kHz; the ISR only increments a `volatile uint32_t` tick and sets due flags. The main loop is a run-to-completion cooperative scheduler:
@@ -692,19 +694,28 @@ All functions return `int32_t` status (`0` = OK, negative = error) unless stated
 /* Bsp */
 int32_t  bsp_i2c_read(uint8_t bus, uint8_t addr7, uint8_t reg, uint8_t *buf, uint16_t len);
 int32_t  bsp_i2c_write(uint8_t bus, uint8_t addr7, uint8_t reg, const uint8_t *buf, uint16_t len);
+int32_t  bsp_i2c_recover(uint8_t bus);                                /* DeInit/Init the handle */
+uint32_t bsp_i2c_errors(uint8_t bus);                                 /* failed transfers */
 int32_t  bsp_spi_read(uint8_t reg, uint8_t *buf, uint16_t len);      /* I3G4250D, CS PE3 */
 int32_t  bsp_spi_write(uint8_t reg, const uint8_t *buf, uint16_t len);
+uint32_t bsp_spi_errors(void);
 uint32_t bsp_time_ms(void);
 uint32_t bsp_time_us(void);                                          /* SysTick based */
+void     bsp_delay_ms(uint32_t ms);                                   /* init only, never in a task */
 int32_t  bsp_uart_send_dma(const uint8_t *buf, uint16_t len);        /* -EBUSY if in flight */
+uint8_t  bsp_uart_tx_ready(void);                                    /* DMA idle */
 int32_t  bsp_flash_write_page(uint32_t addr, const void *data, uint16_t len);
 
 /* Sensors */
 typedef struct { float x, y, z; } vec3_t;
 int32_t i3g4250d_init(void);          int32_t i3g4250d_read(vec3_t *rad_s);
+                                      uint8_t i3g4250d_id(void);          /* WHO_AM_I, T-02 */
 int32_t lsm303agr_init(void);         int32_t lsm303agr_read_accel(vec3_t *m_s2);
                                       int32_t lsm303agr_read_mag(vec3_t *uT);
+                                      uint8_t lsm303agr_accel_id(void);
+                                      uint8_t lsm303agr_mag_id(void);
 int32_t bmp280_init(void);            int32_t bmp280_read(float *pa, float *deg_c);
+                                      uint8_t bmp280_chip_id(void);
 
 /* Fusion */
 void  axis_map_apply(const int8_t m[3][3], const vec3_t *in, vec3_t *out);

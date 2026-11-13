@@ -14,11 +14,15 @@
 | Area | State |
 |---|---|
 | CubeMX config (§7.3) | Done: clock, I2C1/I2C2 400 kHz, SPI1 mode 3, USART1 460800 + TX DMA, TIM6 1 kHz, PE3 init high, NVIC group 4 |
-| CMake | `stm32cubemx` + `sensors` + `bsp` static libs; no `.hex/.bin`, no size check, no flash target, no `ci` preset |
-| Bsp | ST F3-Discovery BSP (`stm32f3_discovery*.c`) on CubeMX `hspi1`/`hi2c1` |
-| Sensors | Vendored: ST `i3g4250d`, ST `lsm303agr` (accel + mag init, **no mag read**), LibDriver `bmp280`; flat folders |
-| Fusion, App, tests, tools | Not started |
-| Docs | `SPEC.md` only |
+| CMake | `stm32cubemx` + `bsp` + `sensors` + `fusion` + `app` static libs; `.hex/.bin`, size check, flash target, `ci` preset |
+| Bsp | `bsp_time`, `bsp_uart`, `bsp_i2c` (bus 1/2, per-bus error counters, DeInit/Init recovery), `bsp_spi` (CS PE3) |
+| Sensors | Own `i3g4250d`, `lsm303agr` (accel + mag) + LibDriver `bmp280` wrapper in `Sensors/vendor/bmp280/` |
+| App | Cooperative scheduler, raw telemetry at 25 Hz, debug frame at 1 Hz, CRC16, frame packer |
+| Tests, tools | Host tree with CRC16/axis map/BMP280 compensation/frame tests; `tools/log.py`, `tools/size_check.py` |
+| Docs | `SPEC.md`, `PLAN.md` |
+
+M1 verified on hardware (2026-11-13): IDs `0xD3`/`0x33`/`0x40`/`0x58`, 25.03 Hz over 31.8 s with 0 CRC errors, 0 sequence gaps, 0 skipped frames, 0 task overruns, 0 bus errors; FLASH 21.0 KB, RAM 3.3 KB (ci).
+
 
 ---
 

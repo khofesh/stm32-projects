@@ -11,6 +11,11 @@ uint32_t bsp_time_ms(void)
   return HAL_GetTick();
 }
 
+void bsp_delay_ms(uint32_t ms)
+{
+  HAL_Delay(ms);
+}
+
 uint32_t bsp_time_us(void)
 {
   uint32_t ms;

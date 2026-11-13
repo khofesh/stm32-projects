@@ -11,6 +11,7 @@ extern "C" {
 
 int32_t  bsp_uart_init(void);
 int32_t  bsp_uart_send_dma(const uint8_t *buf, uint16_t len);
+uint8_t  bsp_uart_tx_ready(void);
 uint16_t bsp_uart_rx_available(void);
 int32_t  bsp_uart_rx_pop(uint8_t *byte);
 uint32_t bsp_uart_rx_drops(void);

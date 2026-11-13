@@ -79,36 +79,38 @@ function(add_our_library name dir)
     target_compile_options(${name} PRIVATE ${OUR_WARNINGS})
 endfunction()
 
-add_our_library(sensors Sensors
-    Sensors/Src/i3g4250d.c
-    Sensors/Src/lsm303agr.c
-    Sensors/vendor/bmp280/driver_bmp280.c
-)
-target_include_directories(sensors PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Sensors/vendor/bmp280)
-# ST component drivers + ST BSP are replaced in M1; LibDriver BMP280 stays.
 add_our_library(bsp Bsp
     Bsp/Src/bsp_time.c
     Bsp/Src/bsp_uart.c
-    Bsp/Src/stm32f3_discovery.c
-    Bsp/Src/stm32f3_discovery_accelerometer.c
-    Bsp/Src/stm32f3_discovery_gyroscope.c
+    Bsp/Src/bsp_i2c.c
+    Bsp/Src/bsp_spi.c
 )
 # printf retarget (__io_putchar) only in Debug.
 target_compile_definitions(bsp PRIVATE $<$<CONFIG:Debug>:BSP_UART_STDIO>)
-# Temporary cycle: ST BSP calls the ST component drivers and they call back
-# into the BSP IO layer. Remove both edges with the ST code in M1 (task 1.9).
-target_link_libraries(bsp PUBLIC sensors)
+
+add_our_library(sensors Sensors
+    Sensors/Src/i3g4250d.c
+    Sensors/Src/lsm303agr.c
+    Sensors/Src/bmp280.c
+    Sensors/vendor/bmp280/driver_bmp280.c
+)
+target_include_directories(sensors PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Sensors/vendor/bmp280)
 target_link_libraries(sensors PUBLIC bsp)
+# LibDriver's bmp280_init(bmp280_handle_t *) collides with the wrapper API.
+set_source_files_properties(Sensors/vendor/bmp280/driver_bmp280.c
+    PROPERTIES COMPILE_DEFINITIONS "bmp280_init=ld_bmp280_init")
 
 # Fusion: axis map now; Madgwick, baro filter and altitude arrive in M4.
 add_our_library(fusion Fusion
     Fusion/Src/axis_map.c
 )
+target_link_libraries(fusion PUBLIC sensors)
 
 add_our_library(app App
     App/Src/app.c
     App/Src/crc16.c
     App/Src/sched.c
+    App/Src/telemetry.c
 )
 target_link_libraries(app PUBLIC bsp fusion)
 target_include_directories(app PRIVATE ${BUILD_INFO_DIR})
