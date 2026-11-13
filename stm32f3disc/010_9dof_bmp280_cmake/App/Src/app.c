@@ -43,6 +43,11 @@
 #define BARO_DT_S ((float)BARO_PERIOD_MS / 1000.0f)
 
 #define FUSION_BETA 0.1f
+/* High gain until the attitude converges from identity: ~115 deg/s. */
+#define FUSION_BETA_INIT 2.0f
+#define FUSION_INIT_UPDATES 200u
+/* Longest step integrated after a gap (flash save, overrun). */
+#define FUSION_DT_MAX_S 0.5f
 #define BARO_FILTER_ALPHA 0.2f
 #define BARO_FILTER_BETA 0.01f
 
@@ -83,6 +88,10 @@ static uint32_t s_load_window_cycles;
 static uint16_t s_cpu_load_permille;
 static float s_p0_pa;
 static uint8_t s_p0_valid;
+static uint32_t s_imu_cycles;
+static uint8_t s_imu_primed;
+static uint16_t s_fusion_updates;
+static uint8_t s_imu_only;
 
 static void dwt_init(void)
 {
@@ -169,7 +178,7 @@ void app_init(void)
   s_state.q[2] = 0.0f;
   s_state.q[3] = 0.0f;
   s_state.altitude_m = 0.0f;
-  madgwick_init(FUSION_BETA, IMU_RATE_HZ);
+  madgwick_init(FUSION_BETA_INIT, IMU_RATE_HZ);
   baro_filter_init(BARO_FILTER_ALPHA, BARO_FILTER_BETA, BARO_DT_S);
   s_p0_pa = calibration_p0_pa();
   s_p0_valid = (s_p0_pa > 0.0f) ? 1u : 0u;
@@ -178,6 +187,55 @@ void app_init(void)
                         (uint16_t)(sizeof(s_banner) - 1u)) != 0)
   {
     Error_Handler();
+  }
+}
+
+/* Step length from CYCCNT: SysTick misses ticks while a flash erase stalls
+ * the core, the cycle counter does not. */
+static float imu_dt_s(void)
+{
+  uint32_t c = DWT->CYCCNT;
+  float dt = (float)(c - s_imu_cycles) / (float)SystemCoreClock;
+
+  s_imu_cycles = c;
+  if (s_imu_primed == 0u)
+  {
+    s_imu_primed = 1u;
+    return 0.0f;
+  }
+  return (dt > FUSION_DT_MAX_S) ? FUSION_DT_MAX_S : dt;
+}
+
+static void fusion_update(void)
+{
+  uint8_t acc_ok = ((s_status & STATUS_ACCEL_OK) != 0u) ? 1u : 0u;
+  uint8_t mag_ok = (((s_status & STATUS_MAG_OK) != 0u) &&
+                    ((calibration_status() & STATUS_MAG_CAL) != 0u)) ? 1u : 0u;
+  float dt = imu_dt_s();
+
+  s_imu_only = (mag_ok == 0u) ? 1u : 0u;
+
+  /* A stale rate would keep integrating: skip the step. The next good
+   * sample restarts at the nominal dt. */
+  if ((s_status & STATUS_GYRO_OK) == 0u)
+  {
+    s_imu_primed = 0u;
+    return;
+  }
+
+  madgwick_update_dt(&s_state.gyro,
+                     (acc_ok != 0u) ? &s_state.accel : NULL,
+                     ((acc_ok != 0u) && (mag_ok != 0u)) ? &s_state.mag : NULL,
+                     dt);
+  madgwick_get_quat(s_state.q);
+
+  if (s_fusion_updates < FUSION_INIT_UPDATES)
+  {
+    s_fusion_updates++;
+    if (s_fusion_updates == FUSION_INIT_UPDATES)
+    {
+      madgwick_set_beta(FUSION_BETA);
+    }
   }
 }
 
@@ -216,9 +274,7 @@ static void imu_task(void)
   }
   status_set(STATUS_MAG_OK, st);
 
-  madgwick_update(&s_state.gyro, &s_state.accel,
-                  ((s_status & STATUS_MAG_OK) != 0u) ? &s_state.mag : NULL);
-  madgwick_get_quat(s_state.q);
+  fusion_update();
 
   s_state.imu_t_ms = bsp_time_ms();
 }
@@ -277,7 +333,7 @@ static void telemetry_task(void)
   {
     f.status |= STATUS_CALIBRATING;
   }
-  if ((s_status & STATUS_MAG_OK) == 0u)
+  if (s_imu_only != 0u)
   {
     f.status |= STATUS_IMU_ONLY;
   }
@@ -288,7 +344,7 @@ static void telemetry_task(void)
 #if DEBUG_LOG
   f.status |= STATUS_DEBUG_BUILD;
 #endif
-  f.cpu_load = (s_cpu_load_permille > 1000u) ? 100u : (uint8_t)(s_cpu_load_permille / 10u);
+  f.cpu_load = (uint8_t)(s_cpu_load_permille / 10u);
   f.calib_state = calibration_state();
   f.overruns = (uint16_t)s_overruns;
 
@@ -329,16 +385,17 @@ static void debug_task(void)
 
 /* The data frame owns the link at the 1 s boundary; send the debug frame as
  * soon as the DMA is idle instead of dropping it. */
-static void debug_flush(void)
+static uint8_t debug_flush(void)
 {
   if ((s_debug_pending == 0u) || (bsp_uart_tx_ready() == 0u))
   {
-    return;
+    return 0u;
   }
   if (telemetry_send_debug(&s_debug_frame) == 0)
   {
     s_debug_pending = 0u;
   }
+  return 1u;
 }
 
 void app_run(void)
@@ -352,8 +409,8 @@ void app_run(void)
 
   for (;;)
   {
-    uint32_t t0 = bsp_time_us();
     uint32_t c0 = DWT->CYCCNT;
+    uint32_t stall_cycles = 0u;
     uint8_t ran = 0u;
     uint8_t due;
 
@@ -403,26 +460,17 @@ void app_run(void)
       HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
     }
 
-    /* Busy-time accounting before the idle work and a commanded flash save:
-     * the erase stall is not CPU load. */
-    if (ran != 0u)
-    {
-      uint32_t dt = bsp_time_us() - t0;
-
-      s_busy_cycles += DWT->CYCCNT - c0;
-      if (dt > s_max_loop_us)
-      {
-        s_max_loop_us = dt;
-      }
-    }
-
     /* Idle work: one-byte calibration commands from the host. */
-    cmd_poll();
+    if (cmd_poll() != 0u)
+    {
+      ran = 1u;
+    }
 
     if (calibration_take_save_request() != 0u)
     {
       uint32_t since = sched_ticks();
       uint32_t ms = 0u;
+      uint32_t s0 = DWT->CYCCNT;
 
       /* Failure is reported through calib_state. */
       (void)calibration_save(&ms);
@@ -433,8 +481,25 @@ void app_run(void)
       next_imu = now;
       next_baro = now;
       next_telemetry = now;
+      stall_cycles = DWT->CYCCNT - s0;
     }
 
-    debug_flush();
+    if (debug_flush() != 0u)
+    {
+      ran = 1u;
+    }
+
+    /* The flash erase stall is not CPU load. Empty polling spins are idle. */
+    if (ran != 0u)
+    {
+      uint32_t busy = (DWT->CYCCNT - c0) - stall_cycles;
+      uint32_t us = (uint32_t)(((uint64_t)busy * 1000000u) / SystemCoreClock);
+
+      s_busy_cycles += busy;
+      if (us > s_max_loop_us)
+      {
+        s_max_loop_us = us;
+      }
+    }
   }
 }

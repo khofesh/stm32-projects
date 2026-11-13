@@ -136,20 +136,92 @@ static void test_gyro_integration(void)
 
 static void test_accel_level(void)
 {
-  const vec3_t g = {0.0f, 0.0f, 0.0f};
+  const vec3_t g0 = {0.0f, 0.0f, 0.0f};
+  const vec3_t g_roll = {0.5f, 0.0f, 0.0f};
   const vec3_t a = {0.0f, 0.0f, -9.80665f};
   float q[4];
 
+  /* Gyro-only to 30 deg roll, then the accelerometer must pull it level. */
+  madgwick_init(0.0f, IMU_HZ);
+  for (uint32_t i = 0u; i < 105u; i++)
+  {
+    madgwick_update(&g_roll, &a, NULL);
+  }
+  madgwick_get_quat(q);
+  CHECK_NEAR_F(quat_roll_deg(q), 30.0f, 0.5f);
+
+  madgwick_set_beta(0.1f);
+  for (uint32_t i = 0u; i < 2000u; i++)
+  {
+    madgwick_update(&g0, &a, NULL);
+  }
+  madgwick_get_quat(q);
+  CHECK_NEAR_F(quat_roll_deg(q), 0.0f, 0.1f);
+  CHECK_NEAR_F(quat_pitch_deg(q), 0.0f, 0.1f);
+  CHECK_NEAR_F(quat_norm(q), 1.0f, 1e-5f);
+}
+
+static void test_update_dt(void)
+{
+  const vec3_t g = {0.0f, 0.0f, 1.0f};
+  const vec3_t a = {0.0f, 0.0f, -9.80665f};
+  float q[4];
+
+  /* 25 steps of 40 ms at 1 rad/s == 1 rad, independent of sample_hz. */
+  madgwick_init(0.0f, IMU_HZ);
+  for (uint32_t i = 0u; i < 25u; i++)
+  {
+    madgwick_update_dt(&g, &a, NULL, 0.04f);
+  }
+  madgwick_get_quat(q);
+  CHECK_NEAR_F(q[0], cosf(0.5f), 1e-3f);
+  CHECK_NEAR_F(q[3], sinf(0.5f), 1e-3f);
+
+  /* dt <= 0 falls back to 1 / sample_hz. */
+  madgwick_init(0.0f, IMU_HZ);
+  for (uint32_t i = 0u; i < (uint32_t)IMU_HZ; i++)
+  {
+    madgwick_update_dt(&g, &a, NULL, 0.0f);
+  }
+  madgwick_get_quat(q);
+  CHECK_NEAR_F(q[0], cosf(0.5f), 1e-4f);
+  CHECK_NEAR_F(q[3], sinf(0.5f), 1e-4f);
+
+  /* a == NULL: pure gyro integration even with beta > 0. */
   madgwick_init(0.1f, IMU_HZ);
-  for (uint32_t i = 0u; i < 1000u; i++)
+  for (uint32_t i = 0u; i < (uint32_t)IMU_HZ; i++)
+  {
+    madgwick_update_dt(&g, NULL, NULL, IMU_DT);
+  }
+  madgwick_get_quat(q);
+  CHECK_NEAR_F(q[0], cosf(0.5f), 1e-4f);
+  CHECK_NEAR_F(q[3], sinf(0.5f), 1e-4f);
+}
+
+static void test_fast_start(void)
+{
+  const vec3_t g = {0.0f, 0.0f, 0.0f};
+  const float tilt = 60.0f * DEG_TO_RAD;
+  const vec3_t a = {0.0f, -sinf(tilt), -cosf(tilt)};
+  float q[4];
+
+  /* 60 deg roll from identity: high gain reaches it within 2 s, chattering
+   * by about beta * dt; the nominal gain then settles it. */
+  madgwick_init(2.0f, IMU_HZ);
+  for (uint32_t i = 0u; i < 200u; i++)
   {
     madgwick_update(&g, &a, NULL);
   }
   madgwick_get_quat(q);
-  CHECK_NEAR_F(q[0], 1.0f, 1e-6f);
-  CHECK_NEAR_F(q[1], 0.0f, 1e-6f);
-  CHECK_NEAR_F(q[2], 0.0f, 1e-6f);
-  CHECK_NEAR_F(q[3], 0.0f, 1e-6f);
+  CHECK_NEAR_F(quat_roll_deg(q), 60.0f, 2.0f * IMU_DT * RAD_TO_DEG + 0.5f);
+
+  madgwick_set_beta(0.1f);
+  for (uint32_t i = 0u; i < 200u; i++)
+  {
+    madgwick_update(&g, &a, NULL);
+  }
+  madgwick_get_quat(q);
+  CHECK_NEAR_F(quat_roll_deg(q), 60.0f, 0.1f);
 }
 
 static void test_accel_tilt(void)
@@ -228,6 +300,8 @@ void test_madgwick(void)
   test_norm();
   test_gyro_integration();
   test_accel_level();
+  test_update_dt();
+  test_fast_start();
   test_accel_tilt();
   test_mag_heading();
   test_marg_tilted();

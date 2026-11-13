@@ -34,12 +34,15 @@ static void dispatch(uint8_t c)
   }
 }
 
-void cmd_poll(void)
+uint8_t cmd_poll(void)
 {
   uint8_t c;
+  uint8_t got = 0u;
 
   while (bsp_uart_rx_pop(&c) == 0)
   {
     dispatch(c);
+    got = 1u;
   }
+  return got;
 }

@@ -32,7 +32,18 @@ void madgwick_init(float beta, float sample_hz)
   s_q[3] = 0.0f;
 }
 
+void madgwick_set_beta(float beta)
+{
+  s_beta = (beta > 0.0f) ? beta : 0.0f;
+}
+
 void madgwick_update(const vec3_t *g, const vec3_t *a, const vec3_t *m)
+{
+  madgwick_update_dt(g, a, m, s_dt);
+}
+
+void madgwick_update_dt(const vec3_t *g, const vec3_t *a, const vec3_t *m,
+                        float dt)
 {
   float q0;
   float q1;
@@ -46,12 +57,15 @@ void madgwick_update(const vec3_t *g, const vec3_t *a, const vec3_t *m)
   float gx;
   float gy;
   float gz;
-  float dt = s_dt;
   float beta = s_beta;
 
   if (g == NULL)
   {
     return;
+  }
+  if (dt <= 0.0f)
+  {
+    dt = s_dt;
   }
 
   q0 = s_q[0];

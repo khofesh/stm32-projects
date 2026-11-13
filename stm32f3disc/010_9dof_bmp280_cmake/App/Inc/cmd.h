@@ -5,9 +5,12 @@
 extern "C" {
 #endif
 
+#include <stdint.h>
+
 /* Consume every byte waiting in the USART1 RX ring (SPEC §22.4). Unknown
- * bytes are ignored. Called from the main loop. */
-void cmd_poll(void);
+ * bytes are ignored. Called from the main loop. Returns 1 if any byte was
+ * consumed. */
+uint8_t cmd_poll(void);
 
 #ifdef __cplusplus
 }
