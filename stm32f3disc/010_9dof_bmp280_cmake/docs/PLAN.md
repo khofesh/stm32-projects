@@ -17,9 +17,9 @@
 | CMake | `stm32cubemx` + `bsp` + `sensors` + `fusion` + `app` static libs; `.hex/.bin`, size check, flash target, `ci` preset |
 | Bsp | `bsp_time`, `bsp_uart`, `bsp_i2c` (bus 1/2, per-bus error counters, DeInit/Init recovery), `bsp_spi` (CS PE3), `bsp_flash` (last page) |
 | Sensors | Own `i3g4250d`, `lsm303agr` (accel + mag) + LibDriver `bmp280` wrapper in `Sensors/vendor/bmp280/` |
-| App | Cooperative scheduler, raw telemetry at 25 Hz, debug frame at 1 Hz, CRC16, frame packer, calibration state machine + command parser + flash store |
-| Tests, tools | Host tree with CRC16/axis map/BMP280 compensation/frame/calibration tests; `tools/log.py`, `tools/size_check.py` |
-| Docs | `SPEC.md`, `PLAN.md`, `hardware.md`, `calibration.md` |
+| App | Cooperative scheduler, Madgwick fusion at 100 Hz, baro at 25 Hz, telemetry at 50 Hz, debug frame at 1 Hz, DWT CPU load, CRC16, frame packer, calibration state machine + command parser + flash store |
+| Tests, tools | Host tree with CRC16/axis map/BMP280 compensation/frame/calibration/Madgwick/altitude/baro-filter tests; `tools/log.py`, `tools/plot.py`, `tools/size_check.py` |
+| Docs | `SPEC.md`, `PLAN.md`, `hardware.md`, `calibration.md`, `test-log.md` |
 
 M1 verified on hardware (2026-11-13): IDs `0xD3`/`0x33`/`0x40`/`0x58`, 25.03 Hz over 31.8 s with 0 CRC errors, 0 sequence gaps, 0 skipped frames, 0 task overruns, 0 bus errors; FLASH 21.0 KB, RAM 3.3 KB (ci).
 
@@ -31,9 +31,11 @@ M2 closed (2026-11-13): T-03 steps 4–6 on hardware. `M_gyro = {{0,1,0},{1,0,0}
 
 M3 code implemented (2026-11-13): `calib_math` streaming statistics + gyro/accel/mag/baro solves, calibration state machine, `cmd_poll`, `bsp_flash` + `cal_store` (magic/version/length/CRC), host tests for still detection, 6-position solve, mag hard/soft-iron, baro `p0`, storage round-trip and CRC/magic rejection. Calibration is applied in the IMU task after the axis map; telemetry now carries `STATUS_CAL_*`, `STATUS_CALIBRATING` and the `calib_state` byte. FLASH 26.3 KB, RAM 3.7 KB (ci). Review fixes (2026-11-13): gyro limit on standard error of the mean, accel stillness check, `calib_state` bit 7 = last attempt rejected, deferred `S` with flash-stall tick compensation, storage v2 (u16 flags), mag min/max-only accumulator, host tests for the state machine. Hardware T-04/T-15 pending.
 
+M4 code implemented (2026-11-13): `madgwick` MARG + IMU-only at 100 Hz, `altitude_from_pressure`, α-β `baro_filter`, host tests for quaternion norm (10⁶ updates), gyro-only integration, accel tilt, mag heading, altitude pairs, filter step/ramp; scheduler at 100 Hz IMU / 25 Hz baro / 50 Hz telemetry / 1 Hz debug; DWT `CYCCNT` CPU load; `tools/plot.py`. Debug FLASH 41.5 KB, RAM 4.2 KB; ci FLASH 32.6 KB, RAM 4.2 KB. Hardware run: 50.0 Hz telemetry, 0 CRC/gap/sequence errors, 0 bus errors, CPU 7.4 %, max loop 1.16 ms; quiet-window roll/pitch σ 0.24°/0.18°, yaw σ 0.69°; after `B` altitude σ 0.069 m (20 s, bit 7 set). T-05 formal, T-06, T-07 and T-08 remain pending (bench vibration/reference fixtures); see `docs/test-log.md`.
+
 | Check | Result | Note |
 |---|---|---|
-| Max loop time (IMU + baro + telemetry in one pass) | 1.12 ms | 11 % of the 10 ms slot; blocking I/O is fine for M4 |
+| Max loop time (full 100 Hz fusion pass) | 1.16 ms | 12 % of the 10 ms slot; blocking I/O is still fine |
 | \|a\| raw | 9.46 m/s² (σ 0.06) | 1.95 mg/LSB; offset/scale left for M3 |
 | \|B\| raw | 100 µT (σ 0.3) | 96 µT before temperature compensation; hard iron, M3 |
 | Pressure | 100 587 Pa (σ 1.2 Pa), 34.5 °C | first frame flagged baro-not-OK (ADC reset value) |

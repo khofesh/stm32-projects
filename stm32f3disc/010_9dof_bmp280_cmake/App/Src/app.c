@@ -1,6 +1,7 @@
 #include "app.h"
 
 #include <errno.h>
+#include <math.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -12,6 +13,8 @@
 #include <stdio.h>
 #endif
 
+#include "altitude.h"
+#include "baro_filter.h"
 #include "bmp280.h"
 #include "board_axes.h"
 #include "bsp_i2c.h"
@@ -23,17 +26,25 @@
 #include "build_info.h"
 #include "i3g4250d.h"
 #include "lsm303agr.h"
+#include "madgwick.h"
 #include "main.h"
 #include "sched.h"
 #include "telemetry.h"
 
-/* M1 runs the raw sensors at 25 Hz telemetry; M4 raises the fusion rates. */
+/* Full-rate fusion, SPEC §21.3. */
 #define IMU_PERIOD_MS 10u
 #define BARO_PERIOD_MS 40u
-#define TELEMETRY_PERIOD_MS 40u
+#define TELEMETRY_PERIOD_MS 20u
 #define DEBUG_PERIOD_MS 1000u
 #define HEARTBEAT_PERIOD_MS 500u
 #define OVERRUN_HOLD_MS 1000u
+
+#define IMU_RATE_HZ (1000.0f / (float)IMU_PERIOD_MS)
+#define BARO_DT_S ((float)BARO_PERIOD_MS / 1000.0f)
+
+#define FUSION_BETA 0.1f
+#define BARO_FILTER_ALPHA 0.2f
+#define BARO_FILTER_BETA 0.01f
 
 #define SENSOR_FLAGS (STATUS_GYRO_OK | STATUS_ACCEL_OK | STATUS_MAG_OK | STATUS_BARO_OK)
 
@@ -50,7 +61,9 @@ typedef struct
   vec3_t gyro;
   vec3_t mag;
   float pressure_pa;
+  float altitude_m;
   float temperature_c;
+  float q[4];
   uint32_t imu_t_ms;
 } sensor_state_t;
 
@@ -65,6 +78,18 @@ static uint32_t s_overruns;
 static uint32_t s_overrun_ms;
 static uint8_t s_overrun_seen;
 static uint8_t s_debug_pending;
+static uint32_t s_busy_cycles;
+static uint32_t s_load_window_cycles;
+static uint16_t s_cpu_load_permille;
+static float s_p0_pa;
+static uint8_t s_p0_valid;
+
+static void dwt_init(void)
+{
+  CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+  DWT->CYCCNT = 0u;
+  DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+}
 
 #if DEBUG_LOG
 static void sensors_log(void)
@@ -124,6 +149,8 @@ static void overrun_note(void)
 void app_init(void)
 {
   bsp_time_init();
+  dwt_init();
+  s_load_window_cycles = DWT->CYCCNT;
 
   if (bsp_uart_init() != 0)
   {
@@ -136,6 +163,16 @@ void app_init(void)
 
   sensors_init();
   calibration_init(s_init_ok);
+
+  s_state.q[0] = 1.0f;
+  s_state.q[1] = 0.0f;
+  s_state.q[2] = 0.0f;
+  s_state.q[3] = 0.0f;
+  s_state.altitude_m = 0.0f;
+  madgwick_init(FUSION_BETA, IMU_RATE_HZ);
+  baro_filter_init(BARO_FILTER_ALPHA, BARO_FILTER_BETA, BARO_DT_S);
+  s_p0_pa = calibration_p0_pa();
+  s_p0_valid = (s_p0_pa > 0.0f) ? 1u : 0u;
 
   if (bsp_uart_send_dma((const uint8_t *)s_banner,
                         (uint16_t)(sizeof(s_banner) - 1u)) != 0)
@@ -179,6 +216,10 @@ static void imu_task(void)
   }
   status_set(STATUS_MAG_OK, st);
 
+  madgwick_update(&s_state.gyro, &s_state.accel,
+                  ((s_status & STATUS_MAG_OK) != 0u) ? &s_state.mag : NULL);
+  madgwick_get_quat(s_state.q);
+
   s_state.imu_t_ms = bsp_time_ms();
 }
 
@@ -186,7 +227,21 @@ static void baro_task(void)
 {
   float pa = 0.0f;
   float deg_c = 0.0f;
+  float p0 = calibration_p0_pa();
   int32_t st;
+
+  if (p0 <= 0.0f)
+  {
+    p0 = ALTITUDE_SEA_LEVEL_PA;
+  }
+  if ((s_p0_valid == 0u) || (fabsf(p0 - s_p0_pa) > 0.5f))
+  {
+    /* A new 'B' reference moves the zero: restart the filter instead of
+     * letting it drift through the step. */
+    baro_filter_init(BARO_FILTER_ALPHA, BARO_FILTER_BETA, BARO_DT_S);
+    s_p0_pa = p0;
+    s_p0_valid = 1u;
+  }
 
   st = ((s_init_ok & STATUS_BARO_OK) != 0u) ? bmp280_read(&pa, &deg_c) : -ENODEV;
   if (st == 0)
@@ -194,6 +249,7 @@ static void baro_task(void)
     s_state.pressure_pa = pa;
     s_state.temperature_c = deg_c;
     calibration_feed_baro(pa);
+    s_state.altitude_m = baro_filter_update(altitude_from_pressure(pa, p0));
   }
   status_set(STATUS_BARO_OK, st);
 }
@@ -205,12 +261,15 @@ static void telemetry_task(void)
   memset(&f, 0, sizeof(f));
   f.seq = s_data_seq++;
   f.t_ms = s_state.imu_t_ms;
-  f.q[0] = 1.0f; /* attitude arrives in M4 */
+  f.q[0] = s_state.q[0];
+  f.q[1] = s_state.q[1];
+  f.q[2] = s_state.q[2];
+  f.q[3] = s_state.q[3];
   f.accel = s_state.accel;
   f.gyro = s_state.gyro;
   f.mag = s_state.mag;
   f.pressure_pa = s_state.pressure_pa;
-  f.altitude_m = 0.0f;
+  f.altitude_m = s_state.altitude_m;
   f.temperature_cdeg = (int16_t)(s_state.temperature_c * 100.0f);
   f.status = s_status & SENSOR_FLAGS;
   f.status |= calibration_status();
@@ -229,7 +288,7 @@ static void telemetry_task(void)
 #if DEBUG_LOG
   f.status |= STATUS_DEBUG_BUILD;
 #endif
-  f.cpu_load = 0u;
+  f.cpu_load = (s_cpu_load_permille > 1000u) ? 100u : (uint8_t)(s_cpu_load_permille / 10u);
   f.calib_state = calibration_state();
   f.overruns = (uint16_t)s_overruns;
 
@@ -241,6 +300,17 @@ static void telemetry_task(void)
 static void debug_task(void)
 {
   frame_debug_t *d = &s_debug_frame;
+  uint32_t now_cycles = DWT->CYCCNT;
+  uint32_t elapsed_cycles = now_cycles - s_load_window_cycles;
+
+  if (elapsed_cycles > 0u)
+  {
+    uint64_t load = ((uint64_t)s_busy_cycles * 1000u) / (uint64_t)elapsed_cycles;
+
+    s_cpu_load_permille = (load > 1000u) ? 1000u : (uint16_t)load;
+  }
+  s_busy_cycles = 0u;
+  s_load_window_cycles = now_cycles;
 
   memset(d, 0, sizeof(*d));
   d->seq = s_debug_seq++;
@@ -250,7 +320,7 @@ static void debug_task(void)
   d->i2c2_errors = (uint16_t)bsp_i2c_errors(BSP_I2C_BUS_2);
   d->spi1_errors = (uint16_t)bsp_spi_errors();
   d->max_loop_us = (s_max_loop_us > UINT16_MAX) ? UINT16_MAX : (uint16_t)s_max_loop_us;
-  d->cpu_load_permille = 0u; /* DWT in M4 */
+  d->cpu_load_permille = s_cpu_load_permille;
   d->free_stack = 0u; /* stack high-water in M5 */
 
   s_max_loop_us = 0u;
@@ -283,6 +353,7 @@ void app_run(void)
   for (;;)
   {
     uint32_t t0 = bsp_time_us();
+    uint32_t c0 = DWT->CYCCNT;
     uint8_t ran = 0u;
     uint8_t due;
 
@@ -332,6 +403,19 @@ void app_run(void)
       HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
     }
 
+    /* Busy-time accounting before the idle work and a commanded flash save:
+     * the erase stall is not CPU load. */
+    if (ran != 0u)
+    {
+      uint32_t dt = bsp_time_us() - t0;
+
+      s_busy_cycles += DWT->CYCCNT - c0;
+      if (dt > s_max_loop_us)
+      {
+        s_max_loop_us = dt;
+      }
+    }
+
     /* Idle work: one-byte calibration commands from the host. */
     cmd_poll();
 
@@ -352,15 +436,5 @@ void app_run(void)
     }
 
     debug_flush();
-
-    if (ran != 0u)
-    {
-      uint32_t dt = bsp_time_us() - t0;
-
-      if (dt > s_max_loop_us)
-      {
-        s_max_loop_us = dt;
-      }
-    }
   }
 }

@@ -52,5 +52,8 @@ void test_axis_map(void);
 void test_bmp280(void);
 void test_frame(void);
 void test_calibration(void);
+void test_madgwick(void);
+void test_altitude(void);
+void test_baro_filter(void);
 
 #endif /* __TEST_H */

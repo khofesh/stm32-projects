@@ -16,6 +16,9 @@ add_executable(unit_tests
     test_bmp280.c
     test_frame.c
     test_calibration.c
+    test_madgwick.c
+    test_altitude.c
+    test_baro_filter.c
     stubs/bsp_uart_stub.c
     stubs/bsp_flash_stub.c
     stubs/bmp280_regs_stub.c
@@ -26,6 +29,9 @@ add_executable(unit_tests
     ../App/Src/calibration.c
     ../Fusion/Src/axis_map.c
     ../Fusion/Src/calib_math.c
+    ../Fusion/Src/madgwick.c
+    ../Fusion/Src/altitude.c
+    ../Fusion/Src/baro_filter.c
     ../Sensors/vendor/bmp280/driver_bmp280.c
 )
 
@@ -42,5 +48,6 @@ target_include_directories(unit_tests PRIVATE
 target_compile_definitions(unit_tests PRIVATE HOST_TEST=1)
 target_compile_options(unit_tests PRIVATE
     -Wall -Wextra -Wshadow -Wundef -Wdouble-promotion -Wfloat-equal)
+target_link_libraries(unit_tests PRIVATE m)
 
 add_test(NAME unit COMMAND unit_tests)

@@ -101,13 +101,15 @@ target_link_libraries(sensors PUBLIC bsp)
 set_source_files_properties(Sensors/vendor/bmp280/driver_bmp280.c
     PROPERTIES COMPILE_DEFINITIONS "bmp280_init=ld_bmp280_init")
 
-# Fusion: axis map and calibration math; Madgwick, baro filter and altitude
-# arrive in M4.
+# Fusion: axis map, calibration math, Madgwick, altitude and baro filter.
 add_our_library(fusion Fusion
     Fusion/Src/axis_map.c
     Fusion/Src/calib_math.c
+    Fusion/Src/madgwick.c
+    Fusion/Src/altitude.c
+    Fusion/Src/baro_filter.c
 )
-target_link_libraries(fusion PUBLIC sensors)
+target_link_libraries(fusion PUBLIC sensors m)
 
 add_our_library(app App
     App/Src/app.c
