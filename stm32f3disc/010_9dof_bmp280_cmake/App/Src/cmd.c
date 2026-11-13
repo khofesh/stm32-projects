@@ -8,29 +8,29 @@ static void dispatch(uint8_t c)
 {
   switch (c)
   {
-  case 'G':
-    calibration_start_gyro();
-    break;
-  case 'A':
-    calibration_start_accel();
-    break;
-  case 'M':
-    calibration_toggle_mag();
-    break;
-  case 'B':
-    calibration_start_baro();
-    break;
-  case 'S':
-    calibration_request_save();
-    break;
-  case 'D':
-    calibration_reset_defaults();
-    break;
-  case 'R':
-    NVIC_SystemReset();
-    break;
-  default:
-    break;
+    case 'G':
+      calibration_start_gyro();
+      break;
+    case 'A':
+      calibration_start_accel();
+      break;
+    case 'M':
+      calibration_toggle_mag();
+      break;
+    case 'B':
+      calibration_start_baro();
+      break;
+    case 'S':
+      calibration_request_save();
+      break;
+    case 'D':
+      calibration_reset_defaults();
+      break;
+    case 'R':
+      NVIC_SystemReset();
+      break;
+    default:
+      break;
   }
 }
 

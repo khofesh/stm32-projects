@@ -36,6 +36,7 @@ static uint8_t iic_read(uint8_t addr, uint8_t reg, uint8_t *buf, uint16_t len)
   return (bsp_i2c_read(BSP_I2C_BUS_2, (uint8_t)(addr >> 1), reg, buf, len) == 0) ? 0u : 1u;
 }
 
+// cppcheck-suppress constParameterCallback
 static uint8_t iic_write(uint8_t addr, uint8_t reg, uint8_t *buf, uint16_t len)
 {
   return (bsp_i2c_write(BSP_I2C_BUS_2, (uint8_t)(addr >> 1), reg, buf, len) == 0) ? 0u : 1u;

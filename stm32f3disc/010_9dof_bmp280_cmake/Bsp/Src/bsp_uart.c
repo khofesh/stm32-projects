@@ -95,6 +95,7 @@ uint32_t bsp_uart_rx_arm_fails(void)
   return s_rx_arm_fails;
 }
 
+// cppcheck-suppress constParameterPointer
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   if (huart->Instance != USART1)
@@ -115,6 +116,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   (void)rx_arm(); /* failure counted in s_rx_arm_fails */
 }
 
+// cppcheck-suppress constParameterPointer
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
   /* Overrun/framing error leaves the receiver disabled; re-arm it unless a
@@ -135,8 +137,7 @@ int __io_putchar(int ch)
   uint8_t c = (uint8_t)ch;
   uint32_t t0 = HAL_GetTick();
 
-  while ((huart1.gState != HAL_UART_STATE_READY) &&
-         ((HAL_GetTick() - t0) < PUTCHAR_TIMEOUT_MS))
+  while ((huart1.gState != HAL_UART_STATE_READY) && ((HAL_GetTick() - t0) < PUTCHAR_TIMEOUT_MS))
   {
   }
   if (HAL_UART_Transmit(&huart1, &c, 1u, PUTCHAR_TIMEOUT_MS) != HAL_OK)

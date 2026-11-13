@@ -103,8 +103,7 @@ void calibration_toggle_mag(void)
 
   s_mag_active = 0u;
   if ((s_mag_rng.n < CALIB_MAG_MIN_SAMPLES) ||
-      (calib_mag_solve(&s_mag_rng, CALIB_MAG_MIN_SPAN_UT, CALIB_MAG_MAX_SPAN_RATIO, &bias,
-                       &scale) != 0))
+      (calib_mag_solve(&s_mag_rng, CALIB_MAG_MIN_SPAN_UT, CALIB_MAG_MAX_SPAN_RATIO, &bias, &scale) != 0))
   {
     s_rejected = 1u;
     return;
@@ -161,8 +160,7 @@ static int32_t accel_take_pose(void)
   vec3_t mean;
 
   if ((calib_accum_still(&s_accel_acc, CALIB_ACCEL_MAX_STD_MS2) != 0) ||
-      (calib_accel_orientation(&s_accel_acc, &axis, &sign) != 0) ||
-      (calib_accum_mean(&s_accel_acc, &mean) != 0))
+      (calib_accel_orientation(&s_accel_acc, &axis, &sign) != 0) || (calib_accum_mean(&s_accel_acc, &mean) != 0))
   {
     return -1;
   }
@@ -337,8 +335,7 @@ uint16_t calibration_status(void)
 
 uint8_t calibration_state(void)
 {
-  uint8_t st = (uint8_t)((s_accel_count & CALIB_STATE_ACCEL_COUNT_MASK)
-                         << CALIB_STATE_ACCEL_COUNT_SHIFT);
+  uint8_t st = (uint8_t)((s_accel_count & CALIB_STATE_ACCEL_COUNT_MASK) << CALIB_STATE_ACCEL_COUNT_SHIFT);
 
   if (s_gyro_active != 0u)
   {
@@ -365,8 +362,8 @@ uint8_t calibration_state(void)
 
 uint8_t calibration_active(void)
 {
-  if ((s_gyro_active != 0u) || (s_accel_active != 0u) || (s_mag_active != 0u) ||
-      (s_baro_active != 0u) || (s_accel_count != 0u))
+  if ((s_gyro_active != 0u) || (s_accel_active != 0u) || (s_mag_active != 0u) || (s_baro_active != 0u) ||
+      (s_accel_count != 0u))
   {
     return 1u;
   }

@@ -32,8 +32,7 @@ static int32_t program_bytes(uint32_t addr, const uint8_t *data, uint16_t len)
 
 int32_t bsp_flash_read(uint32_t addr, void *buf, uint16_t len)
 {
-  if ((buf == NULL) || (addr < BSP_FLASH_PAGE_ADDR) ||
-      ((addr - BSP_FLASH_PAGE_ADDR) + len > BSP_FLASH_PAGE_SIZE))
+  if ((buf == NULL) || (addr < BSP_FLASH_PAGE_ADDR) || ((addr - BSP_FLASH_PAGE_ADDR) + len > BSP_FLASH_PAGE_SIZE))
   {
     return -EINVAL;
   }
@@ -85,8 +84,7 @@ static int32_t write_locked(uint32_t addr, const uint8_t *data, uint16_t len)
   return st;
 }
 
-int32_t bsp_flash_write_page(uint32_t addr, const void *data, uint16_t len,
-                             uint32_t *elapsed_ms)
+int32_t bsp_flash_write_page(uint32_t addr, const void *data, uint16_t len, uint32_t *elapsed_ms)
 {
   uint32_t c0;
   uint32_t t0;
@@ -94,8 +92,7 @@ int32_t bsp_flash_write_page(uint32_t addr, const void *data, uint16_t len,
   uint32_t ticked;
   int32_t st;
 
-  if ((data == NULL) || (len == 0u) || (len > BSP_FLASH_PAGE_SIZE) ||
-      ((addr % BSP_FLASH_PAGE_SIZE) != 0u))
+  if ((data == NULL) || (len == 0u) || (len > BSP_FLASH_PAGE_SIZE) || ((addr % BSP_FLASH_PAGE_SIZE) != 0u))
   {
     return -EINVAL;
   }

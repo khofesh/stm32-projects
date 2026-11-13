@@ -42,8 +42,7 @@ void madgwick_update(const vec3_t *g, const vec3_t *a, const vec3_t *m)
   madgwick_update_dt(g, a, m, s_dt);
 }
 
-void madgwick_update_dt(const vec3_t *g, const vec3_t *a, const vec3_t *m,
-                        float dt)
+void madgwick_update_dt(const vec3_t *g, const vec3_t *a, const vec3_t *m, float dt)
 {
   float q0;
   float q1;
@@ -107,36 +106,27 @@ void madgwick_update_dt(const vec3_t *g, const vec3_t *a, const vec3_t *m,
       float mx = m->x * n;
       float my = m->y * n;
       float mz = m->z * n;
-      float hx = ((1.0f - (2.0f * ((q2 * q2) + (q3 * q3)))) * mx) +
-                 (2.0f * ((q1 * q2) - (q0 * q3)) * my) +
+      float hx = ((1.0f - (2.0f * ((q2 * q2) + (q3 * q3)))) * mx) + (2.0f * ((q1 * q2) - (q0 * q3)) * my) +
                  (2.0f * ((q1 * q3) + (q0 * q2)) * mz);
-      float hy = (2.0f * ((q1 * q2) + (q0 * q3)) * mx) +
-                 ((1.0f - (2.0f * ((q1 * q1) + (q3 * q3)))) * my) +
+      float hy = (2.0f * ((q1 * q2) + (q0 * q3)) * mx) + ((1.0f - (2.0f * ((q1 * q1) + (q3 * q3)))) * my) +
                  (2.0f * ((q2 * q3) - (q0 * q1)) * mz);
-      float hz = (2.0f * ((q1 * q3) - (q0 * q2)) * mx) +
-                 (2.0f * ((q0 * q1) + (q2 * q3)) * my) +
+      float hz = (2.0f * ((q1 * q3) - (q0 * q2)) * mx) + (2.0f * ((q0 * q1) + (q2 * q3)) * my) +
                  ((1.0f - (2.0f * ((q1 * q1) + (q2 * q2)))) * mz);
       float bx = sqrtf((hx * hx) + (hy * hy));
       float bz = hz;
-      float w1 = ((1.0f - (2.0f * ((q2 * q2) + (q3 * q3)))) * bx) +
-                 (2.0f * ((q1 * q3) - (q0 * q2)) * bz);
-      float w2 = (2.0f * ((q1 * q2) - (q0 * q3)) * bx) +
-                 (2.0f * ((q0 * q1) + (q2 * q3)) * bz);
-      float w3 = (2.0f * ((q1 * q3) + (q0 * q2)) * bx) +
-                 ((1.0f - (2.0f * ((q1 * q1) + (q2 * q2)))) * bz);
+      float w1 = ((1.0f - (2.0f * ((q2 * q2) + (q3 * q3)))) * bx) + (2.0f * ((q1 * q3) - (q0 * q2)) * bz);
+      float w2 = (2.0f * ((q1 * q2) - (q0 * q3)) * bx) + (2.0f * ((q0 * q1) + (q2 * q3)) * bz);
+      float w3 = (2.0f * ((q1 * q3) + (q0 * q2)) * bx) + ((1.0f - (2.0f * ((q1 * q1) + (q2 * q2)))) * bz);
       float f1 = w1 - mx;
       float f2 = w2 - my;
       float f3 = w3 - mz;
 
-      s0 += (-2.0f * bz * q2 * f1) + (2.0f * ((bz * q1) - (bx * q3)) * f2) +
-            (2.0f * bx * q2 * f3);
-      s1 += (2.0f * bz * q3 * f1) + (2.0f * ((bx * q2) + (bz * q0)) * f2) +
-            (2.0f * ((bx * q3) - (2.0f * bz * q1)) * f3);
-      s2 += ((-4.0f * bx * q2) - (2.0f * bz * q0)) * f1 +
-            (2.0f * ((bx * q1) + (bz * q3)) * f2) +
+      s0 += (-2.0f * bz * q2 * f1) + (2.0f * ((bz * q1) - (bx * q3)) * f2) + (2.0f * bx * q2 * f3);
+      s1 +=
+          (2.0f * bz * q3 * f1) + (2.0f * ((bx * q2) + (bz * q0)) * f2) + (2.0f * ((bx * q3) - (2.0f * bz * q1)) * f3);
+      s2 += ((-4.0f * bx * q2) - (2.0f * bz * q0)) * f1 + (2.0f * ((bx * q1) + (bz * q3)) * f2) +
             (2.0f * ((bx * q0) - (2.0f * bz * q2)) * f3);
-      s3 += ((2.0f * bz * q1) - (4.0f * bx * q3)) * f1 +
-            (2.0f * ((bz * q2) - (bx * q0)) * f2) + (2.0f * bx * q1 * f3);
+      s3 += ((2.0f * bz * q1) - (4.0f * bx * q3)) * f1 + (2.0f * ((bz * q2) - (bx * q0)) * f2) + (2.0f * bx * q1 * f3);
     }
   }
 
@@ -163,14 +153,10 @@ void madgwick_update_dt(const vec3_t *g, const vec3_t *a, const vec3_t *m,
   gz = g->z;
 
   /* qdot = 0.5 * q (x) omega - beta * gradient */
-  q0 = s_q[0] + (-(s_q[1] * gx) - (s_q[2] * gy) - (s_q[3] * gz) -
-                 (2.0f * beta * s0)) * (0.5f * dt);
-  q1 = s_q[1] + ((s_q[0] * gx) + (s_q[2] * gz) - (s_q[3] * gy) -
-                 (2.0f * beta * s1)) * (0.5f * dt);
-  q2 = s_q[2] + ((s_q[0] * gy) - (s_q[1] * gz) + (s_q[3] * gx) -
-                 (2.0f * beta * s2)) * (0.5f * dt);
-  q3 = s_q[3] + ((s_q[0] * gz) + (s_q[1] * gy) - (s_q[2] * gx) -
-                 (2.0f * beta * s3)) * (0.5f * dt);
+  q0 = s_q[0] + (-(s_q[1] * gx) - (s_q[2] * gy) - (s_q[3] * gz) - (2.0f * beta * s0)) * (0.5f * dt);
+  q1 = s_q[1] + ((s_q[0] * gx) + (s_q[2] * gz) - (s_q[3] * gy) - (2.0f * beta * s1)) * (0.5f * dt);
+  q2 = s_q[2] + ((s_q[0] * gy) - (s_q[1] * gz) + (s_q[3] * gx) - (2.0f * beta * s2)) * (0.5f * dt);
+  q3 = s_q[3] + ((s_q[0] * gz) + (s_q[1] * gy) - (s_q[2] * gx) - (2.0f * beta * s3)) * (0.5f * dt);
 
   sn = sqrtf((q0 * q0) + (q1 * q1) + (q2 * q2) + (q3 * q3));
   if (sn > 0.0f)

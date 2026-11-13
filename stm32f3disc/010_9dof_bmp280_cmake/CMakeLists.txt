@@ -64,12 +64,16 @@ set(RAM_BUDGET 12288 CACHE STRING "RAM budget in bytes")
 # Our code: Bsp, Sensors, Fusion, App
 # ---------------------------------------------------------------------------
 option(OUR_WERROR "Treat warnings in our sources as errors" OFF)
+option(OUR_FANALYZER "Run GCC -fanalyzer on our sources (advisory)" OFF)
 
 set(OUR_WARNINGS
     -Wall -Wextra -Wshadow -Wundef -Wdouble-promotion -Wfloat-equal
     -fno-common -ffunction-sections -fdata-sections)
 if(OUR_WERROR)
     list(APPEND OUR_WARNINGS -Werror)
+endif()
+if(OUR_FANALYZER)
+    list(APPEND OUR_WARNINGS -fanalyzer)
 endif()
 
 function(add_our_library name dir)
@@ -85,6 +89,7 @@ add_our_library(bsp Bsp
     Bsp/Src/bsp_i2c.c
     Bsp/Src/bsp_spi.c
     Bsp/Src/bsp_flash.c
+    Bsp/Src/bsp_stack.c
 )
 # printf retarget (__io_putchar) only in Debug.
 target_compile_definitions(bsp PRIVATE $<$<CONFIG:Debug>:BSP_UART_STDIO>)
@@ -190,3 +195,69 @@ if(OPENOCD_EXECUTABLE)
 else()
     message(WARNING "openocd not found: the 'flash' target is unavailable")
 endif()
+
+# ---------------------------------------------------------------------------
+# Static analysis (SPEC §13): format-check and cppcheck are gates, analyze
+# (-fanalyzer) is advisory. Vendored LibDriver sources are excluded.
+# ---------------------------------------------------------------------------
+file(GLOB_RECURSE OUR_C_FILES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/App/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/App/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/Bsp/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Bsp/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/Fusion/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Fusion/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/Sensors/Src/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Sensors/Inc/*.h)
+file(GLOB_RECURSE OUR_C_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/App/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Bsp/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Fusion/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/Sensors/Src/*.c)
+
+find_program(CLANG_FORMAT_EXECUTABLE clang-format)
+if(CLANG_FORMAT_EXECUTABLE)
+    add_custom_target(format-check
+        COMMAND ${CLANG_FORMAT_EXECUTABLE} --dry-run --Werror ${OUR_C_FILES}
+        COMMENT "Checking clang-format on App, Bsp, Fusion, Sensors"
+        VERBATIM)
+else()
+    message(WARNING "clang-format not found: the 'format-check' target is unavailable")
+endif()
+
+find_program(CPPCHECK_EXECUTABLE cppcheck)
+if(CPPCHECK_EXECUTABLE)
+    add_custom_target(cppcheck
+        COMMAND ${CPPCHECK_EXECUTABLE}
+                --enable=warning,style,performance
+                --error-exitcode=1
+                --inline-suppr
+                --std=c11
+                --suppress=missingIncludeSystem
+                -I ${BUILD_INFO_DIR}
+                -I ${CMAKE_CURRENT_SOURCE_DIR}/App/Inc
+                -I ${CMAKE_CURRENT_SOURCE_DIR}/Bsp/Inc
+                -I ${CMAKE_CURRENT_SOURCE_DIR}/Fusion/Inc
+                -I ${CMAKE_CURRENT_SOURCE_DIR}/Sensors/Inc
+                ${OUR_C_SOURCES}
+        COMMENT "Running cppcheck on App, Bsp, Fusion, Sensors"
+        VERBATIM)
+    add_dependencies(cppcheck build_info)
+else()
+    message(WARNING "cppcheck not found: the 'cppcheck' target is unavailable")
+endif()
+
+# Advisory: configure a throwaway tree with -fanalyzer so the normal build
+# stays warning-clean and fast.
+add_custom_target(analyze
+    COMMAND ${CMAKE_COMMAND}
+            -S ${CMAKE_CURRENT_SOURCE_DIR}
+            -B ${CMAKE_CURRENT_SOURCE_DIR}/build/analyze
+            -G "${CMAKE_GENERATOR}"
+            -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
+            -DCMAKE_BUILD_TYPE=Debug
+            -DOUR_FANALYZER=ON
+            -DOUR_WERROR=OFF
+    COMMAND ${CMAKE_COMMAND} --build ${CMAKE_CURRENT_SOURCE_DIR}/build/analyze
+    COMMENT "Building with -fanalyzer (advisory)"
+    USES_TERMINAL)

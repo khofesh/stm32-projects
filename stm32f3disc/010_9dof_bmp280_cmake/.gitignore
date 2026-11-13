@@ -125,6 +125,7 @@ JLinkSettings.ini
 #############################################
 # .vscode/
 *.code-workspace
+.vscode/STM32F303.svd
 
 #############################################
 # General

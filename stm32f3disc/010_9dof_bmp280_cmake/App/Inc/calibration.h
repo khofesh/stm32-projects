@@ -2,7 +2,8 @@
 #define __CALIBRATION_H
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 #include <stdint.h>
@@ -10,7 +11,7 @@ extern "C" {
 #include "calib_math.h"
 #include "vec3.h"
 
-/* Calibration state machine, SPEC §22.2. Inputs are raw body-frame samples;
+  /* Calibration state machine, SPEC §22.2. Inputs are raw body-frame samples;
  * the axis map is applied before they are fed here. */
 
 #define CALIB_GYRO_SAMPLES 200u
@@ -37,38 +38,38 @@ extern "C" {
 #define CALIB_STATE_ACCEL_COUNT_MASK 0x07u
 #define CALIB_STATE_REJECTED (1u << 7)
 
-/* sensor_ok uses the STATUS_*_OK bits from telemetry.h. Loads the stored
+  /* sensor_ok uses the STATUS_*_OK bits from telemetry.h. Loads the stored
  * parameters and starts the boot gyro-bias attempt when the gyro is present. */
-void calibration_init(uint16_t sensor_ok);
+  void calibration_init(uint16_t sensor_ok);
 
-/* Feed one raw body-frame sample per sensor task. */
-void calibration_feed_gyro(const vec3_t *raw_body);
-void calibration_feed_accel(const vec3_t *raw_body);
-void calibration_feed_mag(const vec3_t *raw_body);
-void calibration_feed_baro(float pressure_pa);
+  /* Feed one raw body-frame sample per sensor task. */
+  void calibration_feed_gyro(const vec3_t *raw_body);
+  void calibration_feed_accel(const vec3_t *raw_body);
+  void calibration_feed_mag(const vec3_t *raw_body);
+  void calibration_feed_baro(float pressure_pa);
 
-/* Apply the stored parameters (no-op for a sensor whose calibration is not
+  /* Apply the stored parameters (no-op for a sensor whose calibration is not
  * valid). */
-void calibration_apply_gyro(vec3_t *body);
-void calibration_apply_accel(vec3_t *body);
-void calibration_apply_mag(vec3_t *body);
+  void calibration_apply_gyro(vec3_t *body);
+  void calibration_apply_accel(vec3_t *body);
+  void calibration_apply_mag(vec3_t *body);
 
-/* Commands from §22.4. */
-void calibration_start_gyro(void);
-void calibration_start_accel(void);
-void calibration_toggle_mag(void);
-void calibration_start_baro(void);
-void calibration_request_save(void);
-/* 1 once per pending 'S'; the main loop then calls calibration_save(). */
-uint8_t calibration_take_save_request(void);
-/* elapsed_ms (may be NULL) returns the flash stall duration. */
-int32_t calibration_save(uint32_t *elapsed_ms);
-void calibration_reset_defaults(void);
+  /* Commands from §22.4. */
+  void calibration_start_gyro(void);
+  void calibration_start_accel(void);
+  void calibration_toggle_mag(void);
+  void calibration_start_baro(void);
+  void calibration_request_save(void);
+  /* 1 once per pending 'S'; the main loop then calls calibration_save(). */
+  uint8_t calibration_take_save_request(void);
+  /* elapsed_ms (may be NULL) returns the flash stall duration. */
+  int32_t calibration_save(uint32_t *elapsed_ms);
+  void calibration_reset_defaults(void);
 
-uint16_t calibration_status(void); /* STATUS_*_CAL / STATUS_BARO_REF */
-uint8_t calibration_state(void);   /* calib_state byte */
-uint8_t calibration_active(void);  /* 1 while a capture or accel sequence runs */
-float calibration_p0_pa(void);
+  uint16_t calibration_status(void); /* STATUS_*_CAL / STATUS_BARO_REF */
+  uint8_t calibration_state(void);   /* calib_state byte */
+  uint8_t calibration_active(void);  /* 1 while a capture or accel sequence runs */
+  float calibration_p0_pa(void);
 
 #ifdef __cplusplus
 }

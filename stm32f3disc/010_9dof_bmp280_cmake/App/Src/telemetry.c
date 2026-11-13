@@ -111,8 +111,7 @@ static void finish(uint8_t out[FRAME_LEN])
 
 static int32_t check(const uint8_t in[FRAME_LEN], uint8_t type)
 {
-  if ((in[0] != FRAME_SYNC0) || (in[1] != FRAME_SYNC1) || (in[2] != type) ||
-      (in[3] != (uint8_t)FRAME_PAYLOAD_LEN))
+  if ((in[0] != FRAME_SYNC0) || (in[1] != FRAME_SYNC1) || (in[2] != type) || (in[3] != (uint8_t)FRAME_PAYLOAD_LEN))
   {
     return -EBADMSG;
   }

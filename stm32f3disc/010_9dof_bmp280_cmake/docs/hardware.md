@@ -37,6 +37,16 @@ regulator). Address `0x77`: the breakout pulls SDO high; do not tie it low.
 I2C2 needs external pull-ups; the Adafruit breakout provides them. Keep the
 leads short: 400 kHz with a few centimetres of wire.
 
+## Latency probe (T-11)
+
+| Signal | Pin | Connector | Note |
+|---|---|---|---|
+| `LAT_PROBE` | PC0 | P2 pin 6 | GPIO output, driven high during the IMU read |
+
+Configure it in CubeMX (steps in `docs/toolchain.md`, "Latency probe"); the
+firmware compiles the probe out until `LAT_PROBE_Pin` exists in `main.h`.
+Trigger the logic analyser on the rising edge and capture USART1 TX on PC4.
+
 ## Body frame
 
 Body frame is **FRD**: +X forward (towards the USB connectors), +Y right,

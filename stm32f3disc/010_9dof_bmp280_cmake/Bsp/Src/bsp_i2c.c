@@ -26,8 +26,8 @@ typedef struct
 } i2c_bus_t;
 
 static i2c_bus_t s_bus[I2C_BUS_COUNT] = {
-  {&hi2c1, GPIOB, GPIO_PIN_6, GPIO_PIN_7, 0u},
-  {&hi2c2, GPIOA, GPIO_PIN_9, GPIO_PIN_10, 0u},
+    {&hi2c1, GPIOB, GPIO_PIN_6, GPIO_PIN_7, 0u},
+    {&hi2c2, GPIOA, GPIO_PIN_9, GPIO_PIN_10, 0u},
 };
 
 static i2c_bus_t *bus_get(uint8_t bus)
@@ -112,8 +112,7 @@ int32_t bsp_i2c_read(uint8_t bus, uint8_t addr7, uint8_t reg, uint8_t *buf, uint
   {
     return -EINVAL;
   }
-  if (HAL_I2C_Mem_Read(b->h, (uint16_t)addr7 << 1, reg, I2C_MEMADD_SIZE_8BIT, buf, len,
-                       I2C_TIMEOUT_MS) != HAL_OK)
+  if (HAL_I2C_Mem_Read(b->h, (uint16_t)addr7 << 1, reg, I2C_MEMADD_SIZE_8BIT, buf, len, I2C_TIMEOUT_MS) != HAL_OK)
   {
     return bus_fail(b);
   }
@@ -129,8 +128,8 @@ int32_t bsp_i2c_write(uint8_t bus, uint8_t addr7, uint8_t reg, const uint8_t *bu
     return -EINVAL;
   }
   /* HAL takes a non-const pointer but only reads from it. */
-  if (HAL_I2C_Mem_Write(b->h, (uint16_t)addr7 << 1, reg, I2C_MEMADD_SIZE_8BIT, (uint8_t *)buf, len,
-                        I2C_TIMEOUT_MS) != HAL_OK)
+  if (HAL_I2C_Mem_Write(b->h, (uint16_t)addr7 << 1, reg, I2C_MEMADD_SIZE_8BIT, (uint8_t *)buf, len, I2C_TIMEOUT_MS) !=
+      HAL_OK)
   {
     return bus_fail(b);
   }
@@ -139,7 +138,7 @@ int32_t bsp_i2c_write(uint8_t bus, uint8_t addr7, uint8_t reg, const uint8_t *bu
 
 int32_t bsp_i2c_recover(uint8_t bus)
 {
-  i2c_bus_t *b = bus_get(bus);
+  const i2c_bus_t *b = bus_get(bus);
 
   if (b == NULL)
   {
@@ -150,7 +149,7 @@ int32_t bsp_i2c_recover(uint8_t bus)
 
 uint32_t bsp_i2c_errors(uint8_t bus)
 {
-  i2c_bus_t *b = bus_get(bus);
+  const i2c_bus_t *b = bus_get(bus);
 
   return (b == NULL) ? 0u : b->errors;
 }

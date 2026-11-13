@@ -1,0 +1,101 @@
+name: 010_9dof_bmp280_cmake
+
+on:
+  push:
+    paths:
+      - "stm32f3disc/010_9dof_bmp280_cmake/**"
+      - ".github/workflows/010_9dof_bmp280_cmake.yml"
+  pull_request:
+    paths:
+      - "stm32f3disc/010_9dof_bmp280_cmake/**"
+      - ".github/workflows/010_9dof_bmp280_cmake.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: 010_9dof_bmp280_cmake-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ARM_TOOLCHAIN: 15.2.rel1
+  ARM_TOOLCHAIN_URL: https://developer.arm.com/-/media/Files/downloads/gnu/15.2.rel1/binrel/arm-gnu-toolchain-15.2.rel1-x86_64-arm-none-eabi.tar.xz
+  PROJECT: stm32f3disc/010_9dof_bmp280_cmake
+
+defaults:
+  run:
+    working-directory: stm32f3disc/010_9dof_bmp280_cmake
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Host tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang-format cppcheck ninja-build python3
+
+      - name: Arm GNU toolchain (pinned)
+        run: |
+          curl -fsSL "${ARM_TOOLCHAIN_URL}" -o /tmp/arm-toolchain.tar.xz
+          sudo mkdir -p /opt/arm-none-eabi
+          sudo tar -xJf /tmp/arm-toolchain.tar.xz -C /opt/arm-none-eabi --strip-components=1
+          echo "/opt/arm-none-eabi/bin" >> "${GITHUB_PATH}"
+
+      - name: Build (ci, -Werror)
+        run: cmake --preset ci && cmake --build --preset ci
+
+      - name: Host tests
+        run: |
+          cmake -S tests -B build/tests -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build/tests
+          ctest --test-dir build/tests --output-on-failure
+
+      - name: Size budget
+        run: |
+          python3 tools/size_check.py \
+            --elf build/ci/010_9dof_bmp280_cmake.elf \
+            --size-tool arm-none-eabi-size \
+            --flash-max 65536 --ram-max 12288
+
+      - name: clang-format
+        run: cmake --build --preset ci --target format-check
+
+      - name: cppcheck
+        run: cmake --build --preset ci --target cppcheck
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 010_9dof_bmp280_cmake
+          path: |
+            stm32f3disc/010_9dof_bmp280_cmake/build/ci/010_9dof_bmp280_cmake.elf
+            stm32f3disc/010_9dof_bmp280_cmake/build/ci/010_9dof_bmp280_cmake.hex
+            stm32f3disc/010_9dof_bmp280_cmake/build/ci/010_9dof_bmp280_cmake.bin
+            stm32f3disc/010_9dof_bmp280_cmake/build/ci/010_9dof_bmp280_cmake.map
+          if-no-files-found: error
+
+  reproducibility:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Host tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build python3
+
+      - name: Arm GNU toolchain (pinned)
+        run: |
+          curl -fsSL "${ARM_TOOLCHAIN_URL}" -o /tmp/arm-toolchain.tar.xz
+          sudo mkdir -p /opt/arm-none-eabi
+          sudo tar -xJf /tmp/arm-toolchain.tar.xz -C /opt/arm-none-eabi --strip-components=1
+          echo "/opt/arm-none-eabi/bin" >> "${GITHUB_PATH}"
+
+      - name: Two clean builds, compare checksums
+        run: bash tools/repro_check.sh

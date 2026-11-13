@@ -21,6 +21,7 @@
 #include "calibration.h"
 #include "cmd.h"
 #include "bsp_spi.h"
+#include "bsp_stack.h"
 #include "bsp_time.h"
 #include "bsp_uart.h"
 #include "build_info.h"
@@ -54,6 +55,33 @@
 #define SENSOR_FLAGS (STATUS_GYRO_OK | STATUS_ACCEL_OK | STATUS_MAG_OK | STATUS_BARO_OK)
 
 #define BUILD_DESC_MAX 32u
+
+/* T-11 latency probe: PC0 on P2 pin 6, configured in CubeMX as LAT_PROBE.
+ * Compiled out until the pin exists in main.h. */
+#if defined(LAT_PROBE_Pin)
+#define PROBE_HIGH() HAL_GPIO_WritePin(LAT_PROBE_GPIO_Port, LAT_PROBE_Pin, GPIO_PIN_SET)
+#define PROBE_LOW() HAL_GPIO_WritePin(LAT_PROBE_GPIO_Port, LAT_PROBE_Pin, GPIO_PIN_RESET)
+#else
+#define PROBE_HIGH() ((void)0)
+#define PROBE_LOW() ((void)0)
+#endif
+
+/* NFR-15: a failed sensor is re-initialised at most once per second. */
+#define REINIT_PERIOD_MS 1000u
+
+typedef struct
+{
+  uint16_t flag;
+  int32_t (*init)(void);
+  uint32_t last_ms;
+} reinit_t;
+
+static reinit_t s_reinit[] = {
+    {STATUS_GYRO_OK, i3g4250d_init, 0u},
+    {STATUS_ACCEL_OK, lsm303agr_accel_init, 0u},
+    {STATUS_MAG_OK, lsm303agr_mag_init, 0u},
+    {STATUS_BARO_OK, bmp280_init, 0u},
+};
 
 static const char s_banner[] = "\r\n010_9dof_bmp280_cmake " BUILD_GIT_DESC "\r\n";
 static const char s_build_desc[] = BUILD_GIT_DESC;
@@ -103,9 +131,8 @@ static void dwt_init(void)
 #if DEBUG_LOG
 static void sensors_log(void)
 {
-  printf("id: i3g4250d=0x%02X lsm303agr=0x%02X/0x%02X bmp280=0x%02X\r\n",
-         (unsigned)i3g4250d_id(), (unsigned)lsm303agr_accel_id(),
-         (unsigned)lsm303agr_mag_id(), (unsigned)bmp280_chip_id());
+  printf("id: i3g4250d=0x%02X lsm303agr=0x%02X/0x%02X bmp280=0x%02X\r\n", (unsigned)i3g4250d_id(),
+         (unsigned)lsm303agr_accel_id(), (unsigned)lsm303agr_mag_id(), (unsigned)bmp280_chip_id());
 }
 #else
 static void sensors_log(void)
@@ -155,9 +182,34 @@ static void overrun_note(void)
   s_overrun_seen = 1u;
 }
 
+/* NFR-15: retry a sensor that failed, once per second. A successful init
+ * restores its OK flag; the next read proves the bus works. */
+static void fault_task(uint32_t now)
+{
+  for (uint8_t i = 0u; i < (uint8_t)(sizeof(s_reinit) / sizeof(s_reinit[0])); i++)
+  {
+    reinit_t *r = &s_reinit[i];
+
+    if ((s_status & r->flag) != 0u)
+    {
+      continue;
+    }
+    if ((now - r->last_ms) < REINIT_PERIOD_MS)
+    {
+      continue;
+    }
+    r->last_ms = now;
+    if (r->init() == 0)
+    {
+      s_init_ok |= r->flag;
+    }
+  }
+}
+
 void app_init(void)
 {
   bsp_time_init();
+  bsp_stack_init();
   dwt_init();
   s_load_window_cycles = DWT->CYCCNT;
 
@@ -171,6 +223,10 @@ void app_init(void)
   }
 
   sensors_init();
+  for (uint8_t i = 0u; i < (uint8_t)(sizeof(s_reinit) / sizeof(s_reinit[0])); i++)
+  {
+    s_reinit[i].last_ms = bsp_time_ms();
+  }
   calibration_init(s_init_ok);
 
   s_state.q[0] = 1.0f;
@@ -183,8 +239,7 @@ void app_init(void)
   s_p0_pa = calibration_p0_pa();
   s_p0_valid = (s_p0_pa > 0.0f) ? 1u : 0u;
 
-  if (bsp_uart_send_dma((const uint8_t *)s_banner,
-                        (uint16_t)(sizeof(s_banner) - 1u)) != 0)
+  if (bsp_uart_send_dma((const uint8_t *)s_banner, (uint16_t)(sizeof(s_banner) - 1u)) != 0)
   {
     Error_Handler();
   }
@@ -209,8 +264,7 @@ static float imu_dt_s(void)
 static void fusion_update(void)
 {
   uint8_t acc_ok = ((s_status & STATUS_ACCEL_OK) != 0u) ? 1u : 0u;
-  uint8_t mag_ok = (((s_status & STATUS_MAG_OK) != 0u) &&
-                    ((calibration_status() & STATUS_MAG_CAL) != 0u)) ? 1u : 0u;
+  uint8_t mag_ok = (((s_status & STATUS_MAG_OK) != 0u) && ((calibration_status() & STATUS_MAG_CAL) != 0u)) ? 1u : 0u;
   float dt = imu_dt_s();
 
   s_imu_only = (mag_ok == 0u) ? 1u : 0u;
@@ -223,10 +277,8 @@ static void fusion_update(void)
     return;
   }
 
-  madgwick_update_dt(&s_state.gyro,
-                     (acc_ok != 0u) ? &s_state.accel : NULL,
-                     ((acc_ok != 0u) && (mag_ok != 0u)) ? &s_state.mag : NULL,
-                     dt);
+  madgwick_update_dt(&s_state.gyro, (acc_ok != 0u) ? &s_state.accel : NULL,
+                     ((acc_ok != 0u) && (mag_ok != 0u)) ? &s_state.mag : NULL, dt);
   madgwick_get_quat(s_state.q);
 
   if (s_fusion_updates < FUSION_INIT_UPDATES)
@@ -244,6 +296,7 @@ static void imu_task(void)
   vec3_t v;
   int32_t st;
 
+  PROBE_HIGH();
   st = ((s_init_ok & STATUS_GYRO_OK) != 0u) ? i3g4250d_read(&v) : -ENODEV;
   if (st == 0)
   {
@@ -274,6 +327,7 @@ static void imu_task(void)
   }
   status_set(STATUS_MAG_OK, st);
 
+  PROBE_LOW();
   fusion_update();
 
   s_state.imu_t_ms = bsp_time_ms();
@@ -377,7 +431,7 @@ static void debug_task(void)
   d->spi1_errors = (uint16_t)bsp_spi_errors();
   d->max_loop_us = (s_max_loop_us > UINT16_MAX) ? UINT16_MAX : (uint16_t)s_max_loop_us;
   d->cpu_load_permille = s_cpu_load_permille;
-  d->free_stack = 0u; /* stack high-water in M5 */
+  d->free_stack = (uint16_t)bsp_stack_free_bytes();
 
   s_max_loop_us = 0u;
   s_debug_pending = 1u;
@@ -459,6 +513,8 @@ void app_run(void)
     {
       HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
     }
+
+    fault_task(now);
 
     /* Idle work: one-byte calibration commands from the host. */
     if (cmd_poll() != 0u)

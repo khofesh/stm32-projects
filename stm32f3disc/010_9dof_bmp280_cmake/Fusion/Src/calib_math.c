@@ -346,8 +346,7 @@ int32_t calib_accel_orientation(const calib_accum_t *a, uint8_t *axis, int8_t *s
     idx = (ay >= az) ? 1u : 2u;
   }
 
-  dom2 = (idx == 0u) ? (a->mean.x * a->mean.x)
-                     : ((idx == 1u) ? (a->mean.y * a->mean.y) : (a->mean.z * a->mean.z));
+  dom2 = (idx == 0u) ? (a->mean.x * a->mean.x) : ((idx == 1u) ? (a->mean.y * a->mean.y) : (a->mean.z * a->mean.z));
 
   /* Rejects free-fall / all-zero captures as well as tilted ones. */
   if (!(n2 > 1.0f) || (dom2 < (n2 * ACCEL_AXIS_COS2)))
@@ -420,8 +419,7 @@ int32_t calib_accel_solve(const vec3_t pos[3], const vec3_t neg[3], vec3_t *bias
   return 0;
 }
 
-int32_t calib_mag_solve(const calib_range_t *r, float min_span_ut, float max_span_ratio,
-                        vec3_t *bias, vec3_t *scale)
+int32_t calib_mag_solve(const calib_range_t *r, float min_span_ut, float max_span_ratio, vec3_t *bias, vec3_t *scale)
 {
   float sx;
   float sy;

@@ -55,6 +55,7 @@ void sched_compensate(uint32_t since, uint32_t elapsed_ms)
   __set_PRIMASK(primask);
 }
 
+// cppcheck-suppress constParameterPointer
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   if (htim->Instance == TIM6)
