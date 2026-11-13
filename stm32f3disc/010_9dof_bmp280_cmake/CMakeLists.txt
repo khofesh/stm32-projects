@@ -84,6 +84,7 @@ add_our_library(bsp Bsp
     Bsp/Src/bsp_uart.c
     Bsp/Src/bsp_i2c.c
     Bsp/Src/bsp_spi.c
+    Bsp/Src/bsp_flash.c
 )
 # printf retarget (__io_putchar) only in Debug.
 target_compile_definitions(bsp PRIVATE $<$<CONFIG:Debug>:BSP_UART_STDIO>)
@@ -100,15 +101,20 @@ target_link_libraries(sensors PUBLIC bsp)
 set_source_files_properties(Sensors/vendor/bmp280/driver_bmp280.c
     PROPERTIES COMPILE_DEFINITIONS "bmp280_init=ld_bmp280_init")
 
-# Fusion: axis map now; Madgwick, baro filter and altitude arrive in M4.
+# Fusion: axis map and calibration math; Madgwick, baro filter and altitude
+# arrive in M4.
 add_our_library(fusion Fusion
     Fusion/Src/axis_map.c
+    Fusion/Src/calib_math.c
 )
 target_link_libraries(fusion PUBLIC sensors)
 
 add_our_library(app App
     App/Src/app.c
     App/Src/board_axes.c
+    App/Src/cal_store.c
+    App/Src/calibration.c
+    App/Src/cmd.c
     App/Src/crc16.c
     App/Src/sched.c
     App/Src/telemetry.c

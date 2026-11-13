@@ -9,6 +9,7 @@ int main(void)
   test_axis_map();
   test_bmp280();
   test_frame();
+  test_calibration();
 
   printf("%d check(s), %d failure(s)\n", test_checks, test_failures);
   return (test_failures == 0) ? 0 : 1;

@@ -15,12 +15,16 @@ add_executable(unit_tests
     test_axis_map.c
     test_bmp280.c
     test_frame.c
+    test_calibration.c
     stubs/bsp_uart_stub.c
+    stubs/bsp_flash_stub.c
     stubs/bmp280_regs_stub.c
     ../App/Src/crc16.c
     ../App/Src/telemetry.c
     ../App/Src/board_axes.c
+    ../App/Src/cal_store.c
     ../Fusion/Src/axis_map.c
+    ../Fusion/Src/calib_math.c
     ../Sensors/vendor/bmp280/driver_bmp280.c
 )
 

@@ -15,6 +15,8 @@
 #include "bmp280.h"
 #include "board_axes.h"
 #include "bsp_i2c.h"
+#include "calibration.h"
+#include "cmd.h"
 #include "bsp_spi.h"
 #include "bsp_time.h"
 #include "bsp_uart.h"
@@ -133,6 +135,7 @@ void app_init(void)
   }
 
   sensors_init();
+  calibration_init(s_init_ok);
 
   if (bsp_uart_send_dma((const uint8_t *)s_banner,
                         (uint16_t)(sizeof(s_banner) - 1u)) != 0)
@@ -150,6 +153,8 @@ static void imu_task(void)
   if (st == 0)
   {
     board_axes_apply_gyro(&v);
+    calibration_feed_gyro(&v);
+    calibration_apply_gyro(&v);
     s_state.gyro = v;
   }
   status_set(STATUS_GYRO_OK, st);
@@ -158,6 +163,8 @@ static void imu_task(void)
   if (st == 0)
   {
     board_axes_apply_accel(&v);
+    calibration_feed_accel(&v);
+    calibration_apply_accel(&v);
     s_state.accel = v;
   }
   status_set(STATUS_ACCEL_OK, st);
@@ -166,6 +173,8 @@ static void imu_task(void)
   if (st == 0)
   {
     board_axes_apply_mag(&v);
+    calibration_feed_mag(&v);
+    calibration_apply_mag(&v);
     s_state.mag = v;
   }
   status_set(STATUS_MAG_OK, st);
@@ -184,6 +193,7 @@ static void baro_task(void)
   {
     s_state.pressure_pa = pa;
     s_state.temperature_c = deg_c;
+    calibration_feed_baro(pa);
   }
   status_set(STATUS_BARO_OK, st);
 }
@@ -203,6 +213,11 @@ static void telemetry_task(void)
   f.altitude_m = 0.0f;
   f.temperature_cdeg = (int16_t)(s_state.temperature_c * 100.0f);
   f.status = s_status & SENSOR_FLAGS;
+  f.status |= calibration_status();
+  if (calibration_active() != 0u)
+  {
+    f.status |= STATUS_CALIBRATING;
+  }
   if ((s_status & STATUS_MAG_OK) == 0u)
   {
     f.status |= STATUS_IMU_ONLY;
@@ -215,7 +230,7 @@ static void telemetry_task(void)
   f.status |= STATUS_DEBUG_BUILD;
 #endif
   f.cpu_load = 0u;
-  f.calib_state = 0u;
+  f.calib_state = calibration_state();
   f.overruns = (uint16_t)s_overruns;
 
   /* A dropped frame is counted in telemetry_skipped() and reported in the
@@ -316,6 +331,9 @@ void app_run(void)
     {
       HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
     }
+
+    /* Idle work: one-byte calibration commands from the host. */
+    cmd_poll();
 
     debug_flush();
 

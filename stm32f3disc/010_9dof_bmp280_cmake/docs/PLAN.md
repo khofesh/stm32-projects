@@ -15,11 +15,11 @@
 |---|---|
 | CubeMX config (§7.3) | Done: clock, I2C1/I2C2 400 kHz, SPI1 mode 3, USART1 460800 + TX DMA, TIM6 1 kHz, PE3 init high, NVIC group 4 |
 | CMake | `stm32cubemx` + `bsp` + `sensors` + `fusion` + `app` static libs; `.hex/.bin`, size check, flash target, `ci` preset |
-| Bsp | `bsp_time`, `bsp_uart`, `bsp_i2c` (bus 1/2, per-bus error counters, DeInit/Init recovery), `bsp_spi` (CS PE3) |
+| Bsp | `bsp_time`, `bsp_uart`, `bsp_i2c` (bus 1/2, per-bus error counters, DeInit/Init recovery), `bsp_spi` (CS PE3), `bsp_flash` (last page) |
 | Sensors | Own `i3g4250d`, `lsm303agr` (accel + mag) + LibDriver `bmp280` wrapper in `Sensors/vendor/bmp280/` |
-| App | Cooperative scheduler, raw telemetry at 25 Hz, debug frame at 1 Hz, CRC16, frame packer |
-| Tests, tools | Host tree with CRC16/axis map/BMP280 compensation/frame tests; `tools/log.py`, `tools/size_check.py` |
-| Docs | `SPEC.md`, `PLAN.md` |
+| App | Cooperative scheduler, raw telemetry at 25 Hz, debug frame at 1 Hz, CRC16, frame packer, calibration state machine + command parser + flash store |
+| Tests, tools | Host tree with CRC16/axis map/BMP280 compensation/frame/calibration tests; `tools/log.py`, `tools/size_check.py` |
+| Docs | `SPEC.md`, `PLAN.md`, `hardware.md`, `calibration.md` |
 
 M1 verified on hardware (2026-11-13): IDs `0xD3`/`0x33`/`0x40`/`0x58`, 25.03 Hz over 31.8 s with 0 CRC errors, 0 sequence gaps, 0 skipped frames, 0 task overruns, 0 bus errors; FLASH 21.0 KB, RAM 3.3 KB (ci).
 
@@ -28,6 +28,8 @@ M1 review fixes re-verified (2026-11-13, Debug build, board flat on the bench, 6
 M2 code implemented (2026-11-13): `axis_map_is_signed_permutation`, 48-permutation host test, `board_axes` applied in `imu_task`, `docs/hardware.md`. T-03 measured the accel matrix `{{0,1,0},{-1,0,0},{0,0,-1}}` (left-handed triad, det -1); gyro/mag reuse it, gyro signs to be confirmed by the M4 yaw check. FLASH 21.7 KB, RAM 3.4 KB (ci).
 
 M2 closed (2026-11-13): T-03 steps 4–6 on hardware. `M_gyro = {{0,1,0},{1,0,0},{0,0,-1}}` (det +1), `M_mag = M_accel` (det -1), both measured; results in `docs/hardware.md`. Host tests pass.
+
+M3 code implemented (2026-11-13): `calib_math` streaming statistics + gyro/accel/mag/baro solves, calibration state machine, `cmd_poll`, `bsp_flash` + `cal_store` (magic/version/length/CRC), host tests for still detection, 6-position solve, mag hard/soft-iron, baro `p0`, storage round-trip and CRC/magic rejection. Calibration is applied in the IMU task after the axis map; telemetry now carries `STATUS_CAL_*`, `STATUS_CALIBRATING` and the `calib_state` byte. FLASH 26.3 KB, RAM 3.7 KB (ci). Hardware T-04/T-15 pending.
 
 | Check | Result | Note |
 |---|---|---|
