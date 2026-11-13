@@ -1,0 +1,78 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "fetch-svd",
+      "type": "shell",
+      "command": "bash tools/fetch_svd.sh",
+      "problemMatcher": []
+    },
+    {
+      "label": "configure Debug",
+      "type": "shell",
+      "command": "cmake --preset Debug",
+      "problemMatcher": []
+    },
+    {
+      "label": "build Debug",
+      "type": "shell",
+      "command": "cmake --build --preset Debug",
+      "dependsOn": [
+        "fetch-svd",
+        "configure Debug"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$gcc"
+      ]
+    },
+    {
+      "label": "build ci",
+      "type": "shell",
+      "command": "cmake --preset ci && cmake --build --preset ci",
+      "problemMatcher": [
+        "$gcc"
+      ]
+    },
+    {
+      "label": "test",
+      "type": "shell",
+      "command": "cmake -S tests -B build/tests -DCMAKE_BUILD_TYPE=Debug && cmake --build build/tests && ctest --test-dir build/tests --output-on-failure",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$gcc"
+      ]
+    },
+    {
+      "label": "flash",
+      "type": "shell",
+      "command": "cmake --build --preset Debug --target flash",
+      "dependsOn": "build Debug",
+      "problemMatcher": []
+    },
+    {
+      "label": "format-check",
+      "type": "shell",
+      "command": "cmake --build --preset ci --target format-check",
+      "problemMatcher": []
+    },
+    {
+      "label": "cppcheck",
+      "type": "shell",
+      "command": "cmake --build --preset ci --target cppcheck",
+      "problemMatcher": []
+    },
+    {
+      "label": "analyze",
+      "type": "shell",
+      "command": "cmake --build --preset ci --target analyze",
+      "problemMatcher": []
+    }
+  ]
+}
