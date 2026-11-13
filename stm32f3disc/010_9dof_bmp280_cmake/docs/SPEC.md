@@ -85,6 +85,10 @@ Repository is built by `cmake --preset Release`; output is `build/Release/010_9d
 | SDO | pulled high on breakout | address `0x77` (Adafruit BMP280) |
 | CSB | **3V** | must be high |
 
+Adafruit BMP280 breakout: VIN to 3V (5V is tolerated through the onboard
+regulator), CSB strapped to 3V, SDO left open (onboard pull-up) for address
+`0x77`. SCL/SDA pull-ups come from the breakout.
+
 | Device | Bus | Address |
 |---|---|---|
 | LSM303AGR accel | I2C1 | `0x19` (WHO_AM_I_A `0x0F` = `0x33`) |

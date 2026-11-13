@@ -108,6 +108,7 @@ target_link_libraries(fusion PUBLIC sensors)
 
 add_our_library(app App
     App/Src/app.c
+    App/Src/board_axes.c
     App/Src/crc16.c
     App/Src/sched.c
     App/Src/telemetry.c

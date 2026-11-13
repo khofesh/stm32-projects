@@ -25,6 +25,8 @@ M1 verified on hardware (2026-11-13): IDs `0xD3`/`0x33`/`0x40`/`0x58`, 25.03 Hz 
 
 M1 review fixes re-verified (2026-11-13, Debug build, board flat on the bench, 60 s): 25.000 Hz, 1500 data + 60 debug frames, 0 CRC errors, 0 sequence gaps, 0 skipped, 0 overruns, 0 bus errors; FLASH 21.4 KB, RAM 3.3 KB (ci).
 
+M2 code implemented (2026-11-13): `axis_map_is_signed_permutation`, 48-permutation host test, `board_axes` applied in `imu_task`, `docs/hardware.md`. T-03 measured the accel matrix `{{0,1,0},{-1,0,0},{0,0,-1}}` (left-handed triad, det -1); gyro/mag reuse it, gyro signs to be confirmed by the M4 yaw check. FLASH 21.7 KB, RAM 3.4 KB (ci).
+
 | Check | Result | Note |
 |---|---|---|
 | Max loop time (IMU + baro + telemetry in one pass) | 1.12 ms | 11 % of the 10 ms slot; blocking I/O is fine for M4 |
@@ -46,6 +48,7 @@ M1 review fixes re-verified (2026-11-13, Debug build, board flat on the bench, 6
 | D-4 | Flash/debug with **OpenOCD** (installed); no STM32_Programmer_CLI. | Q-2 default; matches bench. |
 | D-5 | Debug `-Og -g3`, Release `-O2`, ci `-Os` (edit `cmake/gcc-arm-none-eabi.cmake`). | §9.4, Q-5. Currently `-O0` / `-Os`. |
 | D-6 | Host tests use a tiny in-repo assert harness (`tests/test_main.c`), no external framework. | No dependency to pin; ctest < 5 s. |
+| D-7 | Board-specific sensor→body matrices live in `App/Src/board_axes.c`; `Fusion/axis_map.c` keeps only the generic apply/validate code. | Fusion stays portable; T-03 values are board data, not algorithm. |
 
 ---
 
@@ -88,7 +91,7 @@ Each task lists files and how it is verified. Hardware checks run on the attache
 | # | Task | Files | Verify |
 |---|---|---|---|
 | 2.1 | `axis_map_apply` + per-sensor signed permutation constants | `Fusion/Src/axis_map.c` | — |
-| 2.2 | Host test: all 24 orientations, sign/permutation correctness | `tests/test_axis_map.c` | ctest |
+| 2.2 | Host test: all 48 signed permutations (24 proper rotations + 24 reflections), sign/permutation correctness | `tests/test_axis_map.c` | ctest |
 | 2.3 | Run T-03 on hardware; fill matrices for FRD body frame | `App/Src/board_axes.c` | T-03 |
 | 2.4 | `docs/hardware.md`: board rev, IDs, BMP280 wiring (Adafruit, `0x77`), axis mapping | `docs/hardware.md` | — |
 

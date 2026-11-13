@@ -13,6 +13,7 @@
 #endif
 
 #include "bmp280.h"
+#include "board_axes.h"
 #include "bsp_i2c.h"
 #include "bsp_spi.h"
 #include "bsp_time.h"
@@ -148,6 +149,7 @@ static void imu_task(void)
   st = ((s_init_ok & STATUS_GYRO_OK) != 0u) ? i3g4250d_read(&v) : -ENODEV;
   if (st == 0)
   {
+    board_axes_apply_gyro(&v);
     s_state.gyro = v;
   }
   status_set(STATUS_GYRO_OK, st);
@@ -155,6 +157,7 @@ static void imu_task(void)
   st = ((s_init_ok & STATUS_ACCEL_OK) != 0u) ? lsm303agr_read_accel(&v) : -ENODEV;
   if (st == 0)
   {
+    board_axes_apply_accel(&v);
     s_state.accel = v;
   }
   status_set(STATUS_ACCEL_OK, st);
@@ -162,6 +165,7 @@ static void imu_task(void)
   st = ((s_init_ok & STATUS_MAG_OK) != 0u) ? lsm303agr_read_mag(&v) : -ENODEV;
   if (st == 0)
   {
+    board_axes_apply_mag(&v);
     s_state.mag = v;
   }
   status_set(STATUS_MAG_OK, st);
