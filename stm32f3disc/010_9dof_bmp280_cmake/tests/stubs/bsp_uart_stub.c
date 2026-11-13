@@ -7,7 +7,13 @@
 uint8_t stub_tx[128];
 uint16_t stub_tx_len;
 int stub_tx_busy;
+int stub_tx_fail;
 unsigned stub_tx_calls;
+
+uint8_t bsp_uart_tx_ready(void)
+{
+  return (stub_tx_busy == 0) ? 1u : 0u;
+}
 
 int32_t bsp_uart_send_dma(const uint8_t *buf, uint16_t len)
 {
@@ -15,6 +21,10 @@ int32_t bsp_uart_send_dma(const uint8_t *buf, uint16_t len)
   if (stub_tx_busy != 0)
   {
     return -EBUSY;
+  }
+  if (stub_tx_fail != 0)
+  {
+    return -EIO;
   }
   if (len > sizeof(stub_tx))
   {

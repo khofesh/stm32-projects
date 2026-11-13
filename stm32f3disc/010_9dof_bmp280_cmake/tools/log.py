@@ -20,7 +20,7 @@ SYNC = b"\xAA\x55"
 TYPE_DATA = 0x01
 TYPE_DEBUG = 0x02
 
-DATA = struct.Struct("<H I 4f 3f 3f 3f f f h H B B H H H")
+DATA = struct.Struct("<H I 4f 3f 3f 3f f f h H B B H H")
 DEBUG = struct.Struct("<H I 32s H H H H H H")
 
 DATA_COLUMNS = [
@@ -80,10 +80,9 @@ class Stats:
         self.last_seq = seq
 
 
-def frames(stream):
+def frames(stream, stats):
     """Yield complete candidate frames, resynchronising on the sync word."""
     buf = bytearray()
-    stats = Stats()
     while True:
         chunk = stream.read(4096)
         if not chunk:
@@ -114,7 +113,7 @@ def frames(stream):
                 del buf[:2]
                 continue
             del buf[:FRAME_LEN]
-            yield frame, stats
+            yield frame
 
 
 def open_stream(args):
@@ -149,7 +148,7 @@ def main():
 
     stats = Stats()
     try:
-        for frame, stats in frames(stream):
+        for frame in frames(stream, stats):
             if frame[2] == TYPE_DATA:
                 values = DATA.unpack_from(frame, 4)
                 stats.data_frames += 1
@@ -185,7 +184,13 @@ def main():
         f"resynced_bytes={stats.resyncs}",
         file=sys.stderr,
     )
-    return 0 if stats.crc_errors == 0 else 1
+    ok = (
+        stats.data_frames > 0
+        and stats.crc_errors == 0
+        and stats.length_errors == 0
+        and stats.sequence_gaps == 0
+    )
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

@@ -23,6 +23,16 @@
 
 M1 verified on hardware (2026-11-13): IDs `0xD3`/`0x33`/`0x40`/`0x58`, 25.03 Hz over 31.8 s with 0 CRC errors, 0 sequence gaps, 0 skipped frames, 0 task overruns, 0 bus errors; FLASH 21.0 KB, RAM 3.3 KB (ci).
 
+M1 review fixes re-verified (2026-11-13, Debug build, board flat on the bench, 60 s): 25.000 Hz, 1500 data + 60 debug frames, 0 CRC errors, 0 sequence gaps, 0 skipped, 0 overruns, 0 bus errors; FLASH 21.4 KB, RAM 3.3 KB (ci).
+
+| Check | Result | Note |
+|---|---|---|
+| Max loop time (IMU + baro + telemetry in one pass) | 1.12 ms | 11 % of the 10 ms slot; blocking I/O is fine for M4 |
+| \|a\| raw | 9.46 m/s² (σ 0.06) | 1.95 mg/LSB; offset/scale left for M3 |
+| \|B\| raw | 100 µT (σ 0.3) | 96 µT before temperature compensation; hard iron, M3 |
+| Pressure | 100 587 Pa (σ 1.2 Pa), 34.5 °C | first frame flagged baro-not-OK (ADC reset value) |
+| Gyro at rest | 0.45 °/s | bias, M3 |
+
 
 ---
 
@@ -135,7 +145,7 @@ Each task lists files and how it is verified. Hardware checks run on the attache
 | Risk | Mitigation |
 |---|---|
 | Own drivers miss a register quirk the ST drivers handled | Port register defines and init sequences from the ST headers; verify IDs and plausibility in T-02/T-03 |
-| LSM303AGR mag at 100 Hz + accel + gyro reads don't fit the 10 ms slot | ~0.6 ms of bus time at 400 kHz/4.5 MHz; measure in M1, move to DMA/IT only if needed |
+| LSM303AGR mag at 100 Hz + accel + gyro reads don't fit the 10 ms slot | Measured in M1: 1.12 ms worst loop pass (all tasks); stay blocking, revisit only if M4 fusion pushes it past ~5 ms |
 | Flash page `0x0803F800` writes stall the scheduler (~40 ms erase) | Save only on `S` command; mark overrun expected, exclude from NFR-10 run |
 | Debug `printf` float pushes flash over budget | Debug-only, size check catches it |
 | NFR-02/03/04 not met with Madgwick defaults | β tuning in M4; fall back to gyro-bias online estimation |

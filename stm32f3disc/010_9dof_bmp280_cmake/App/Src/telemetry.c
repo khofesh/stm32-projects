@@ -231,20 +231,27 @@ int32_t frame_debug_unpack(const uint8_t in[FRAME_LEN], frame_debug_t *f)
 int32_t telemetry_send_data(const frame_data_t *f)
 {
   frame_data_t copy;
+  int32_t st;
 
   if (f == NULL)
   {
     return -EINVAL;
   }
-  copy = *f;
-  copy.frames_skipped = s_skipped;
-  frame_data_pack(s_tx_data, &copy);
-  if (bsp_uart_send_dma(s_tx_data, (uint16_t)FRAME_LEN) != 0)
+  /* Never repack a buffer the DMA may still be reading. */
+  if (bsp_uart_tx_ready() == 0u)
   {
     s_skipped++;
     return -EBUSY;
   }
-  return 0;
+  copy = *f;
+  copy.frames_skipped = s_skipped;
+  frame_data_pack(s_tx_data, &copy);
+  st = bsp_uart_send_dma(s_tx_data, (uint16_t)FRAME_LEN);
+  if (st != 0)
+  {
+    s_skipped++;
+  }
+  return st;
 }
 
 int32_t telemetry_send_debug(const frame_debug_t *f)
@@ -252,6 +259,10 @@ int32_t telemetry_send_debug(const frame_debug_t *f)
   if (f == NULL)
   {
     return -EINVAL;
+  }
+  if (bsp_uart_tx_ready() == 0u)
+  {
+    return -EBUSY;
   }
   frame_debug_pack(s_tx_debug, f);
   return bsp_uart_send_dma(s_tx_debug, (uint16_t)FRAME_LEN);

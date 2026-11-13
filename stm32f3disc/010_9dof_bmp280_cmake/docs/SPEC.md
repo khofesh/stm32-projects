@@ -666,8 +666,8 @@ Dependencies point downward only. `Sensors/` and `Fusion/` compile on the host w
 | Sensor | Mode | ODR | Range / resolution | Read at |
 |---|---|---|---|---|
 | I3G4250D | normal, BDU on, LSB at lower address | 100 Hz, BW 25 Hz | ±500 dps, 17.5 mdps/LSB | 100 Hz |
-| LSM303AGR accel | high-resolution 12-bit, BDU on | 100 Hz | ±4 g, 2 mg/LSB | 100 Hz |
-| LSM303AGR mag | continuous, offset cancellation on, BDU on | 100 Hz | 1.5 mG/LSB | 100 Hz |
+| LSM303AGR accel | high-resolution 12-bit, BDU on | 100 Hz | ±4 g, 1.95 mg/LSB | 100 Hz |
+| LSM303AGR mag | continuous, temperature compensation on, offset cancellation on, BDU on | 100 Hz | 1.5 mG/LSB | 100 Hz |
 | BMP280 | normal, osrs_p ×16, osrs_t ×2, IIR 16, t_sb 0.5 ms | ≈ 26 Hz | 0.16 Pa resolution | 25 Hz |
 
 Note: the LSM303AGR accelerometer output registers are 16-bit left-justified, with the 12-bit high-resolution value in bits 15:4 (verified on MB1035-F303C-E02 during T-02); the driver shifts right by 4.
@@ -694,7 +694,7 @@ All functions return `int32_t` status (`0` = OK, negative = error) unless stated
 /* Bsp */
 int32_t  bsp_i2c_read(uint8_t bus, uint8_t addr7, uint8_t reg, uint8_t *buf, uint16_t len);
 int32_t  bsp_i2c_write(uint8_t bus, uint8_t addr7, uint8_t reg, const uint8_t *buf, uint16_t len);
-int32_t  bsp_i2c_recover(uint8_t bus);                                /* DeInit/Init the handle */
+int32_t  bsp_i2c_recover(uint8_t bus);                                /* DeInit, 9-clock bus clear, Init */
 uint32_t bsp_i2c_errors(uint8_t bus);                                 /* failed transfers */
 int32_t  bsp_spi_read(uint8_t reg, uint8_t *buf, uint16_t len);      /* I3G4250D, CS PE3 */
 int32_t  bsp_spi_write(uint8_t reg, const uint8_t *buf, uint16_t len);
@@ -711,8 +711,8 @@ typedef struct { float x, y, z; } vec3_t;
 int32_t i3g4250d_init(void);          int32_t i3g4250d_read(vec3_t *rad_s);
                                       uint8_t i3g4250d_id(void);          /* WHO_AM_I, T-02 */
 int32_t lsm303agr_init(void);         int32_t lsm303agr_read_accel(vec3_t *m_s2);
-                                      int32_t lsm303agr_read_mag(vec3_t *uT);
-                                      uint8_t lsm303agr_accel_id(void);
+int32_t lsm303agr_accel_init(void);   int32_t lsm303agr_read_mag(vec3_t *uT);
+int32_t lsm303agr_mag_init(void);     uint8_t lsm303agr_accel_id(void);   /* init per part */
                                       uint8_t lsm303agr_mag_id(void);
 int32_t bmp280_init(void);            int32_t bmp280_read(float *pa, float *deg_c);
                                       uint8_t bmp280_chip_id(void);
@@ -735,7 +735,7 @@ Frames: body FRD (X forward, Y right, Z down), earth NED. Quaternion rotates bod
 
 ### 21.5 Fault handling
 
-A failed bus transaction marks that sensor not-OK in `status`, increments its error counter, and the task keeps running with the remaining sensors (Madgwick falls back to IMU-only without mag; altitude holds the last value). A not-OK sensor is re-initialised once per second; on success its flag is restored (NFR-15). `HAL_I2C_DeInit`/`Init` on the CubeMX handle is used to clear a stuck bus.
+A failed bus transaction marks that sensor not-OK in `status`, increments its error counter, and the task keeps running with the remaining sensors (Madgwick falls back to IMU-only without mag; altitude holds the last value). A not-OK sensor is re-initialised once per second; on success its flag is restored (NFR-15). `HAL_I2C_DeInit`, a 9-clock SCL bus clear with STOP, then `HAL_I2C_Init` on the CubeMX handle clear a stuck bus; this runs after any failed transfer other than a NACK.
 
 ---
 

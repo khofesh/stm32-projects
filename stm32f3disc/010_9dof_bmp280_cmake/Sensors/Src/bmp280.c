@@ -13,6 +13,9 @@
 #undef bmp280_init
 
 #define BMP280_REG_ID 0xD0u
+/* ADC reset value: no conversion has completed yet (first ~45 ms in normal
+ * mode) or the measurement is skipped. */
+#define BMP280_ADC_NO_DATA 0x80000u
 
 static bmp280_handle_t s_h;
 static uint8_t s_id;
@@ -157,6 +160,10 @@ int32_t bmp280_read(float *pa, float *deg_c)
   if (bmp280_read_temperature_pressure(&s_h, &t_raw, &t, &p_raw, &p) != 0u)
   {
     return -EIO;
+  }
+  if ((t_raw == BMP280_ADC_NO_DATA) || (p_raw == BMP280_ADC_NO_DATA))
+  {
+    return -EAGAIN;
   }
 
   *pa = p;

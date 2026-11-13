@@ -184,21 +184,40 @@ void test_frame_debug_layout(void)
 void test_telemetry_send(void)
 {
   frame_data_t f;
+  frame_debug_t d;
   uint16_t before;
+  unsigned calls;
 
   fill_data(&f);
 
   stub_tx_busy = 0;
+  stub_tx_fail = 0;
   stub_tx_len = 0;
   CHECK(telemetry_send_data(&f) == 0);
   CHECK(stub_tx_len == FRAME_LEN);
   CHECK(stub_tx[0] == 0xAAu && stub_tx[1] == 0x55u && stub_tx[2] == 0x01u);
 
+  /* Busy link: dropped and counted without touching the DMA. */
   before = telemetry_skipped();
+  calls = stub_tx_calls;
   stub_tx_busy = 1;
   CHECK(telemetry_send_data(&f) == -EBUSY);
   CHECK(telemetry_skipped() == (uint16_t)(before + 1u));
+  CHECK(stub_tx_calls == calls);
+  memset(&d, 0, sizeof(d));
+  CHECK(telemetry_send_debug(&d) == -EBUSY);
+  CHECK(stub_tx_calls == calls);
   stub_tx_busy = 0;
+
+  /* HAL failure: reported as -EIO, still counted. */
+  stub_tx_fail = 1;
+  CHECK(telemetry_send_data(&f) == -EIO);
+  CHECK(telemetry_skipped() == (uint16_t)(before + 2u));
+  stub_tx_fail = 0;
+
+  /* The skipped counter rides in the next frame. */
+  CHECK(telemetry_send_data(&f) == 0);
+  CHECK(stub_tx[78] == (uint8_t)(before + 2u));
 }
 
 void test_frame(void)

@@ -14,7 +14,8 @@ extern "C" {
 
 int32_t bmp280_init(void);
 
-/* Absolute pressure in Pa and temperature in degC. */
+/* Absolute pressure in Pa and temperature in degC; -EAGAIN until the first
+ * conversion has completed. */
 int32_t bmp280_read(float *pa, float *deg_c);
 
 /* Chip ID as read by the last init, 0 before that (T-02). */

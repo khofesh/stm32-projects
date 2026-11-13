@@ -11,7 +11,7 @@
 #define ACC_REG_CTRL4 0x23u
 #define ACC_REG_OUT_X_L 0x28u
 
-/* CTRL_REG1_A: ODR=100 Hz, normal mode, XYZ enable. */
+/* CTRL_REG1_A: ODR=100 Hz, LPen=0 (HR selected in CTRL_REG4_A), XYZ enable. */
 #define ACC_CTRL1_VALUE 0x57u
 /* CTRL_REG4_A: BDU=1, BLE=0, FS=+-4 g, HR=1. */
 #define ACC_CTRL4_VALUE 0x98u
@@ -23,15 +23,17 @@
 #define MAG_REG_CFG_C 0x62u
 #define MAG_REG_OUT_X_L 0x68u
 
-/* CFG_REG_A_M: continuous mode, 100 Hz. */
-#define MAG_CFG_A_VALUE 0x0Cu
+/* CFG_REG_A_M: temperature compensation (required by the datasheet),
+ * continuous mode, 100 Hz. */
+#define MAG_CFG_A_VALUE 0x8Cu
 /* CFG_REG_B_M: offset cancellation on. */
 #define MAG_CFG_B_VALUE 0x02u
 /* CFG_REG_C_M: BDU on. */
 #define MAG_CFG_C_VALUE 0x10u
 
-/* Multi-byte transfers need the sub-address MSB set (auto-increment). */
-#define I2C_AUTO_INC 0x80u
+/* Accelerometer multi-byte reads need the sub-address MSB set; the
+ * magnetometer auto-increments on its own. */
+#define ACC_AUTO_INC 0x80u
 
 #define READ_LEN 6u
 
@@ -63,7 +65,7 @@ static int32_t read_vec(uint8_t addr7, uint8_t reg, uint8_t shift, vec3_t *out, 
   {
     return -EINVAL;
   }
-  if (bsp_i2c_read(BSP_I2C_BUS_1, addr7, (uint8_t)(reg | I2C_AUTO_INC), raw, READ_LEN) != 0)
+  if (bsp_i2c_read(BSP_I2C_BUS_1, addr7, reg, raw, READ_LEN) != 0)
   {
     return -EIO;
   }
@@ -74,13 +76,11 @@ static int32_t read_vec(uint8_t addr7, uint8_t reg, uint8_t shift, vec3_t *out, 
   return 0;
 }
 
-int32_t lsm303agr_init(void)
+int32_t lsm303agr_accel_init(void)
 {
   uint8_t id = 0u;
 
   s_accel_id = 0u;
-  s_mag_id = 0u;
-
   if (bsp_i2c_read(BSP_I2C_BUS_1, LSM303AGR_ACCEL_ADDR7, ACC_REG_WHO_AM_I, &id, 1u) != 0)
   {
     return -EIO;
@@ -98,7 +98,14 @@ int32_t lsm303agr_init(void)
   {
     return -EIO;
   }
+  return 0;
+}
 
+int32_t lsm303agr_mag_init(void)
+{
+  uint8_t id = 0u;
+
+  s_mag_id = 0u;
   if (bsp_i2c_read(BSP_I2C_BUS_1, LSM303AGR_MAG_ADDR7, MAG_REG_WHO_AM_I, &id, 1u) != 0)
   {
     return -EIO;
@@ -123,9 +130,17 @@ int32_t lsm303agr_init(void)
   return 0;
 }
 
+int32_t lsm303agr_init(void)
+{
+  int32_t acc = lsm303agr_accel_init();
+  int32_t mag = lsm303agr_mag_init();
+
+  return (acc != 0) ? acc : mag;
+}
+
 int32_t lsm303agr_read_accel(vec3_t *m_s2)
 {
-  return read_vec(LSM303AGR_ACCEL_ADDR7, ACC_REG_OUT_X_L, ACC_SHIFT, m_s2, ACC_SCALE);
+  return read_vec(LSM303AGR_ACCEL_ADDR7, (uint8_t)(ACC_REG_OUT_X_L | ACC_AUTO_INC), ACC_SHIFT, m_s2, ACC_SCALE);
 }
 
 int32_t lsm303agr_read_mag(vec3_t *uT)

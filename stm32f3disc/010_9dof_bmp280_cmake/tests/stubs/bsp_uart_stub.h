@@ -7,6 +7,7 @@
 extern uint8_t stub_tx[128];
 extern uint16_t stub_tx_len;
 extern int stub_tx_busy;
+extern int stub_tx_fail;
 extern unsigned stub_tx_calls;
 
 #endif /* __BSP_UART_STUB_H */

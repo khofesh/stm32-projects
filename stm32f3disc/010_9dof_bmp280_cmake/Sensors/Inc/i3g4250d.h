@@ -20,7 +20,7 @@ extern "C" {
 
 /* +-500 dps, 17.5 mdps/LSB -> rad/s. */
 #define I3G4250D_DPS_TO_RAD_S 0.017453293f
-#define I3G4250D_MDPS_PER_LSB 17.5e-3f
+#define I3G4250D_DPS_PER_LSB 17.5e-3f
 
 int32_t i3g4250d_init(void);
 

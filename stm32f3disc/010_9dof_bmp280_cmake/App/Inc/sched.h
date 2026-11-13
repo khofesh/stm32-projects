@@ -17,7 +17,6 @@ uint32_t sched_ticks(void);
  * period, 2 when it is due and one or more slots were missed (the deadline is
  * realigned instead of bursting), 0 otherwise. */
 uint8_t  sched_due(uint32_t *next, uint32_t now, uint32_t period_ms);
-uint32_t sched_overruns(void);
 
 #ifdef __cplusplus
 }

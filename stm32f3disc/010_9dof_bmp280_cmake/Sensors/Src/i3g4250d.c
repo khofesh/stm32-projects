@@ -12,7 +12,7 @@
 
 #define READ_LEN 6u
 
-#define SCALE (I3G4250D_MDPS_PER_LSB * I3G4250D_DPS_TO_RAD_S)
+#define SCALE (I3G4250D_DPS_PER_LSB * I3G4250D_DPS_TO_RAD_S)
 
 static uint8_t s_id;
 

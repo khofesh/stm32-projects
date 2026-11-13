@@ -51,7 +51,8 @@ int32_t bsp_uart_send_dma(const uint8_t *buf, uint16_t len)
   if (huart1.gState != HAL_UART_STATE_READY)
   {
     return -EBUSY;
-  }  /* HAL takes a non-const pointer but only reads from it. */
+  }
+  /* HAL takes a non-const pointer but only reads from it. */
   if (HAL_UART_Transmit_DMA(&huart1, (uint8_t *)buf, len) != HAL_OK)
   {
     return -EIO;
