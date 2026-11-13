@@ -43,6 +43,11 @@ Body frame is **FRD**: +X forward (towards the USB connectors), +Y right,
 +Z down (through the board, away from the component side). Earth frame is
 NED; the fusion output quaternion rotates body → earth.
 
+Operator reference for every pose and rotation below: hold the board
+component side up, **USB end facing away from you, the board's right edge
+on your right-hand side**. "Right edge", "USB end" and "CCW seen from above"
+are all relative to that grip.
+
 Each sensor has its own package orientation. `board_axes.c` holds one signed
 permutation per sensor:
 
@@ -78,9 +83,14 @@ Expected body-frame values after a correct matrix, used to check the result:
 | Left edge down | `(0, +9.81, 0)` | rolling left edge down: `gx < 0` |
 | Component side down | `(0, 0, +9.81)` | — |
 
-Mag in the northern hemisphere: flat, `mz > 0` (field points down). Exact
-axes are checked by yawing the board: the heading must follow the rotation
-with no sign inversion.
+Positive gyro rotations follow the right-hand rule about the FRD axes:
+`+gx` = right edge going down, `+gy` = USB end going up, `+gz` = clockwise
+seen from above.
+
+Mag: `mz` is positive in the northern hemisphere and negative in the
+southern one, and it is weak near the magnetic equator. The mag
+procedure (T-03 step 5) therefore uses only the horizontal field and
+differences between opposite headings, which cancel hard-iron offsets.
 
 ## T-03 procedure
 
@@ -105,16 +115,58 @@ with no sign inversion.
 
    Check `axis_map_is_signed_permutation(M) != 0`. `det(M)` may be -1.
 
-4. Repeat the moving checks for the gyro and yaw checks for the mag. The mag
-   sits in the same package as the accel; if its axes match, reuse
-   `M_accel` and confirm with the yaw check.
+   The firmware applies `board_axes` in `imu_task`, so the log is in the body
+   frame. To measure a sensor in its own frame, temporarily set that
+   sensor's matrix in `App/Src/board_axes.c` to identity
+   (`{{1,0,0},{0,1,0},{0,0,1}}`), rebuild and flash.
 
-5. Fill `App/Src/board_axes.c`, rebuild, and re-check the table: flat must
-   read `(0, 0, -9.81)`, USB-up `(+9.81, 0, 0)`, right-down `(0, -9.81, 0)`.
+4. Gyro (I3G4250D: a separate package, measure it on its own; do not copy
+   `M_accel`). Gyro matrix at identity. From the flat pose, make each
+   rotation below by about 90° in about 1 s, return, and pause 3 s
+   between moves:
+
+   | Move | Positive body axis |
+   |---|---|
+   | roll: right edge down | `+X` |
+   | pitch: USB end up | `+Y` |
+   | yaw: clockwise seen from above | `+Z` |
+
+   For each move, take the sensor axis with the largest `|g|` peak. Row
+   `X`/`Y`/`Z` of `M_gyro` is that axis's unit vector times the peak's sign.
+   The other two axes should stay near zero. Check
+   `axis_map_is_signed_permutation(M_gyro) != 0` and record `det(M_gyro)`.
+
+5. Mag (LSM303AGR, same package as the accel, but measure it rather than
+   assume). Mag matrix at identity. Find magnetic north with a compass
+   or phone, keep at least 1 m from steel, laptops and speakers, and
+   hold each pose still for 5 s. Average `mx my mz` per pose.
+
+   | Pair | Pose A | Pose B | `A − B` in body frame |
+   |---|---|---|---|
+   | X | flat, USB end north | flat, USB end south | `+2·Bh` on body X |
+   | Y | flat, USB end west | flat, USB end east | `+2·Bh` on body Y |
+   | Z | USB end up, component side facing south | USB end up, component side facing north | `+2·Bh` on body Z |
+
+   For each pair, compute `A − B` per sensor axis. Its dominant sensor
+   axis and sign give that body row of `M_mag`. Hard-iron offsets cancel
+   in the difference, so no calibration is needed, and the method works in
+   either hemisphere. Check `axis_map_is_signed_permutation(M_mag) != 0`.
+
+6. Fill `App/Src/board_axes.c` with the measured matrices, rebuild, and
+   re-check in the body frame:
+
+   - accel: flat `(0, 0, -9.81)`, USB up `(+9.81, 0, 0)`, USB down
+     `(-9.81, 0, 0)`, right down `(0, -9.81, 0)`, left down
+     `(0, +9.81, 0)`, component down `(0, 0, +9.81)`;
+   - gyro: each step-4 move peaks positive on its own body axis;
+   - mag: each step-5 pair gives a positive `A − B` on its own body axis.
+
+   Record the results under "T-03 result".
 
 ### T-03 result (2026-11-13)
 
-Measured means (sensor frame, m/s², board still):
+Measured means (sensor frame, m/s², board still). Grip: USB end facing
+away from the operator, the board's right edge on the operator's right.
 
 | Pose | ax | ay | az |
 |---|---|---|---|
