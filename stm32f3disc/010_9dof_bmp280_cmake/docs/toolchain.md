@@ -11,7 +11,7 @@ Reference build environment for `010_9dof_bmp280_cmake` (STM32F303VCT6).
 | Ninja | 1.13.2 | generator for all presets |
 | OpenOCD | 0.12.0+dev | `interface/stlink.cfg`, `target/stm32f3x.cfg` |
 | Python | 3.14.10 | `tools/size_check.py` (post-build) |
-| clang-format | 18.1.8 | pinned: `pipx install clang-format==18.1.8`; other majors format differently |
+| clang-format | 23.1.5 | pinned: `pipx install clang-format==23.1.5`; other majors format differently |
 | STM32CubeMX | 6.15+ | regeneration only; not needed to build |
 
 `arm-none-eabi-` must be on `PATH`; the toolchain file sets every other flag.
@@ -71,7 +71,7 @@ tests, `format-check`, `cppcheck`, artifact upload and the two-path
 reproducibility check. The size budget is enforced by the post-link step of the
 build itself. The runner installs Arm GNU Toolchain **15.2.rel1** (the bench
 compiler; tarball SHA-256 pinned, cached between runs) — an explicitly
-documented equivalent of the CubeCLT bundle per TR-01 — clang-format 18.1.8 via
+documented equivalent of the CubeCLT bundle per TR-01 — clang-format 23.1.5 via
 pipx, and uses CMake/Ninja from Ubuntu 24.04.
 
 ## Reproducibility

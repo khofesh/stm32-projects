@@ -3,7 +3,7 @@ FROM ubuntu:24.04
 ARG DEBIAN_FRONTEND=noninteractive
 ARG ARM_TOOLCHAIN=15.2.rel1
 ARG ARM_TOOLCHAIN_SHA256=597893282ac8c6ab1a4073977f2362990184599643b4c5ee34870a8215783a16
-ARG CLANG_FORMAT_VERSION=18.1.8
+ARG CLANG_FORMAT_VERSION=23.1.5
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
