@@ -56,21 +56,21 @@ body = M * sensor
 ```
 
 `M` must be a signed permutation (`axis_map_is_signed_permutation`). Its
-determinant may be -1: the accelerometer triad on this board is left-handed.
+determinant may be -1: the LSM303AGR accel and mag triads on this board are
+left-handed.
 
 ### Current matrices
 
-Measured by T-03 on MB1035-F303C-E02, 2026-11-13 (gyro assumed to share the
-LSM303AGR orientation; confirm with the yaw check in M4).
+All three measured by T-03 on MB1035-F303C-E02, 2026-11-13.
 
-| Sensor | Matrix | Note |
-|---|---|---|
-| accel | `{{0,1,0},{-1,0,0},{0,0,-1}}` | det -1 (left-handed triad) |
-| gyro | `{{0,1,0},{-1,0,0},{0,0,-1}}` | signs pending yaw check |
-| mag | `{{0,1,0},{-1,0,0},{0,0,-1}}` | same package as accel |
+| Sensor | Matrix | det | Body = |
+|---|---|---|---|
+| accel | `{{0,1,0},{-1,0,0},{0,0,-1}}` | -1 | `( sy, -sx, -sz)` |
+| gyro | `{{0,1,0},{1,0,0},{0,0,-1}}` | +1 | `( sy,  sx, -sz)` |
+| mag | `{{0,1,0},{-1,0,0},{0,0,-1}}` | -1 | `( sy, -sx, -sz)` |
 
-Reading the accel matrix: body X = sensor Y, body Y = -sensor X, body Z =
--sensor Z.
+The gyro's Y row is opposite in sign to the accel's: never copy one sensor's
+matrix to another.
 
 Expected body-frame values after a correct matrix, used to check the result:
 
@@ -177,7 +177,47 @@ away from the operator, the board's right edge on the operator's right.
 
 The flat pose was about 8° off level, but the dominant axis is unambiguous.
 Result: `M_accel = {{0,1,0},{-1,0,0},{0,0,-1}}`, det = -1, so the sensor
-triad is left-handed. The gyro mapping was not resolved on the bench (hand
-tracking was too coarse); it uses the same matrix until the M4 yaw check.
-Mag axes are assumed to match the accel (same package); hard-iron offsets
-dominate the raw magnitude and are left to M3.
+triad is left-handed.
+
+Gyro (step 4, sensor frame, rad/s; accel in body frame confirmed each pose):
+
+| Move | Dominant sensor axis, peak | Body row |
+|---|---|---|
+| roll, right edge down | `gy` +2.8 | X = `(0, 1, 0)` |
+| pitch, USB end up | `gx` +1.6 | Y = `(1, 0, 0)` |
+| yaw, clockwise from above | `gz` −0.8 (return +1.0…+2.0) | Z = `(0, 0, -1)` |
+
+`M_gyro = {{0,1,0},{1,0,0},{0,0,-1}}`, det = +1 (right-handed), as expected
+for the I3G4250D; the yaw-measured Z row matches the right-hand prediction
+from X and Y.
+
+Mag (step 5, sensor frame, µT, 5 s means, ≥1 m from steel):
+
+| # | Pose | mx | my | mz |
+|---|---|---|---|---|
+| 1 | flat, USB north | -12.3 | +24.6 | +20.6 |
+| 2 | flat, USB south | -2.0 | -37.7 | +18.4 |
+| 3 | flat, USB west | -27.5 | +2.0 | +22.8 |
+| 4 | flat, USB east | +41.6 | -9.8 | +17.5 |
+| 5 | USB up, component side south | +6.5 | +7.0 | -31.8 |
+| 6 | USB up, component side north | +5.5 | +11.9 | +38.1 |
+
+| Pair | A − B | Body row |
+|---|---|---|
+| X: 1 − 2 | (-10.3, **+62.3**, +2.2) | `(0, 1, 0)` |
+| Y: 3 − 4 | (**-69.1**, +11.8, +5.3) | `(-1, 0, 0)` |
+| Z: 5 − 6 | (+1.0, -4.9, **-69.9**) | `(0, 0, -1)` |
+
+`M_mag = {{0,1,0},{-1,0,0},{0,0,-1}}`, det = -1, identical to `M_accel`
+(same die). Horizontal field ≈ 31–35 µT from all three pairs; off-axis
+residue ≈ 10 µT means heading alignment within about 10°. The board's
+first resting place read |m| ≈ 92 µT (nearby steel); keep calibration and
+T-07 away from it.
+
+Step 6 (final matrices in firmware, board flat and still, 4 s mean, body
+frame): accel `(-2.39, -0.01, -9.17)` m/s² (desk tilt ≈ 14° nose-down plus
+uncalibrated offset), gyro `(-0.006, +0.002, 0.000)` rad/s, mag
+`(+27.9, -1.0, -40.2)` µT. `az < 0` flat confirms the accel Z sign; the
+gyro and mag rows are derived directly from the step 4/5 moves, which by
+construction now read positive on their own body axes. Host tests pass
+(`test_board_maps`).

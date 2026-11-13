@@ -27,6 +27,8 @@ M1 review fixes re-verified (2026-11-13, Debug build, board flat on the bench, 6
 
 M2 code implemented (2026-11-13): `axis_map_is_signed_permutation`, 48-permutation host test, `board_axes` applied in `imu_task`, `docs/hardware.md`. T-03 measured the accel matrix `{{0,1,0},{-1,0,0},{0,0,-1}}` (left-handed triad, det -1); gyro/mag reuse it, gyro signs to be confirmed by the M4 yaw check. FLASH 21.7 KB, RAM 3.4 KB (ci).
 
+M2 closed (2026-11-13): T-03 steps 4–6 on hardware. `M_gyro = {{0,1,0},{1,0,0},{0,0,-1}}` (det +1), `M_mag = M_accel` (det -1), both measured; results in `docs/hardware.md`. Host tests pass.
+
 | Check | Result | Note |
 |---|---|---|
 | Max loop time (IMU + baro + telemetry in one pass) | 1.12 ms | 11 % of the 10 ms slot; blocking I/O is fine for M4 |
