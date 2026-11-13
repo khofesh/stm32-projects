@@ -66,22 +66,27 @@
 #define PROBE_LOW() ((void)0)
 #endif
 
-/* NFR-15: a failed sensor is re-initialised at most once per second. */
+/* NFR-15: a failed sensor is re-initialised at most once per second, and only
+ * after REINIT_FAILS consecutive failed reads (a BMP280 re-init blocks ~6 ms). */
 #define REINIT_PERIOD_MS 1000u
+#define REINIT_FAILS 3u
 
 typedef struct
 {
   uint16_t flag;
   int32_t (*init)(void);
   uint32_t last_ms;
+  uint8_t fails;
 } reinit_t;
 
 static reinit_t s_reinit[] = {
-    {STATUS_GYRO_OK, i3g4250d_init, 0u},
-    {STATUS_ACCEL_OK, lsm303agr_accel_init, 0u},
-    {STATUS_MAG_OK, lsm303agr_mag_init, 0u},
-    {STATUS_BARO_OK, bmp280_init, 0u},
+    {STATUS_GYRO_OK, i3g4250d_init, 0u, 0u},
+    {STATUS_ACCEL_OK, lsm303agr_accel_init, 0u, 0u},
+    {STATUS_MAG_OK, lsm303agr_mag_init, 0u, 0u},
+    {STATUS_BARO_OK, bmp280_init, 0u, 0u},
 };
+
+#define REINIT_COUNT ((uint8_t)(sizeof(s_reinit) / sizeof(s_reinit[0])))
 
 static const char s_banner[] = "\r\n010_9dof_bmp280_cmake " BUILD_GIT_DESC "\r\n";
 static const char s_build_desc[] = BUILD_GIT_DESC;
@@ -163,15 +168,42 @@ static void sensors_init(void)
 }
 
 /* A sensor is OK only if it initialised and its last read succeeded. */
+static reinit_t *reinit_of(uint16_t flag)
+{
+  for (uint8_t i = 0u; i < REINIT_COUNT; i++)
+  {
+    if (s_reinit[i].flag == flag)
+    {
+      return &s_reinit[i];
+    }
+  }
+  return NULL;
+}
+
 static void status_set(uint16_t flag, int32_t read_status)
 {
+  reinit_t *r = reinit_of(flag);
+
+  /* Conversion not ready yet: no new data, not a fault. */
+  if (read_status == -EAGAIN)
+  {
+    return;
+  }
   if ((read_status == 0) && ((s_init_ok & flag) != 0u))
   {
     s_status |= flag;
+    if (r != NULL)
+    {
+      r->fails = 0u;
+    }
   }
   else
   {
     s_status &= (uint16_t)~flag;
+    if ((r != NULL) && (r->fails < UINT8_MAX))
+    {
+      r->fails++;
+    }
   }
 }
 
@@ -182,15 +214,19 @@ static void overrun_note(void)
   s_overrun_seen = 1u;
 }
 
-/* NFR-15: retry a sensor that failed, once per second. A successful init
- * restores its OK flag; the next read proves the bus works. */
+/* NFR-15: retry a sensor that never initialised or keeps failing, once per
+ * second. A successful init restores its OK flag at the next good read. */
 static void fault_task(uint32_t now)
 {
-  for (uint8_t i = 0u; i < (uint8_t)(sizeof(s_reinit) / sizeof(s_reinit[0])); i++)
+  for (uint8_t i = 0u; i < REINIT_COUNT; i++)
   {
     reinit_t *r = &s_reinit[i];
 
     if ((s_status & r->flag) != 0u)
+    {
+      continue;
+    }
+    if (((s_init_ok & r->flag) != 0u) && (r->fails < REINIT_FAILS))
     {
       continue;
     }
@@ -201,7 +237,9 @@ static void fault_task(uint32_t now)
     r->last_ms = now;
     if (r->init() == 0)
     {
+      r->fails = 0u;
       s_init_ok |= r->flag;
+      calibration_set_sensor_ok(s_init_ok);
     }
   }
 }
@@ -223,7 +261,7 @@ void app_init(void)
   }
 
   sensors_init();
-  for (uint8_t i = 0u; i < (uint8_t)(sizeof(s_reinit) / sizeof(s_reinit[0])); i++)
+  for (uint8_t i = 0u; i < REINIT_COUNT; i++)
   {
     s_reinit[i].last_ms = bsp_time_ms();
   }

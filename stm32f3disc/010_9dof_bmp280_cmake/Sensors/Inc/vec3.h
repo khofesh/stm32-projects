@@ -6,12 +6,12 @@ extern "C"
 {
 #endif
 
-  typedef struct
-  {
-    float x;
-    float y;
-    float z;
-  } vec3_t;
+typedef struct
+{
+  float x;
+  float y;
+  float z;
+} vec3_t;
 
 #ifdef __cplusplus
 }

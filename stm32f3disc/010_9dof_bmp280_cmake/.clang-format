@@ -21,4 +21,5 @@ BreakStringLiterals: false
 IncludeBlocks: Preserve
 SortIncludes: Never
 ReflowComments: false
+IndentExternBlock: NoIndent
 SpacesBeforeTrailingComments: 1

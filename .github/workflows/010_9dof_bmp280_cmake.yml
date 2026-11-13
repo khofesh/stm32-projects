@@ -20,8 +20,10 @@ concurrency:
 
 env:
   ARM_TOOLCHAIN: 15.2.rel1
+  ARM_TOOLCHAIN_SHA256: 597893282ac8c6ab1a4073977f2362990184599643b4c5ee34870a8215783a16
   ARM_TOOLCHAIN_URL: https://developer.arm.com/-/media/Files/downloads/gnu/15.2.rel1/binrel/arm-gnu-toolchain-15.2.rel1-x86_64-arm-none-eabi.tar.xz
   PROJECT: stm32f3disc/010_9dof_bmp280_cmake
+  CLANG_FORMAT_VERSION: 18.1.8
 
 defaults:
   run:
@@ -33,35 +35,44 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Host tools
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            clang-format cppcheck ninja-build python3
+            cppcheck ninja-build python3
+          pipx install "clang-format==${CLANG_FORMAT_VERSION}"
+
+      - name: Arm GNU toolchain cache
+        id: arm-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/arm-none-eabi
+          key: arm-gnu-toolchain-${{ env.ARM_TOOLCHAIN }}-${{ env.ARM_TOOLCHAIN_SHA256 }}
 
       - name: Arm GNU toolchain (pinned)
+        if: steps.arm-cache.outputs.cache-hit != 'true'
         run: |
           curl -fsSL "${ARM_TOOLCHAIN_URL}" -o /tmp/arm-toolchain.tar.xz
-          sudo mkdir -p /opt/arm-none-eabi
-          sudo tar -xJf /tmp/arm-toolchain.tar.xz -C /opt/arm-none-eabi --strip-components=1
-          echo "/opt/arm-none-eabi/bin" >> "${GITHUB_PATH}"
+          echo "${ARM_TOOLCHAIN_SHA256}  /tmp/arm-toolchain.tar.xz" | sha256sum -c -
+          mkdir -p ~/arm-none-eabi
+          tar -xJf /tmp/arm-toolchain.tar.xz -C ~/arm-none-eabi --strip-components=1
+
+      - name: Arm GNU toolchain on PATH
+        run: echo "${HOME}/arm-none-eabi/bin" >> "${GITHUB_PATH}"
 
       - name: Build (ci, -Werror)
-        run: cmake --preset ci && cmake --build --preset ci
+        run: |
+          cmake --preset ci -DCLANG_FORMAT_EXECUTABLE="$(pipx environment --value PIPX_BIN_DIR)/clang-format"
+          cmake --build --preset ci
 
       - name: Host tests
         run: |
           cmake -S tests -B build/tests -DCMAKE_BUILD_TYPE=Debug
           cmake --build build/tests
           ctest --test-dir build/tests --output-on-failure
-
-      - name: Size budget
-        run: |
-          python3 tools/size_check.py \
-            --elf build/ci/010_9dof_bmp280_cmake.elf \
-            --size-tool arm-none-eabi-size \
-            --flash-max 65536 --ram-max 12288
 
       - name: clang-format
         run: cmake --build --preset ci --target format-check
@@ -84,18 +95,31 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Host tools
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ninja-build python3
 
+      - name: Arm GNU toolchain cache
+        id: arm-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/arm-none-eabi
+          key: arm-gnu-toolchain-${{ env.ARM_TOOLCHAIN }}-${{ env.ARM_TOOLCHAIN_SHA256 }}
+
       - name: Arm GNU toolchain (pinned)
+        if: steps.arm-cache.outputs.cache-hit != 'true'
         run: |
           curl -fsSL "${ARM_TOOLCHAIN_URL}" -o /tmp/arm-toolchain.tar.xz
-          sudo mkdir -p /opt/arm-none-eabi
-          sudo tar -xJf /tmp/arm-toolchain.tar.xz -C /opt/arm-none-eabi --strip-components=1
-          echo "/opt/arm-none-eabi/bin" >> "${GITHUB_PATH}"
+          echo "${ARM_TOOLCHAIN_SHA256}  /tmp/arm-toolchain.tar.xz" | sha256sum -c -
+          mkdir -p ~/arm-none-eabi
+          tar -xJf /tmp/arm-toolchain.tar.xz -C ~/arm-none-eabi --strip-components=1
+
+      - name: Arm GNU toolchain on PATH
+        run: echo "${HOME}/arm-none-eabi/bin" >> "${GITHUB_PATH}"
 
       - name: Two clean builds, compare checksums
         run: bash tools/repro_check.sh

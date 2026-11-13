@@ -11,6 +11,7 @@ Reference build environment for `010_9dof_bmp280_cmake` (STM32F303VCT6).
 | Ninja | 1.13.2 | generator for all presets |
 | OpenOCD | 0.12.0+dev | `interface/stlink.cfg`, `target/stm32f3x.cfg` |
 | Python | 3.14.10 | `tools/size_check.py` (post-build) |
+| clang-format | 18.1.8 | pinned: `pipx install clang-format==18.1.8`; other majors format differently |
 | STM32CubeMX | 6.15+ | regeneration only; not needed to build |
 
 `arm-none-eabi-` must be on `PATH`; the toolchain file sets every other flag.
@@ -66,10 +67,12 @@ cmake --build --preset ci --target analyze        # -fanalyzer, advisory, build/
 
 `.github/workflows/010_9dof_bmp280_cmake.yml` (monorepo root) runs on changes
 under `stm32f3disc/010_9dof_bmp280_cmake/`: `ci` build with `-Werror`, host
-tests, explicit size check, `format-check`, `cppcheck`, artifact upload and the
-two-path reproducibility check. The runner installs Arm GNU Toolchain
-**15.2.rel1** (the bench compiler) — an explicitly documented equivalent of the
-CubeCLT bundle per TR-01 — and uses CMake/Ninja from Ubuntu 24.04.
+tests, `format-check`, `cppcheck`, artifact upload and the two-path
+reproducibility check. The size budget is enforced by the post-link step of the
+build itself. The runner installs Arm GNU Toolchain **15.2.rel1** (the bench
+compiler; tarball SHA-256 pinned, cached between runs) — an explicitly
+documented equivalent of the CubeCLT bundle per TR-01 — clang-format 18.1.8 via
+pipx, and uses CMake/Ninja from Ubuntu 24.04.
 
 ## Reproducibility
 
@@ -77,10 +80,13 @@ CubeCLT bundle per TR-01 — and uses CMake/Ninja from Ubuntu 24.04.
 tools/repro_check.sh
 ```
 
-Builds the working tree twice under different absolute paths and compares the
-`.elf`, `.hex` and `.bin` SHA-256 sums (AC-10). The toolchain file passes
-`-ffile-prefix-map` for the source and build roots, so no absolute paths reach
-the debug info. Commit before using it as a release record.
+Checks out `HEAD` (or the commit given as the first argument) into two git worktrees at different absolute paths, builds
+both with the `ci` preset and compares the `.elf`, `.hex` and `.bin` SHA-256
+sums (AC-10). The worktrees keep `git describe` working, so the compared
+artifacts embed the same `BUILD_GIT_DESC` as a normal build of that commit; the
+script fails if it comes out `unknown`. Uncommitted changes are not built
+(warning printed). The toolchain file passes `-ffile-prefix-map` for the source
+and build roots, so no absolute paths reach the debug info.
 
 ## Dev Container
 

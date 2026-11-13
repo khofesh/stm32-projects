@@ -54,6 +54,17 @@ void calibration_init(uint16_t sensor_ok)
   }
 }
 
+void calibration_set_sensor_ok(uint16_t sensor_ok)
+{
+  uint16_t added = (uint16_t)(sensor_ok & (uint16_t)~s_sensor_ok);
+
+  s_sensor_ok = sensor_ok;
+  if ((added & STATUS_GYRO_OK) != 0u)
+  {
+    calibration_start_gyro();
+  }
+}
+
 void calibration_start_gyro(void)
 {
   s_rejected = 0u;

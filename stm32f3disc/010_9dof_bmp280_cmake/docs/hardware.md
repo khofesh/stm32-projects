@@ -46,6 +46,10 @@ leads short: 400 kHz with a few centimetres of wire.
 Configure it in CubeMX (steps in `docs/toolchain.md`, "Latency probe"); the
 firmware compiles the probe out until `LAT_PROBE_Pin` exists in `main.h`.
 Trigger the logic analyser on the rising edge and capture USART1 TX on PC4.
+The pulse covers only the three sensor reads (fusion runs after the falling
+edge), so T-11 latency is measured from the **rising** edge to the stop bit of
+the last byte of the next data frame on TX; the pulse width is the read time
+alone.
 
 ## Body frame
 

@@ -10,15 +10,15 @@ extern "C"
 
 #include "vec3.h"
 
-  /* Sensor -> body (FRD: X forward, Y right, Z down) signed permutations for
+/* Sensor -> body (FRD: X forward, Y right, Z down) signed permutations for
  * the STM32F3DISCOVERY, measured by T-03 (docs/hardware.md). */
-  extern const int8_t board_axis_accel[3][3];
-  extern const int8_t board_axis_gyro[3][3];
-  extern const int8_t board_axis_mag[3][3];
+extern const int8_t board_axis_accel[3][3];
+extern const int8_t board_axis_gyro[3][3];
+extern const int8_t board_axis_mag[3][3];
 
-  void board_axes_apply_accel(vec3_t *v);
-  void board_axes_apply_gyro(vec3_t *v);
-  void board_axes_apply_mag(vec3_t *v);
+void board_axes_apply_accel(vec3_t *v);
+void board_axes_apply_gyro(vec3_t *v);
+void board_axes_apply_mag(vec3_t *v);
 
 #ifdef __cplusplus
 }

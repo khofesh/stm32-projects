@@ -623,6 +623,17 @@ static void test_state_machine(void)
   calibration_start_baro();
   CHECK(rejected() == 1u);
   CHECK(calibration_state() == CALIB_STATE_REJECTED);
+
+  /* NFR-15: a sensor restored at runtime accepts commands; a late gyro
+   * starts its bias attempt. */
+  calibration_set_sensor_ok(STATUS_BARO_OK);
+  CHECK(calibration_state() == CALIB_STATE_REJECTED);
+  calibration_start_baro();
+  CHECK(rejected() == 0u);
+  CHECK(calibration_state() == CALIB_STATE_BARO_ACTIVE);
+  calibration_set_sensor_ok(STATUS_BARO_OK | STATUS_GYRO_OK);
+  CHECK((calibration_state() & CALIB_STATE_GYRO_ACTIVE) != 0u);
+  calibration_init(0u);
 }
 
 void test_calibration(void)

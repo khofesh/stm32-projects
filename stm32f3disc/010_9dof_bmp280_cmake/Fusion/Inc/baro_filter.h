@@ -6,9 +6,9 @@ extern "C"
 {
 #endif
 
-  /* Alpha-beta (constant-velocity) filter for the relative altitude. */
-  void baro_filter_init(float alpha, float beta, float dt);
-  float baro_filter_update(float alt_m);
+/* Alpha-beta (constant-velocity) filter for the relative altitude. */
+void baro_filter_init(float alpha, float beta, float dt);
+float baro_filter_update(float alt_m);
 
 #ifdef __cplusplus
 }

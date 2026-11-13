@@ -14,8 +14,6 @@ RemoteSystemsTempFiles/
 # Debug and Release folders
 Debug/
 Release/
-Drivers/CMSIS/
-Drivers/STM32*HAL_Driver/
 
 #############################################
 # Build outputs

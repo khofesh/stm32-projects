@@ -215,8 +215,14 @@ file(GLOB_RECURSE OUR_C_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/Fusion/*.c
     ${CMAKE_CURRENT_SOURCE_DIR}/Sensors/Src/*.c)
 
-find_program(CLANG_FORMAT_EXECUTABLE clang-format)
+# Pinned to clang-format 18 (docs/toolchain.md); other majors format differently.
+find_program(CLANG_FORMAT_EXECUTABLE NAMES clang-format-18 clang-format)
 if(CLANG_FORMAT_EXECUTABLE)
+    execute_process(COMMAND ${CLANG_FORMAT_EXECUTABLE} --version
+        OUTPUT_VARIABLE CLANG_FORMAT_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT CLANG_FORMAT_VERSION MATCHES "version 18\\.")
+        message(WARNING "format-check expects clang-format 18, found: ${CLANG_FORMAT_VERSION}")
+    endif()
     add_custom_target(format-check
         COMMAND ${CLANG_FORMAT_EXECUTABLE} --dry-run --Werror ${OUR_C_FILES}
         COMMENT "Checking clang-format on App, Bsp, Fusion, Sensors"

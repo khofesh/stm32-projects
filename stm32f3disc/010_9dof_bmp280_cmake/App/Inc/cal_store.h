@@ -27,18 +27,18 @@ extern "C"
 #define CAL_STORE_PARAM_LEN 68u
 #define CAL_STORE_LEN 78u
 
-  /* Encode into buf; returns the number of bytes written, or 0 if cap is too
+/* Encode into buf; returns the number of bytes written, or 0 if cap is too
  * small or an argument is invalid. */
-  uint16_t cal_store_encode(const calib_params_t *p, uint8_t *buf, uint16_t cap);
+uint16_t cal_store_encode(const calib_params_t *p, uint8_t *buf, uint16_t cap);
 
-  /* Verify magic, version, length and CRC, then fill p. */
-  int32_t cal_store_decode(const uint8_t *buf, uint16_t len, calib_params_t *p);
+/* Verify magic, version, length and CRC, then fill p. */
+int32_t cal_store_decode(const uint8_t *buf, uint16_t len, calib_params_t *p);
 
-  /* Load from flash; on any error p is set to defaults (SPEC §22.3). */
-  int32_t cal_store_load(calib_params_t *p);
+/* Load from flash; on any error p is set to defaults (SPEC §22.3). */
+int32_t cal_store_load(calib_params_t *p);
 
-  /* Erase and program the calibration page; elapsed_ms as bsp_flash_write_page. */
-  int32_t cal_store_save(const calib_params_t *p, uint32_t *elapsed_ms);
+/* Erase and program the calibration page; elapsed_ms as bsp_flash_write_page. */
+int32_t cal_store_save(const calib_params_t *p, uint32_t *elapsed_ms);
 
 #ifdef __cplusplus
 }
