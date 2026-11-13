@@ -18,6 +18,10 @@ uint32_t sched_ticks(void);
  * realigned instead of bursting), 0 otherwise. */
 uint8_t  sched_due(uint32_t *next, uint32_t now, uint32_t period_ms);
 
+/* Add the ticks lost while the CPU was stalled (flash erase): elapsed_ms of
+ * wall-clock time passed since the tick read 'since'. */
+void     sched_compensate(uint32_t since, uint32_t elapsed_ms);
+
 #ifdef __cplusplus
 }
 #endif

@@ -47,6 +47,14 @@ typedef struct
   vec3_t max;
 } calib_accum_t;
 
+/* Min/max only (mag capture). */
+typedef struct
+{
+  uint32_t n;
+  vec3_t min;
+  vec3_t max;
+} calib_range_t;
+
 typedef struct
 {
   uint32_t n;
@@ -64,6 +72,8 @@ void calib_apply_mag(const calib_params_t *p, vec3_t *v);
 
 void calib_accum_reset(calib_accum_t *a);
 void calib_accum_add(calib_accum_t *a, const vec3_t *v);
+void calib_range_reset(calib_range_t *r);
+void calib_range_add(calib_range_t *r, const vec3_t *v);
 void calib_scalar_accum_reset(calib_scalar_accum_t *a);
 void calib_scalar_accum_add(calib_scalar_accum_t *a, float v);
 
@@ -71,8 +81,12 @@ int32_t calib_accum_mean(const calib_accum_t *a, vec3_t *mean);
 int32_t calib_accum_variance(const calib_accum_t *a, vec3_t *variance);
 int32_t calib_scalar_accum_stats(const calib_scalar_accum_t *a, float *mean, float *variance);
 
-/* Average and reject if any axis standard deviation exceeds max_std_rad_s. */
-int32_t calib_gyro_bias(const calib_accum_t *a, float max_std_rad_s, vec3_t *bias);
+/* -ERANGE if any axis standard deviation exceeds max_std. */
+int32_t calib_accum_still(const calib_accum_t *a, float max_std);
+
+/* Average and reject if any axis standard error of the mean (std / sqrt(n))
+ * exceeds max_sem_rad_s. */
+int32_t calib_gyro_bias(const calib_accum_t *a, float max_sem_rad_s, vec3_t *bias);
 
 /* Dominant body axis and sign of the mean, rejecting means more than 10 deg
  * away from an axis. axis is 0..2 (x, y, z), sign is +1 or -1. */
@@ -84,7 +98,7 @@ int32_t calib_accel_solve(const vec3_t pos[3], const vec3_t neg[3], vec3_t *bias
 /* Hard-iron centre and diagonal soft-iron scale from the captured min/max.
  * Accepts when every span exceeds min_span_ut and max_span/min_span is below
  * max_span_ratio. */
-int32_t calib_mag_solve(const calib_accum_t *a, float min_span_ut, float max_span_ratio,
+int32_t calib_mag_solve(const calib_range_t *r, float min_span_ut, float max_span_ratio,
                         vec3_t *bias, vec3_t *scale);
 
 /* Mean reference pressure, rejected when the standard deviation exceeds

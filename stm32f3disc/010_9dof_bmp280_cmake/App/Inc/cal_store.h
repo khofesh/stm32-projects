@@ -13,14 +13,16 @@ extern "C" {
  *
  *   offset  size  field
  *   0       4     magic = 0x31434C41 ("ALC1" little-endian)
- *   4       2     version = 1
+ *   4       2     version = 2
  *   6       2     parameter payload length = 68
- *   8       68    17 floats: gyro bias, accel bias, accel scale, mag bias,
- *                 mag scale, baro p0, flags (all little-endian)
+ *   8       64    16 floats: gyro bias, accel bias, accel scale, mag bias,
+ *                 mag scale, baro p0
+ *   72      2     flags (CAL_FLAG_*)
+ *   74      2     reserved = 0
  *   76      2     CRC16-CCITT-FALSE over bytes 0..75
- */
+ * All fields little-endian. */
 #define CAL_STORE_MAGIC 0x31434C41u
-#define CAL_STORE_VERSION 1u
+#define CAL_STORE_VERSION 2u
 #define CAL_STORE_PARAM_LEN 68u
 #define CAL_STORE_LEN 78u
 
@@ -34,8 +36,8 @@ int32_t cal_store_decode(const uint8_t *buf, uint16_t len, calib_params_t *p);
 /* Load from flash; on any error p is set to defaults (SPEC §22.3). */
 int32_t cal_store_load(calib_params_t *p);
 
-/* Erase and program the calibration page. */
-int32_t cal_store_save(const calib_params_t *p);
+/* Erase and program the calibration page; elapsed_ms as bsp_flash_write_page. */
+int32_t cal_store_save(const calib_params_t *p, uint32_t *elapsed_ms);
 
 #ifdef __cplusplus
 }

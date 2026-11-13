@@ -21,7 +21,7 @@ static void dispatch(uint8_t c)
     calibration_start_baro();
     break;
   case 'S':
-    (void)calibration_save();
+    calibration_request_save();
     break;
   case 'D':
     calibration_reset_defaults();

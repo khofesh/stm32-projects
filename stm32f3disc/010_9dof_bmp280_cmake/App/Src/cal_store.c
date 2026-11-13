@@ -9,8 +9,9 @@
 
 #define CAL_STORE_CRC_OFF (CAL_STORE_LEN - 2u)
 
-/* [gyro bias 3][accel bias 3][accel scale 3][mag bias 3][mag scale 3]
- * [baro p0 1][flags 1] */
+#define CAL_STORE_FLAGS_OFF 72u
+#define CAL_STORE_RSVD_OFF 74u
+
 static void put_u16(uint8_t *p, uint16_t v)
 {
   p[0] = (uint8_t)(v & 0xFFu);
@@ -92,7 +93,9 @@ uint16_t cal_store_encode(const calib_params_t *p, uint8_t *buf, uint16_t cap)
   q += 12;
 
   put_f32(&q[0], p->baro_p0_pa);
-  put_f32(&q[4], (float)p->flags);
+
+  put_u16(&buf[CAL_STORE_FLAGS_OFF], p->flags);
+  put_u16(&buf[CAL_STORE_RSVD_OFF], 0u);
 
   put_u16(&buf[CAL_STORE_CRC_OFF], crc16_ccitt(buf, CAL_STORE_CRC_OFF));
   return (uint16_t)CAL_STORE_LEN;
@@ -102,7 +105,6 @@ int32_t cal_store_decode(const uint8_t *buf, uint16_t len, calib_params_t *p)
 {
   const uint8_t *q;
   calib_params_t out;
-  float flags_f;
 
   if ((buf == NULL) || (p == NULL) || (len < CAL_STORE_LEN))
   {
@@ -152,14 +154,12 @@ int32_t cal_store_decode(const uint8_t *buf, uint16_t len, calib_params_t *p)
   q += 12;
 
   out.baro_p0_pa = get_f32(&q[0]);
-  flags_f = get_f32(&q[4]);
 
-  /* The flags are stored as a float to keep the parameter block float-only. */
-  if (!(flags_f >= 0.0f) || !(flags_f <= (float)CAL_FLAG_ALL))
+  out.flags = get_u16(&buf[CAL_STORE_FLAGS_OFF]);
+  if ((out.flags & (uint16_t)~CAL_FLAG_ALL) != 0u)
   {
     return -EBADMSG;
   }
-  out.flags = (uint16_t)(flags_f + 0.5f);
 
   *p = out;
   return 0;
@@ -167,7 +167,7 @@ int32_t cal_store_decode(const uint8_t *buf, uint16_t len, calib_params_t *p)
 
 int32_t cal_store_load(calib_params_t *p)
 {
-  const uint8_t *page = (const uint8_t *)BSP_FLASH_PAGE_ADDR;
+  uint8_t buf[CAL_STORE_LEN];
   int32_t st;
 
   if (p == NULL)
@@ -175,7 +175,11 @@ int32_t cal_store_load(calib_params_t *p)
     return -EINVAL;
   }
 
-  st = cal_store_decode(page, CAL_STORE_LEN, p);
+  st = bsp_flash_read(BSP_FLASH_PAGE_ADDR, buf, (uint16_t)sizeof(buf));
+  if (st == 0)
+  {
+    st = cal_store_decode(buf, (uint16_t)sizeof(buf), p);
+  }
   if (st != 0)
   {
     calib_params_defaults(p);
@@ -183,7 +187,7 @@ int32_t cal_store_load(calib_params_t *p)
   return st;
 }
 
-int32_t cal_store_save(const calib_params_t *p)
+int32_t cal_store_save(const calib_params_t *p, uint32_t *elapsed_ms)
 {
   uint8_t buf[CAL_STORE_LEN];
   uint16_t n;
@@ -193,5 +197,5 @@ int32_t cal_store_save(const calib_params_t *p)
   {
     return -EINVAL;
   }
-  return bsp_flash_write_page(BSP_FLASH_PAGE_ADDR, buf, n);
+  return bsp_flash_write_page(BSP_FLASH_PAGE_ADDR, buf, n, elapsed_ms);
 }

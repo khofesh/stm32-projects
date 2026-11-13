@@ -6,6 +6,8 @@
 #include "bsp_flash_stub.h"
 #include "cal_store.h"
 #include "calib_math.h"
+#include "calibration.h"
+#include "telemetry.h"
 
 #define CALIB_TEST_GYRO_SAMPLES 200u
 #define CALIB_TEST_BARO_SAMPLES 50u
@@ -74,12 +76,24 @@ static void test_gyro_still(void)
   CHECK(calib_accum_variance(&acc, &var) == 0);
   CHECK(var.x < 0.0000008f);
 
-  /* Moving board: the per-axis standard deviation exceeds 0.05 deg/s. */
+  /* I3G4250D noise at 25 Hz bandwidth (~0.2 deg/s per sample) passes:
+   * the limit is on the standard error of the mean. */
   calib_accum_reset(&acc);
   for (uint32_t i = 0u; i < CALIB_TEST_GYRO_SAMPLES; i++)
   {
-    vec3_t s = {bias.x + test_noise(i, 0.02f), bias.y + test_noise(i + 7u, 0.02f),
-                bias.z + test_noise(i + 13u, 0.02f)};
+    vec3_t s = {bias.x + test_noise(i, 0.006f), bias.y + test_noise(i + 7u, 0.006f),
+                bias.z + test_noise(i + 13u, 0.006f)};
+    calib_accum_add(&acc, &s);
+  }
+  CHECK(calib_gyro_bias(&acc, 0.0008726646f, &out) == 0);
+  CHECK_NEAR_F(out.x, bias.x, 0.0005f);
+
+  /* Moving board (~1.7 deg/s per sample): standard error exceeds 0.05 deg/s. */
+  calib_accum_reset(&acc);
+  for (uint32_t i = 0u; i < CALIB_TEST_GYRO_SAMPLES; i++)
+  {
+    vec3_t s = {bias.x + test_noise(i, 0.05f), bias.y + test_noise(i + 7u, 0.05f),
+                bias.z + test_noise(i + 13u, 0.05f)};
     calib_accum_add(&acc, &s);
   }
   CHECK(calib_gyro_bias(&acc, 0.0008726646f, &out) != 0);
@@ -132,6 +146,20 @@ static void test_accel_orientation(void)
   CHECK(calib_accel_orientation(&acc, &axis, &sign) == 0);
   CHECK_EQ_U16(axis, 0u);
   CHECK(sign == -1);
+  CHECK(calib_accum_still(&acc, 0.1f) == 0);
+
+  /* Moving pose: mean is on-axis but the spread exceeds 0.1 m/s^2. */
+  calib_accum_reset(&acc);
+  for (uint32_t i = 0u; i < 100u; i++)
+  {
+    v.x = 0.0f;
+    v.y = 0.0f;
+    v.z = 9.8f + test_noise(i, 0.5f);
+    calib_accum_add(&acc, &v);
+  }
+  CHECK(calib_accel_orientation(&acc, &axis, &sign) == 0);
+  CHECK(calib_accum_still(&acc, 0.1f) == -ERANGE);
+  CHECK(calib_accum_still(&acc, 0.0f) == -EINVAL);
 }
 
 static void test_accel_six_position(void)
@@ -202,7 +230,7 @@ static void test_mag_hard_soft_iron(void)
 {
   const vec3_t bias = {20.0f, -35.0f, 12.0f};
   const vec3_t half = {45.0f, 40.0f, 38.0f};
-  calib_accum_t acc;
+  calib_range_t acc;
   vec3_t min;
   vec3_t max;
   vec3_t center = bias;
@@ -217,10 +245,11 @@ static void test_mag_hard_soft_iron(void)
   max.y = center.y + half.y;
   max.z = center.z + half.z;
 
-  calib_accum_reset(&acc);
-  calib_accum_add(&acc, &min);
-  calib_accum_add(&acc, &center);
-  calib_accum_add(&acc, &max);
+  calib_range_reset(&acc);
+  calib_range_add(&acc, &min);
+  calib_range_add(&acc, &center);
+  calib_range_add(&acc, &max);
+  CHECK(acc.n == 3u);
   CHECK(calib_mag_solve(&acc, 30.0f, 1.5f, &out_bias, &out_scale) == 0);
   CHECK_NEAR_F(out_bias.x, bias.x, 1e-4f);
   CHECK_NEAR_F(out_bias.y, bias.y, 1e-4f);
@@ -243,19 +272,19 @@ static void test_mag_hard_soft_iron(void)
   CHECK_NEAR_F(lo.z, -41.0f, 1e-3f);
 
   /* Span below 30 uT on any axis is rejected. */
-  calib_accum_reset(&acc);
+  calib_range_reset(&acc);
   vec3_t small_min = {-14.0f, -15.0f, -15.0f};
   vec3_t small_max = {14.0f, 15.0f, 15.0f};
-  calib_accum_add(&acc, &small_min);
-  calib_accum_add(&acc, &small_max);
+  calib_range_add(&acc, &small_min);
+  calib_range_add(&acc, &small_max);
   CHECK(calib_mag_solve(&acc, 30.0f, 1.5f, &out_bias, &out_scale) != 0);
 
   /* Span ratio 2.5 is rejected even though every span is large enough. */
-  calib_accum_reset(&acc);
+  calib_range_reset(&acc);
   vec3_t ratio_min = {-50.0f, -20.0f, -20.0f};
   vec3_t ratio_max = {50.0f, 20.0f, 20.0f};
-  calib_accum_add(&acc, &ratio_min);
-  calib_accum_add(&acc, &ratio_max);
+  calib_range_add(&acc, &ratio_min);
+  calib_range_add(&acc, &ratio_max);
   CHECK(calib_mag_solve(&acc, 30.0f, 1.5f, &out_bias, &out_scale) != 0);
 }
 
@@ -318,7 +347,7 @@ static void test_cal_store(void)
 
   /* Header is fixed by SPEC §22.3. */
   CHECK(buf[0] == 0x41u && buf[1] == 0x4Cu && buf[2] == 0x43u && buf[3] == 0x31u);
-  CHECK(buf[4] == 1u && buf[5] == 0u);
+  CHECK(buf[4] == 2u && buf[5] == 0u);
   CHECK(buf[6] == 68u && buf[7] == 0u);
 
   memset(&out, 0, sizeof(out));
@@ -349,7 +378,7 @@ static void test_cal_store(void)
 
   /* Bad version. */
   n = cal_store_encode(&in, buf, (uint16_t)sizeof(buf));
-  buf[4] = 2u;
+  buf[4] = 1u; /* v1 stored flags as a float */
   CHECK(cal_store_decode(buf, n, &out) == -EBADMSG);
 
   /* Bad payload length. */
@@ -383,19 +412,217 @@ static void test_cal_store_save(void)
   fill_params(&in);
   in.flags = CAL_FLAG_GYRO | CAL_FLAG_ACCEL | CAL_FLAG_BARO;
 
+  uint32_t ms = 0u;
+
   stub_flash_reset();
-  CHECK(cal_store_save(&in) == 0);
+  stub_flash_elapsed_ms = 37u;
+  CHECK(cal_store_save(&in, &ms) == 0);
+  CHECK(ms == 37u);
   CHECK(stub_flash_calls == 1u);
   CHECK(stub_flash_addr == BSP_FLASH_PAGE_ADDR);
   CHECK_EQ_U16(stub_flash_len, CAL_STORE_LEN);
   CHECK(cal_store_decode(stub_flash_data, stub_flash_len, &out) == 0);
   CHECK_EQ_U16(out.flags, in.flags);
   CHECK_NEAR_F(out.baro_p0_pa, in.baro_p0_pa, 0.0f);
+  CHECK_EQ_U16(stub_flash_data[72], in.flags);
+  CHECK_EQ_U16(stub_flash_data[74], 0u);
+
+  CHECK(cal_store_load(&out) == 0);
+  CHECK_EQ_U16(out.flags, in.flags);
 
   stub_flash_reset();
   stub_flash_result = -EIO;
-  CHECK(cal_store_save(&in) == -EIO);
+  CHECK(cal_store_save(&in, NULL) == -EIO);
   CHECK(stub_flash_calls == 1u);
+
+  /* Erased page loads defaults. */
+  stub_flash_reset();
+  CHECK(cal_store_load(&out) == -EBADMSG);
+  CHECK_EQ_U16(out.flags, 0u);
+  CHECK_NEAR_F(out.accel_scale.x, 1.0f, 0.0f);
+}
+
+#define ALL_OK (STATUS_GYRO_OK | STATUS_ACCEL_OK | STATUS_MAG_OK | STATUS_BARO_OK)
+#define ALL_CAL (STATUS_GYRO_CAL | STATUS_ACCEL_CAL | STATUS_MAG_CAL | STATUS_BARO_REF)
+
+static uint8_t rejected(void)
+{
+  return ((calibration_state() & CALIB_STATE_REJECTED) != 0u) ? 1u : 0u;
+}
+
+static uint8_t accel_count(void)
+{
+  return (uint8_t)((calibration_state() >> CALIB_STATE_ACCEL_COUNT_SHIFT) &
+                   CALIB_STATE_ACCEL_COUNT_MASK);
+}
+
+static void feed_accel_pose(uint8_t axis, float sign, float wobble)
+{
+  for (uint32_t i = 0u; i < CALIB_ACCEL_SAMPLES; i++)
+  {
+    vec3_t v = {0.1f, -0.1f, 0.2f};
+    float g = (sign * 9.7f) + test_noise(i, wobble);
+
+    if (axis == 0u)
+    {
+      v.x += g;
+    }
+    else if (axis == 1u)
+    {
+      v.y += g;
+    }
+    else
+    {
+      v.z += g;
+    }
+    calibration_feed_accel(&v);
+  }
+}
+
+static void feed_mag(uint32_t n)
+{
+  static const vec3_t dir[6] = {{1.0f, 0.0f, 0.0f},  {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f},
+                                {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f},  {0.0f, 0.0f, -1.0f}};
+
+  for (uint32_t i = 0u; i < n; i++)
+  {
+    vec3_t v = {10.0f + (45.0f * dir[i % 6u].x), -5.0f + (45.0f * dir[i % 6u].y),
+                3.0f + (45.0f * dir[i % 6u].z)};
+
+    calibration_feed_mag(&v);
+  }
+}
+
+static void test_state_machine(void)
+{
+  const vec3_t gb = {0.01f, -0.02f, 0.005f};
+  vec3_t v;
+  uint32_t ms = 0u;
+
+  /* Boot with an erased page: defaults, boot gyro capture running. */
+  stub_flash_reset();
+  calibration_init(ALL_OK);
+  CHECK(calibration_status() == 0u);
+  CHECK((calibration_state() & CALIB_STATE_GYRO_ACTIVE) != 0u);
+  CHECK(calibration_active() == 1u);
+  for (uint32_t i = 0u; i < CALIB_GYRO_SAMPLES; i++)
+  {
+    calibration_feed_gyro(&gb);
+  }
+  CHECK((calibration_status() & STATUS_GYRO_CAL) != 0u);
+  CHECK(calibration_state() == 0u);
+  v = gb;
+  calibration_apply_gyro(&v);
+  CHECK_NEAR_F(v.z, 0.0f, 1e-6f);
+
+  /* Moving gyro capture: rejected, previous bias kept. */
+  calibration_start_gyro();
+  for (uint32_t i = 0u; i < CALIB_GYRO_SAMPLES; i++)
+  {
+    vec3_t s = {((i & 1u) != 0u) ? 0.2f : -0.2f, 0.0f, 0.0f};
+    calibration_feed_gyro(&s);
+  }
+  CHECK(rejected() == 1u);
+  CHECK((calibration_status() & STATUS_GYRO_CAL) != 0u);
+  v = gb;
+  calibration_apply_gyro(&v);
+  CHECK_NEAR_F(v.x, 0.0f, 1e-6f);
+
+  /* Accel: first pose accepted, duplicate and moving poses rejected. */
+  calibration_start_accel();
+  CHECK(rejected() == 0u);
+  feed_accel_pose(2u, 1.0f, 0.0f);
+  CHECK(accel_count() == 1u);
+  CHECK(rejected() == 0u);
+  CHECK(calibration_active() == 1u);
+
+  calibration_start_accel();
+  feed_accel_pose(2u, 1.0f, 0.0f);
+  CHECK(rejected() == 1u);
+  CHECK(accel_count() == 1u);
+
+  calibration_start_accel();
+  feed_accel_pose(2u, -1.0f, 0.5f);
+  CHECK(rejected() == 1u);
+  CHECK(accel_count() == 1u);
+
+  for (uint8_t k = 0u; k < 5u; k++)
+  {
+    static const uint8_t ax[5] = {2u, 0u, 0u, 1u, 1u};
+    static const float sg[5] = {-1.0f, 1.0f, -1.0f, 1.0f, -1.0f};
+
+    calibration_start_accel();
+    feed_accel_pose(ax[k], sg[k], 0.0f);
+    CHECK(rejected() == 0u);
+  }
+  CHECK((calibration_status() & STATUS_ACCEL_CAL) != 0u);
+  CHECK(accel_count() == 0u);
+  CHECK(calibration_active() == 0u);
+  v.x = 0.1f;
+  v.y = -0.1f;
+  v.z = 0.2f + 9.7f;
+  calibration_apply_accel(&v);
+  CHECK_NEAR_F(v.z, CALIB_STD_GRAVITY, 1e-3f);
+  CHECK_NEAR_F(v.x, 0.0f, 1e-4f);
+
+  /* Mag: stopping early rejects; a full capture solves. */
+  calibration_toggle_mag();
+  CHECK((calibration_state() & CALIB_STATE_MAG_ACTIVE) != 0u);
+  feed_mag(CALIB_MAG_MIN_SAMPLES - 1u);
+  calibration_toggle_mag();
+  CHECK(rejected() == 1u);
+  CHECK((calibration_status() & STATUS_MAG_CAL) == 0u);
+
+  calibration_toggle_mag();
+  CHECK(rejected() == 0u);
+  feed_mag(CALIB_MAG_MIN_SAMPLES);
+  calibration_toggle_mag();
+  CHECK(rejected() == 0u);
+  CHECK((calibration_status() & STATUS_MAG_CAL) != 0u);
+  v.x = 55.0f;
+  v.y = -5.0f;
+  v.z = 3.0f;
+  calibration_apply_mag(&v);
+  CHECK_NEAR_F(v.x, 45.0f, 1e-3f);
+
+  /* Baro. */
+  calibration_start_baro();
+  for (uint32_t i = 0u; i < CALIB_BARO_SAMPLES; i++)
+  {
+    calibration_feed_baro(100587.0f + test_noise(i, 1.0f));
+  }
+  CHECK(rejected() == 0u);
+  CHECK(calibration_status() == ALL_CAL);
+  CHECK_NEAR_F(calibration_p0_pa(), 100587.0f, 0.5f);
+
+  /* Save is deferred to the main loop and reports the stall. */
+  calibration_request_save();
+  CHECK(calibration_take_save_request() == 1u);
+  CHECK(calibration_take_save_request() == 0u);
+  stub_flash_elapsed_ms = 25u;
+  CHECK(calibration_save(&ms) == 0);
+  CHECK(ms == 25u);
+  CHECK(rejected() == 0u);
+
+  /* Failed save is reported, stored page untouched. */
+  stub_flash_result = -EIO;
+  calibration_request_save();
+  CHECK(calibration_save(NULL) == -EIO);
+  CHECK(rejected() == 1u);
+  stub_flash_result = 0;
+
+  /* T-15: D clears RAM only; a reboot reloads the stored values. */
+  calibration_reset_defaults();
+  CHECK(calibration_status() == 0u);
+  CHECK(rejected() == 0u);
+  calibration_init(0u);
+  CHECK(calibration_status() == ALL_CAL);
+  CHECK(calibration_state() == 0u);
+
+  /* Command for an absent sensor is rejected. */
+  calibration_start_baro();
+  CHECK(rejected() == 1u);
+  CHECK(calibration_state() == CALIB_STATE_REJECTED);
 }
 
 void test_calibration(void)
@@ -408,4 +635,5 @@ void test_calibration(void)
   test_baro_p0();
   test_cal_store();
   test_cal_store_save();
+  test_state_machine();
 }

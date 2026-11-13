@@ -23,6 +23,7 @@ add_executable(unit_tests
     ../App/Src/telemetry.c
     ../App/Src/board_axes.c
     ../App/Src/cal_store.c
+    ../App/Src/calibration.c
     ../Fusion/Src/axis_map.c
     ../Fusion/Src/calib_math.c
     ../Sensors/vendor/bmp280/driver_bmp280.c

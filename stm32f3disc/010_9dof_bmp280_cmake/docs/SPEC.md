@@ -758,9 +758,9 @@ A failed bus transaction marks that sensor not-OK in `status`, increments its er
 
 | Step | Command | Procedure | Acceptance |
 |---|---|---|---|
-| Gyro bias | `G` | board still, average 200 samples (2 s) | per-axis std < 0.05 °/s, else rejected |
+| Gyro bias | `G` | board still, average 200 samples (2 s) | per-axis standard error of the mean (std/√n) < 0.05 °/s, else rejected |
 | Gyro bias (auto) | — | at boot, same as above if still; otherwise keep stored bias | — |
-| Accel 6-position | `A` ×6 | each face up/down, 100 samples each, any order; firmware detects the dominant axis | each orientation within 10° of an axis, all six seen |
+| Accel 6-position | `A` ×6 | each face up/down, 100 samples each, any order; firmware detects the dominant axis | each orientation within 10° of an axis and per-axis std < 0.1 m/s², all six seen |
 | Mag | `M` start / `M` stop | rotate through all orientations ≥ 20 s; min/max per axis | span per axis > 30 µT; span ratio max/min < 1.5 |
 | Baro zero | `B` | average 50 samples (2 s) → `p0` | std < 3 Pa |
 
@@ -768,7 +768,7 @@ Results apply immediately; `S` persists them.
 
 ### 22.3 Storage
 
-Last flash page (`0x0803F800`, 2 KB). Layout: `magic u32 = 0x31434C41`, `version u16`, `length u16`, parameters (`float`, little-endian), `crc16` over everything before it. Invalid magic, version or CRC → defaults (zero bias, unit scale) and `STATUS_CAL_*` bits cleared. The linker script is CubeMX-owned and not modified; NFR-12 (< 64 KB) guarantees the image never reaches this page.
+Last flash page (`0x0803F800`, 2 KB). Layout (version 2): `magic u32 = 0x31434C41`, `version u16 = 2`, `length u16 = 68`, 16 parameters (`float`), `flags u16`, `reserved u16 = 0`, `crc16` over everything before it; all little-endian. Invalid magic, version or CRC → defaults (zero bias, unit scale) and `STATUS_CAL_*` bits cleared. The linker script is CubeMX-owned and not modified; NFR-12 (< 64 KB) guarantees the image never reaches this page.
 
 ### 22.4 Commands (USART1 RX, single ASCII byte)
 
@@ -782,7 +782,7 @@ Last flash page (`0x0803F800`, 2 KB). Layout: `magic u32 = 0x31434C41`, `version
 | `D` | restore defaults (RAM only; `S` to persist) |
 | `R` | software reset |
 
-Unknown bytes are ignored. Calibration progress is reported in `calib_state` (§23).
+Unknown bytes are ignored. Calibration progress and the result of the last attempt are reported in `calib_state` (§23; encoding in `docs/calibration.md` §8). `S` runs from the main loop; the flash-erase stall is compensated in the tick counters and not counted as a task overrun.
 
 ---
 

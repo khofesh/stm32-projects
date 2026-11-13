@@ -39,8 +39,9 @@ Calibration results apply immediately. `S` only persists them.
 2. Send `G`.
 3. Wait 2 s. `calib_state` bit 0 is set while the capture runs.
 4. On success `status` bit 4 (`gyro calibrated`) is set.
-5. If the per-axis standard deviation exceeds 0.05 °/s the capture is
-   rejected: the previous bias and flag are unchanged. Repeat on a rigid,
+5. If the per-axis standard error of the mean (std / √200) exceeds 0.05 °/s
+   (per-sample std ≈ 0.7 °/s) the capture is rejected: `calib_state` bit 7 is
+   set and the previous bias and flag are unchanged. Repeat on a rigid,
    vibration-free surface.
 
 Boot auto-calibration performs the same check and only replaces the stored bias
@@ -50,17 +51,20 @@ when it passes.
 
 The firmware calibrates the body-frame axes after the T-03 axis map. Each `A`
 captures 100 samples (1 s) and detects the dominant axis and sign; the mean must
-lie within 10° of that axis.
+lie within 10° of that axis and the per-axis standard deviation must stay below
+0.1 m/s² (board still).
 
 1. Place the board in one static orientation with one body axis vertical
    (face up or face down), leave it still, and send `A`.
-2. Wait 1 s. `calib_state` bits 7:4 count accepted orientations (0…6).
+2. Wait 1 s. `calib_state` bits 6:4 count accepted orientations (0…6).
 3. Repeat for six distinct orientations: ±X, ±Y, ±Z. Any order.
 4. After the sixth distinct pose the offsets and diagonal scales are solved and
    applied; `status` bit 5 (`accel calibrated`) is set.
 5. A repeated pose, a moving capture or a mean more than 10° from an axis is
-   rejected without changing the count. Retry that pose.
-6. If the six-pose solve is rejected, the sequence resets to zero; start again.
+   rejected without changing the count; `calib_state` bit 7 is set. Retry that
+   pose.
+6. If the six-pose solve is rejected, bit 7 is set and the sequence resets to
+   zero; start again.
 
 Poses must be distinct: the plus and minus orientation of each body axis.
 
@@ -75,24 +79,27 @@ Poses must be distinct: the plus and minus orientation of each body axis.
    - span on every axis > 30 µT;
    - max span / min span < 1.5.
 6. On success the hard-iron centre and diagonal soft-iron scale are applied and
-   `status` bit 6 (`mag calibrated`) is set. Otherwise the previous values
-   remain; repeat the rotation with a longer, more complete motion.
+   `status` bit 6 (`mag calibrated`) is set. Otherwise `calib_state` bit 7 is
+   set and the previous values remain; repeat the rotation with a longer, more
+   complete motion.
 
-Stopping before 20 s always rejects the capture.
+Stopping before 20 s (2000 samples) always rejects the capture.
 
 ## 6. Barometer reference — `B`
 
 1. Leave the board at the altitude that should read 0 m.
 2. Send `B`; `calib_state` bit 3 is set.
 3. Wait 2 s (50 samples). Pressure standard deviation must be below 3 Pa.
-4. On success `p0` is stored and `status` bit 7 (`baro reference set`) is set.
+4. On success `p0` is stored and `status` bit 7 (`baro reference set`) is set;
+   otherwise `calib_state` bit 7 is set.
 
 ## 7. Save and verify — `S`, T-15
 
 1. Send `S` to erase and program the calibration flash page.
-2. The erase/program stalls the scheduler for tens of milliseconds; one task
-   overrun and possibly a skipped telemetry frame are expected. Do not treat
-   that single event as a failure.
+2. The erase stalls the CPU for 20–40 ms. The firmware measures the stall,
+   corrects the HAL and scheduler ticks and realigns the task deadlines, so no
+   overrun is counted; telemetry has a gap of about one frame period (sequence
+   numbers stay contiguous). A failed write sets `calib_state` bit 7.
 3. Power-cycle the board and read `status`: bits 4–7 must be set again and the
    data-frame values (gyro at rest, |a|, |m|, pressure) must match.
 4. `D` restores defaults in RAM. Power-cycling without `S` must reload the
@@ -109,10 +116,13 @@ because SPEC §23 lists only the field name:
 | 1 | accel capture active (one 1 s capture) |
 | 2 | mag capture active (between `M` start and `M` stop) |
 | 3 | baro capture active |
-| 7:4 | number of accepted accel orientations, 0…6 |
+| 6:4 | number of accepted accel orientations, 0…6 |
+| 7 | last attempt rejected (also: command for an absent sensor, failed `S`, boot gyro attempt while moving); cleared by the next command |
 
 `status` bit 9 (`calibration in progress`) is set while any capture runs or
 while an accel sequence has accepted 1…5 poses and is waiting for the next `A`.
+
+A finished capture with bits 3:0 clear and bit 7 clear succeeded.
 
 ## 9. Storage format
 
@@ -121,12 +131,15 @@ Last 2 KB flash page, `0x0803F800`:
 | Offset | Size | Field |
 |---|---|---|
 | 0 | 4 | magic `0x31434C41` (`"ALC1"`) |
-| 4 | 2 | version `1` |
+| 4 | 2 | version `2` |
 | 6 | 2 | parameter length `68` |
-| 8 | 68 | 17 little-endian floats: gyro bias (3), accel bias (3), accel scale (3), mag bias (3), mag scale (3), `p0` (1), flags (1) |
+| 8 | 64 | 16 little-endian floats: gyro bias (3), accel bias (3), accel scale (3), mag bias (3), mag scale (3), `p0` (1) |
+| 72 | 2 | flags (bit 0 gyro, 1 accel, 2 mag, 3 baro) |
+| 74 | 2 | reserved `0` |
 | 76 | 2 | CRC16-CCITT-FALSE over bytes 0…75 |
 
-Invalid magic, version, length or CRC loads defaults (zero bias, unit scale,
+Version 1 records (flags stored as a float) are rejected. Invalid magic,
+version, length, CRC or unknown flag bits load defaults (zero bias, unit scale,
 `p0` = 0) and clears the calibrated status bits. `S` overwrites the whole page;
 the image is kept below 64 KB so it never reaches this page.
 

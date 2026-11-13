@@ -10,6 +10,7 @@ extern uint16_t stub_flash_len;
 extern uint32_t stub_flash_addr;
 extern int stub_flash_result;
 extern unsigned stub_flash_calls;
+extern uint32_t stub_flash_elapsed_ms;
 
 void stub_flash_reset(void);
 

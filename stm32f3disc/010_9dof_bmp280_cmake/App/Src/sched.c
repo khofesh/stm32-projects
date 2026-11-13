@@ -41,6 +41,20 @@ uint8_t sched_due(uint32_t *next, uint32_t now, uint32_t period_ms)
   return (missed == 0u) ? 1u : 2u;
 }
 
+void sched_compensate(uint32_t since, uint32_t elapsed_ms)
+{
+  uint32_t primask = __get_PRIMASK();
+  uint32_t counted;
+
+  __disable_irq();
+  counted = s_tick - since;
+  if (elapsed_ms > counted)
+  {
+    s_tick += elapsed_ms - counted;
+  }
+  __set_PRIMASK(primask);
+}
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   if (htim->Instance == TIM6)

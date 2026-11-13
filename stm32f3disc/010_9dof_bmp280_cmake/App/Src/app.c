@@ -335,6 +335,22 @@ void app_run(void)
     /* Idle work: one-byte calibration commands from the host. */
     cmd_poll();
 
+    if (calibration_take_save_request() != 0u)
+    {
+      uint32_t since = sched_ticks();
+      uint32_t ms = 0u;
+
+      /* Failure is reported through calib_state. */
+      (void)calibration_save(&ms);
+      sched_compensate(since, ms);
+
+      /* The flash stall is a commanded gap, not an overrun: realign. */
+      now = sched_ticks();
+      next_imu = now;
+      next_baro = now;
+      next_telemetry = now;
+    }
+
     debug_flush();
 
     if (ran != 0u)

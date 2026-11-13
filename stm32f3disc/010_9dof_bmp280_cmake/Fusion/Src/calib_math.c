@@ -142,6 +142,41 @@ void calib_accum_add(calib_accum_t *a, const vec3_t *v)
   }
 }
 
+void calib_range_reset(calib_range_t *r)
+{
+  if (r == NULL)
+  {
+    return;
+  }
+  memset(r, 0, sizeof(*r));
+}
+
+void calib_range_add(calib_range_t *r, const vec3_t *v)
+{
+  if ((r == NULL) || (v == NULL))
+  {
+    return;
+  }
+  if (r->n == 0u)
+  {
+    r->min = *v;
+    r->max = *v;
+  }
+  else
+  {
+    r->min.x = (v->x < r->min.x) ? v->x : r->min.x;
+    r->min.y = (v->y < r->min.y) ? v->y : r->min.y;
+    r->min.z = (v->z < r->min.z) ? v->z : r->min.z;
+    r->max.x = (v->x > r->max.x) ? v->x : r->max.x;
+    r->max.y = (v->y > r->max.y) ? v->y : r->max.y;
+    r->max.z = (v->z > r->max.z) ? v->z : r->max.z;
+  }
+  if (r->n < UINT32_MAX)
+  {
+    r->n++;
+  }
+}
+
 void calib_scalar_accum_reset(calib_scalar_accum_t *a)
 {
   if (a == NULL)
@@ -225,7 +260,30 @@ int32_t calib_scalar_accum_stats(const calib_scalar_accum_t *a, float *mean, flo
   return 0;
 }
 
-int32_t calib_gyro_bias(const calib_accum_t *a, float max_std_rad_s, vec3_t *bias)
+int32_t calib_accum_still(const calib_accum_t *a, float max_std)
+{
+  vec3_t var;
+  float limit;
+  int32_t st;
+
+  if (!(max_std > 0.0f))
+  {
+    return -EINVAL;
+  }
+  st = calib_accum_variance(a, &var);
+  if (st != 0)
+  {
+    return st;
+  }
+  limit = max_std * max_std;
+  if ((var.x > limit) || (var.y > limit) || (var.z > limit))
+  {
+    return -ERANGE;
+  }
+  return 0;
+}
+
+int32_t calib_gyro_bias(const calib_accum_t *a, float max_sem_rad_s, vec3_t *bias)
 {
   vec3_t var;
   float limit;
@@ -235,7 +293,7 @@ int32_t calib_gyro_bias(const calib_accum_t *a, float max_std_rad_s, vec3_t *bia
   {
     return -EINVAL;
   }
-  if (!(max_std_rad_s > 0.0f))
+  if (!(max_sem_rad_s > 0.0f))
   {
     return -EINVAL;
   }
@@ -245,7 +303,8 @@ int32_t calib_gyro_bias(const calib_accum_t *a, float max_std_rad_s, vec3_t *bia
     return st;
   }
 
-  limit = max_std_rad_s * max_std_rad_s;
+  /* var / n is the squared standard error of the mean. */
+  limit = max_sem_rad_s * max_sem_rad_s * (float)a->n;
   if ((var.x > limit) || (var.y > limit) || (var.z > limit))
   {
     return -ERANGE;
@@ -361,7 +420,7 @@ int32_t calib_accel_solve(const vec3_t pos[3], const vec3_t neg[3], vec3_t *bias
   return 0;
 }
 
-int32_t calib_mag_solve(const calib_accum_t *a, float min_span_ut, float max_span_ratio,
+int32_t calib_mag_solve(const calib_range_t *r, float min_span_ut, float max_span_ratio,
                         vec3_t *bias, vec3_t *scale)
 {
   float sx;
@@ -373,11 +432,11 @@ int32_t calib_mag_solve(const calib_accum_t *a, float min_span_ut, float max_spa
   float target;
   float ratio;
 
-  if ((a == NULL) || (bias == NULL) || (scale == NULL))
+  if ((r == NULL) || (bias == NULL) || (scale == NULL))
   {
     return -EINVAL;
   }
-  if (a->n < 2u)
+  if (r->n < 2u)
   {
     return -ENODATA;
   }
@@ -386,9 +445,9 @@ int32_t calib_mag_solve(const calib_accum_t *a, float min_span_ut, float max_spa
     return -EINVAL;
   }
 
-  sx = a->max.x - a->min.x;
-  sy = a->max.y - a->min.y;
-  sz = a->max.z - a->min.z;
+  sx = r->max.x - r->min.x;
+  sy = r->max.y - r->min.y;
+  sz = r->max.z - r->min.z;
   if ((sx <= min_span_ut) || (sy <= min_span_ut) || (sz <= min_span_ut))
   {
     return -ERANGE;
@@ -404,9 +463,9 @@ int32_t calib_mag_solve(const calib_accum_t *a, float min_span_ut, float max_spa
     return -ERANGE;
   }
 
-  bias->x = (a->min.x + a->max.x) * 0.5f;
-  bias->y = (a->min.y + a->max.y) * 0.5f;
-  bias->z = (a->min.z + a->max.z) * 0.5f;
+  bias->x = (r->min.x + r->max.x) * 0.5f;
+  bias->y = (r->min.y + r->max.y) * 0.5f;
+  bias->z = (r->min.z + r->max.z) * 0.5f;
 
   scale->x = target / hx;
   scale->y = target / hy;

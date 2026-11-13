@@ -29,7 +29,7 @@ M2 code implemented (2026-11-13): `axis_map_is_signed_permutation`, 48-permutati
 
 M2 closed (2026-11-13): T-03 steps 4–6 on hardware. `M_gyro = {{0,1,0},{1,0,0},{0,0,-1}}` (det +1), `M_mag = M_accel` (det -1), both measured; results in `docs/hardware.md`. Host tests pass.
 
-M3 code implemented (2026-11-13): `calib_math` streaming statistics + gyro/accel/mag/baro solves, calibration state machine, `cmd_poll`, `bsp_flash` + `cal_store` (magic/version/length/CRC), host tests for still detection, 6-position solve, mag hard/soft-iron, baro `p0`, storage round-trip and CRC/magic rejection. Calibration is applied in the IMU task after the axis map; telemetry now carries `STATUS_CAL_*`, `STATUS_CALIBRATING` and the `calib_state` byte. FLASH 26.3 KB, RAM 3.7 KB (ci). Hardware T-04/T-15 pending.
+M3 code implemented (2026-11-13): `calib_math` streaming statistics + gyro/accel/mag/baro solves, calibration state machine, `cmd_poll`, `bsp_flash` + `cal_store` (magic/version/length/CRC), host tests for still detection, 6-position solve, mag hard/soft-iron, baro `p0`, storage round-trip and CRC/magic rejection. Calibration is applied in the IMU task after the axis map; telemetry now carries `STATUS_CAL_*`, `STATUS_CALIBRATING` and the `calib_state` byte. FLASH 26.3 KB, RAM 3.7 KB (ci). Review fixes (2026-11-13): gyro limit on standard error of the mean, accel stillness check, `calib_state` bit 7 = last attempt rejected, deferred `S` with flash-stall tick compensation, storage v2 (u16 flags), mag min/max-only accumulator, host tests for the state machine. Hardware T-04/T-15 pending.
 
 | Check | Result | Note |
 |---|---|---|
