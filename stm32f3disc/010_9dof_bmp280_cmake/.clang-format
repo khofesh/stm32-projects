@@ -16,10 +16,11 @@ SpaceBeforeParens: ControlStatements
 SpaceAfterCStyleCast: false
 AlignAfterOpenBracket: Align
 BinPackArguments: true
-BinPackParameters: true
+BinPackParameters: BinPack
 BreakStringLiterals: false
 IncludeBlocks: Preserve
-SortIncludes: Never
-ReflowComments: false
+SortIncludes:
+  Enabled: false
+ReflowComments: Never
 IndentExternBlock: NoIndent
 SpacesBeforeTrailingComments: 1
