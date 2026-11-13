@@ -31,7 +31,7 @@ Spec: `docs/SPEC.md` (CubeMX + CMake + Ninja + arm-none-eabi-gcc variant). Targe
 | `STM32F303xx_FLASH.ld`, `startup_stm32f303xc.s` | CubeMX | No |
 | `Core/`, `Drivers/` | CubeMX | Only inside `USER CODE` blocks |
 | `Bsp/{Inc,Src}` | User | I2C/SPI/time HAL wrappers |
-| `Sensors/{Inc,Src}` | User | LSM303DLHC, L3GD20, BMP280 drivers |
+| `Sensors/{Inc,Src}` | User | LSM303AGR, I3G4250D, BMP280 drivers |
 | `Fusion/{Inc,Src}` | User | Madgwick, baro filter, axis map |
 | `App/{Inc,Src}` | User | Calibration, telemetry, scheduler |
 | `tests/` | User | Host-only CMake tree (CTest), stubs in `tests/stubs/` |
