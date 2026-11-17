@@ -12,12 +12,33 @@ extern DMA_HandleTypeDef hdma_spi2_tx;
 static uint8_t s_frame[SPI_TBUF_COUNT][BSP_SPI_SLAVE_FRAME_LEN];
 static spi_tbuf_t s_tbuf;
 static volatile uint8_t s_rearm_req;
+static volatile uint8_t s_ready;
 static volatile uint32_t s_served;
 static volatile uint32_t s_partial;
 
 static uint8_t nss_idle(void)
 {
   return (HAL_GPIO_ReadPin(SPI_NSS_GPIO_Port, SPI_NSS_Pin) == GPIO_PIN_SET) ? 1u : 0u;
+}
+
+/* Bytes clocked since the last arm show up as RXNE/OVR (MOSI is never read),
+ * whatever triggered the ISR. Full = DMA done and TX FIFO drained. */
+static void count_transaction(void)
+{
+  uint32_t sr = hspi2.Instance->SR;
+
+  if ((sr & (SPI_SR_RXNE | SPI_SR_OVR)) == 0u)
+  {
+    return;
+  }
+  if ((hdma_spi2_tx.Instance->CNDTR == 0u) && ((sr & SPI_SR_FTLVL) == 0u))
+  {
+    s_served++;
+  }
+  else
+  {
+    s_partial++;
+  }
 }
 
 /* SPEC §23.6.3: the F3 TX FIFO keeps stale bytes after a partial read and
@@ -52,11 +73,12 @@ void bsp_spi_slave_init(void)
   s_served = 0u;
   s_partial = 0u;
 
-  __HAL_GPIO_EXTI_CLEAR_IT(SPI_NSS_Pin);
   primask = __get_PRIMASK();
   __disable_irq();
+  __HAL_GPIO_EXTI_CLEAR_IT(SPI_NSS_Pin);
   spi_tbuf_init(&s_tbuf);
   slave_arm();
+  s_ready = 1u;
   __set_PRIMASK(primask);
 }
 
@@ -76,6 +98,9 @@ void bsp_spi_slave_publish(const uint8_t *frame)
   __DMB();
   s_rearm_req = 1u;
   WRITE_REG(EXTI->SWIER, SPI_NSS_Pin);
+  /* Take the EXTI before DRDY moves, so the frame is armed first. */
+  __DSB();
+  __ISB();
   HAL_GPIO_TogglePin(SPI_DRDY_GPIO_Port, SPI_DRDY_Pin);
 }
 
@@ -83,23 +108,17 @@ void bsp_spi_slave_on_exti(void)
 {
   uint8_t req = s_rearm_req;
 
+  /* PB12 EXTI is live from MX_GPIO_Init, before hspi2/hdma_spi2_tx exist. */
+  if (s_ready == 0u)
+  {
+    return;
+  }
   s_rearm_req = 0u;
 
-  if (req == 0u)
-  {
-    /* NSS rising edge: close the transaction, count it. */
-    if (hdma_spi2_tx.Instance->CNDTR == 0u)
-    {
-      s_served++;
-    }
-    else
-    {
-      s_partial++;
-    }
-  }
   /* A publish that lands mid-transaction leaves the re-arm to its NSS edge. */
   if ((req == 0u) || (nss_idle() != 0u))
   {
+    count_transaction();
     slave_arm();
   }
 }

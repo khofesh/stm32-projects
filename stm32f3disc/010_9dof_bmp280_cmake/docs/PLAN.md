@@ -149,7 +149,7 @@ Each task lists files and how it is verified. Hardware checks run on the attache
 | 6.3 | Hook `HAL_GPIO_EXTI_Callback(GPIO_PIN_12)` → `bsp_spi_slave_on_exti()`; `bsp_spi_slave_init()` after `MX_SPI2_Init` | `App/Src/app.c` (or `Core/Src/main.c` USER CODE only) | — |
 | 6.4 | `telemetry_task`: publish every data frame (independent of UART skip) | `App/Src/telemetry.c` / `App/Src/app.c` | — |
 | 6.5 | Debug frame offsets 54/56: SPI2 full/partial counters; `log.py` decodes them | `App/Src/telemetry.c`, `tools/log.py` | `test_frame` offsets |
-| 6.6 | Host-testable buffer index logic split out (`spi_tbuf_*`: next free, publish, arm) with tests for "armed never written", "published never torn", publish during transaction | `App/Src/spi_tbuf.c`, `tests/test_spi_tbuf.c` | ctest |
+| 6.6 | Host-testable buffer index logic split out (`spi_tbuf_*`: next free, publish, arm) with tests for "armed never written", "published never torn", publish during transaction | `Bsp/Src/spi_tbuf.c`, `tests/test_spi_tbuf.c` | ctest |
 | 6.7 | `docs/hardware.md`: SPI2 wiring table, point-to-point note; reference master read sequence | `docs/hardware.md` | — |
 | 6.8 | T-16 on hardware (second MCU or USB-SPI adapter at 4 MHz); re-run T-12/T-13 with SPI2 active; measure EXTI ISR time with PC0 | `docs/test-log.md` | T-16, NFR-16/17 |
 
