@@ -97,6 +97,11 @@ void Error_Handler(void);
 #define LD8_GPIO_Port GPIOE
 #define LD6_Pin GPIO_PIN_15
 #define LD6_GPIO_Port GPIOE
+#define SPI_DRDY_Pin GPIO_PIN_11
+#define SPI_DRDY_GPIO_Port GPIOB
+#define SPI_NSS_Pin GPIO_PIN_12
+#define SPI_NSS_GPIO_Port GPIOB
+#define SPI_NSS_EXTI_IRQn EXTI15_10_IRQn
 #define DM_Pin GPIO_PIN_11
 #define DM_GPIO_Port GPIOA
 #define DP_Pin GPIO_PIN_12
