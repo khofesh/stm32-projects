@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Spec | `docs/SPEC.md` rev 1.1 |
+| Spec | `docs/SPEC.md` rev 1.2 |
 | Board | MB1035-F303C-E02 (I3G4250D, LSM303AGR) + Adafruit BMP280 @ `0x77` on I2C2 |
 | Baseline | `d94912b` — CubeMX config matches §7.3; builds clean (FLASH 18.9 KB, RAM 2.9 KB) |
 | Created | 2026-11-12 |
@@ -35,6 +35,8 @@ M4 code implemented (2026-11-13): `madgwick` MARG + IMU-only at 100 Hz, `altitud
 
 M5 implemented (2026-11-13): §21.5 fault handling (sensor OK flags, 1 s re-init of a failed sensor, IMU-only fallback, I2C bus clear), latency probe hook (PC0/P2-6, compiled in only after the CubeMX step documented in `docs/toolchain.md`), stack high-water painted at boot and reported in the debug frame, `format-check`/`cppcheck` gates, advisory `analyze` (-fanalyzer), `.vscode` cortex-debug launch + build/task set, path-filtered GitHub Actions workflow (ci build, ctest, size, format, cppcheck, artifacts, two-path reproducibility), `-ffile-prefix-map` + `tools/repro_check.sh` (byte-identical artifacts), Dev Container and release checklist. ci FLASH 33.2 KB, RAM 4.2 KB; 621 host checks pass. 30.2 min still run: 50.0000 Hz, 0 gaps/CRC/overruns/skips in the stable epoch, CPU 7.4 %, max loop 1.20 ms, free stack 520 B; T-09 σ = 0.053 m, T-12/T-13 pass. T-10 fails (−2.35 m drift in 15 min) because ambient pressure rose 37 Pa, not filter noise. T-11, T-14, full T-15 and T-05…T-08 remain pending; details in `docs/test-log.md`.
 
+M6 planned (2026-11-17): SPI2 slave link for an external MCU (SPEC rev 1.2 §4.1, §7.3, §23.6). Spec updated; CubeMX regeneration pending (6.1).
+
 | Check | Result | Note |
 |---|---|---|
 | Max loop time (full 100 Hz fusion pass) | 1.16 ms | 12 % of the 10 ms slot; blocking I/O is still fine |
@@ -57,6 +59,7 @@ M5 implemented (2026-11-13): §21.5 fault handling (sensor OK flags, 1 s re-init
 | D-5 | Debug `-Og -g3`, Release `-O2`, ci `-Os` (edit `cmake/gcc-arm-none-eabi.cmake`). | §9.4, Q-5. Currently `-O0` / `-Os`. |
 | D-6 | Host tests use a tiny in-repo assert harness (`tests/test_main.c`), no external framework. | No dependency to pin; ctest < 5 s. |
 | D-7 | Board-specific sensor→body matrices live in `App/Src/board_axes.c`; `Fusion/axis_map.c` keeps only the generic apply/validate code. | Fusion stays portable; T-03 values are board data, not algorithm. |
+| D-8 | SPI2 slave serves the unchanged §23.3 data frame; TX-only DMA (Ch5) via `HAL_DMA_Start`, software NSS + PB12 EXTI, RCC reset on every re-arm, triple buffer, DRDY toggle on PB11. | Master reuses the `log.py` parser; SPI2_RX DMA (Ch4) collides with USART1 TX; F3 TX FIFO can't be flushed; `HAL_SPI_Transmit_DMA` completion busy-waits on master clocks (SPEC §23.6.3). |
 
 ---
 
@@ -137,6 +140,31 @@ Each task lists files and how it is verified. Hardware checks run on the attache
 | 5.7 | Reproducibility: `-ffile-prefix-map`, double clean build checksum compare; Dev Container (Q-4) | `CMakeLists.txt`, `.devcontainer/` | AC-10 |
 | 5.8 | CubeMX regeneration check documented as a release step (Q-3) | `docs/toolchain.md` | AC-08 |
 
+### M6 — SPI2 slave link (T-16)
+
+| # | Task | Files | Verify |
+|---|---|---|---|
+| 6.1 | CubeMX: SPI2 full-duplex slave, SW NSS, DMA1 Ch5 TX, PB11 DRDY out, PB12 EXTI rising + pull-up, EXTI15_10 prio 1 (steps below); regenerate | `.ioc` (CubeMX only) | `main.c` has `MX_SPI2_Init`, `hdma_spi2_tx`; `git diff` limited to SPI2/DMA/GPIO/NVIC |
+| 6.2 | `bsp_spi_slave`: triple buffer, `publish` (copy, request flag, SWIER, DRDY toggle), `on_exti` (re-arm per §23.6.3, full/partial counters), `init` (zero frame) | `Bsp/Inc/bsp_spi_slave.h`, `Bsp/Src/bsp_spi_slave.c`, `CMakeLists.txt` | build clean, `ci` `-Werror` |
+| 6.3 | Hook `HAL_GPIO_EXTI_Callback(GPIO_PIN_12)` → `bsp_spi_slave_on_exti()`; `bsp_spi_slave_init()` after `MX_SPI2_Init` | `App/Src/app.c` (or `Core/Src/main.c` USER CODE only) | — |
+| 6.4 | `telemetry_task`: publish every data frame (independent of UART skip) | `App/Src/telemetry.c` / `App/Src/app.c` | — |
+| 6.5 | Debug frame offsets 54/56: SPI2 full/partial counters; `log.py` decodes them | `App/Src/telemetry.c`, `tools/log.py` | `test_frame` offsets |
+| 6.6 | Host-testable buffer index logic split out (`spi_tbuf_*`: next free, publish, arm) with tests for "armed never written", "published never torn", publish during transaction | `App/Src/spi_tbuf.c`, `tests/test_spi_tbuf.c` | ctest |
+| 6.7 | `docs/hardware.md`: SPI2 wiring table, point-to-point note; reference master read sequence | `docs/hardware.md` | — |
+| 6.8 | T-16 on hardware (second MCU or USB-SPI adapter at 4 MHz); re-run T-12/T-13 with SPI2 active; measure EXTI ISR time with PC0 | `docs/test-log.md` | T-16, NFR-16/17 |
+
+CubeMX steps for 6.1 (do not edit the `.ioc` by hand):
+
+1. Pinout & Configuration → Connectivity → **SPI2** → Mode **Full-Duplex Slave**, Hardware NSS Signal **Disable**.
+2. SPI2 → Parameter Settings: Data Size **8 Bits**, First Bit **MSB First**, CPOL **Low**, CPHA **1 Edge**, CRC **Disabled**, NSSP Mode **Disabled**.
+3. Check the pin view shows SPI2 on **PB13** (SCK), **PB14** (MISO), **PB15** (MOSI); if CubeMX picked other pins, click PB13/PB14/PB15 and select the SPI2 function.
+4. SPI2 → DMA Settings → **Add** → **SPI2_TX**: DMA1 Channel 5, Memory To Peripheral, Priority Low, Mode Normal, Increment Memory ✔, Data Width Byte/Byte.
+5. SPI2 → NVIC Settings: leave **SPI2 global interrupt** unchecked.
+6. Click **PB12** → **GPIO_EXTI12**. System Core → GPIO → PB12: Mode **External Interrupt Mode with Rising edge trigger detection**, Pull-up, User Label `SPI_NSS`.
+7. Click **PB11** → **GPIO_Output**. GPIO → PB11: Output level Low, Push Pull, No pull, Speed Low, User Label `SPI_DRDY`.
+8. System Core → NVIC: enable **EXTI line[15:10] interrupts**, Preemption Priority **1**. DMA1 channel5 global interrupt stays as CubeMX forces it (priority 2); it never fires.
+9. Project Manager unchanged → **Generate Code**.
+
 ---
 
 ## 4. Spec updates to make along the way
@@ -148,6 +176,7 @@ Each task lists files and how it is verified. Hardware checks run on the attache
 | §8 | Add `docs/PLAN.md`; vendored path `Sensors/vendor/` | M0 |
 | §4 | Adafruit BMP280 wiring (VIN, CSB/SDO pulled up on breakout) | M2 |
 | §21.4 | Any API change found during implementation | as found |
+| §4.1, §23.6 | Pin/priority or timing changes found in T-16; SPEC rev 1.2 written before implementation | M6 |
 
 ---
 
@@ -159,4 +188,7 @@ Each task lists files and how it is verified. Hardware checks run on the attache
 | LSM303AGR mag at 100 Hz + accel + gyro reads don't fit the 10 ms slot | Measured in M1: 1.12 ms worst loop pass (all tasks); stay blocking, revisit only if M4 fusion pushes it past ~5 ms |
 | Flash page `0x0803F800` writes stall the scheduler (~40 ms erase) | Save only on `S` command; mark overrun expected, exclude from NFR-10 run |
 | Debug `printf` float pushes flash over budget | Debug-only, size check catches it |
+| SPI2 re-arm ISR (RCC reset + `HAL_SPI_Init`) exceeds 20 µs | Measure with PC0 in 6.8; if over, replace `HAL_SPI_Init` with a direct CR1/CR2 write of the init values |
+| Master clocks SPI2 while a publish re-arms it (NSS low during SWIER) | ISR re-arms on SWIER only when PB12 is high; residual race window is the ISR entry latency (< 1 µs) |
+| CubeMX forces the DMA1 Ch5 IRQ on | Harmless: `HAL_DMA_Start` enables no channel interrupts |
 | NFR-02/03/04 not met with Madgwick defaults | β tuning in M4; fall back to gyro-bias online estimation |

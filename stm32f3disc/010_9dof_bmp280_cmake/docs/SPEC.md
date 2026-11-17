@@ -4,7 +4,7 @@
 | Field | Value |
 |---|---|
 | Document | `docs/SPEC.md` |
-| Revision | 1.1 (draft) |
+| Revision | 1.2 (draft) |
 | Status | Proposed |
 | Toolchain | STM32CubeMX → CMake → Ninja → arm-none-eabi-gcc |
 | Target | STM32F3DISCOVERY (STM32F303VCT6) + external BMP280 breakout |
@@ -64,11 +64,14 @@ Earlier references to "`SPEC.md` §x" map as: §3/§4 hardware → §4; §5 arch
   I3G4250D   ──SPI1─────►  gyro                                    │
   BMP280     ──I2C2─────►  pressure / temperature                  │
                         │  calibration → fusion → telemetry        │
-                        └───────────┬────────────────────────────┘
-                                    │ USART1 (PC4/PC5)
-                                    ▼
-                        ST-LINK VCP → host tools/log.py
+                        └───────────┬───────────────┬────────────┘
+                                    │ USART1        │ SPI2 slave (PB12…PB15)
+                                    │ (PC4/PC5)     │ + DRDY (PB11)
+                                    ▼               ▼
+                        ST-LINK VCP → log.py    external MCU (SPI master)
 ```
+
+SPI2 lets a host MCU without its own IMU read the latest data frame (§23.6).
 
 Repository is built by `cmake --preset Release`; output is `build/Release/010_9dof_bmp280_cmake.elf` plus `.bin`, `.hex`, `.map`.
 
@@ -98,7 +101,20 @@ regulator), CSB strapped to 3V, SDO left open (onboard pull-up) for address
 
 Board revision MB1035-F303C-E02, identity confirmed by reading WHO_AM_I on hardware (2026-11-12). Earlier revisions (L3GD20 `0xD4`, LSM303DLHC) are not supported.
 
-Peripheral parameters: §7.3. Telemetry goes over USART1 PC4/PC5 to the ST-LINK/V2-1 virtual COM port.
+### 4.1 SPI2 slave link (external master)
+
+| Signal | F3DISCOVERY | Direction | Note |
+|---|---|---|---|
+| NSS | PB12 | in | GPIO EXTI rising edge, internal pull-up; frame boundary only (software NSS) |
+| SCK | PB13 | in | SPI2_SCK (AF5) |
+| MISO | PB14 | out | SPI2_MISO (AF5), push-pull, driven whenever SPI2 is enabled |
+| MOSI | PB15 | in | SPI2_MOSI (AF5), ignored (reserved) |
+| DRDY | PB11 | out | push-pull, toggles on each new data frame |
+| GND | GND | — | common ground required |
+
+3.3 V logic only. MISO is never tri-stated, so the link is point-to-point: SPI2 must be the only slave on the master's bus segment.
+
+Peripheral parameters: §7.3. Telemetry goes over USART1 PC4/PC5 to the ST-LINK/V2-1 virtual COM port, and in parallel over SPI2 (§23.6).
 
 ---
 
@@ -121,6 +137,8 @@ Peripheral parameters: §7.3. Telemetry goes over USART1 PC4/PC5 to the ST-LINK/
 | NFR-13 | Static RAM footprint | < 12 KB |
 | NFR-14 | Power-on to first valid frame (no calibration run) | < 2 s |
 | NFR-15 | Recovery from a sensor bus fault, no MCU reset | < 1 s |
+| NFR-16 | SPI2 link: frame packed → armed for the next transaction (NSS idle) | < 50 µs |
+| NFR-17 | SPI2 link: NSS rising edge or publish → re-armed | < 20 µs |
 
 Functional behaviour §21, calibration §22, telemetry frame (84 bytes, 50 Hz, CRC16-CCITT) §23, test cases T-01…T-15 §24.
 
@@ -205,11 +223,13 @@ The root `CMakeLists.txt` creates the executable target and links the generated 
 | I2C1 | PB6/PB7, fast mode 400 kHz, analog filter on, digital filter 0 (LSM303AGR, on-board) |
 | I2C2 | PA9 SCL / PA10 SDA (AF4, open-drain, no internal pull), fast mode 400 kHz, analog filter on, digital filter 0 (BMP280) |
 | SPI1 | PA5/PA6/PA7, master, 8-bit, MSB first, mode 3, prescaler /16 (4.5 MHz), SW NSS |
-| GPIO | PE3 output push-pull, initial high (I3G4250D CS) |
+| SPI2 | PB13 SCK / PB14 MISO / PB15 MOSI (AF5), full-duplex slave, 8-bit, MSB first, mode 0 (CPOL 0, CPHA 1st edge), hardware NSS disabled (SW NSS), NSSP off, CRC off; master SCK ≤ 8 MHz (hardware limit PCLK1/2 = 18 MHz) |
+| DMA1 Ch5 | SPI2_TX, memory → peripheral, normal, byte/byte, memory increment, priority low. SPI2_RX has no DMA: its fixed channel (DMA1 Ch4) is taken by USART1 TX |
+| GPIO | PE3 output push-pull, initial high (I3G4250D CS); PB11 output push-pull, initial low (`SPI_DRDY`); PB12 EXTI rising edge, pull-up (`SPI_NSS`) |
 | USART1 | PC4 TX, PC5 RX, 460800 8N1; TX on DMA1 Channel 4 (normal mode); RX interrupt (1-byte commands) |
 | TIM6 | 1 kHz update interrupt |
 | SYS | SWD, no stop debug |
-| NVIC | TIM6 prio 3; I2C1/I2C2/SPI1 event, USART1, DMA1 Ch4 prio 2; nothing at prio 0 |
+| NVIC | EXTI15_10 prio 1 (SPI2 NSS re-arm); I2C1/I2C2/SPI1 event, USART1, DMA1 Ch4 prio 2; TIM6 prio 3; DMA1 Ch5 enabled by CubeMX but never fires (no DMA interrupts requested); SPI2 global interrupt off; nothing at prio 0 |
 
 ### 7.4 Headless regeneration
 
@@ -302,7 +322,7 @@ set(CMAKE_C_EXTENSIONS OFF)
 include(cmake/stm32cubemx/CMakeLists.txt)
 
 # --- our code ---------------------------------------------------------
-add_library(bsp     STATIC Bsp/Src/bsp_i2c.c Bsp/Src/bsp_spi.c Bsp/Src/bsp_time.c)
+add_library(bsp     STATIC Bsp/Src/bsp_i2c.c Bsp/Src/bsp_spi.c Bsp/Src/bsp_spi_slave.c Bsp/Src/bsp_time.c)
 add_library(sensors STATIC Sensors/Src/bmp280.c Sensors/Src/lsm303agr.c Sensors/Src/i3g4250d.c)
 add_library(fusion  STATIC Fusion/Src/madgwick.c Fusion/Src/baro_filter.c)
 add_library(app     STATIC App/Src/app.c App/Src/telemetry.c App/Src/calibration.c)
@@ -620,6 +640,8 @@ Do not attempt to keep both build systems in one tree. Two build descriptions dr
 | R-17 | Debug server (OpenOCD) conflicts with ST-LINK GDB server | Low | Low | document one, keep the other optional |
 | R-18 | CubeMX CLI requires a license/activation on CI | Medium | Medium | regeneration check is a release-time manual step if unavailable |
 | R-19 | No IDE means slower onboarding | High | Low | committed `.vscode/`, `README` quickstart, 4-command build |
+| R-20 | SPI2 slave shifts out stale bytes after a partial read (F3 TX FIFO cannot be flushed) | High | Medium | RCC reset of SPI2 on every NSS rising edge (§23.6.3) |
+| R-21 | Master clocks before the slave is re-armed | Medium | Medium | master keeps NSS high ≥ 20 µs between transactions (NFR-17); EXTI at the highest used priority |
 
 ---
 
@@ -633,6 +655,7 @@ Do not attempt to keep both build systems in one tree. Two build descriptions dr
 | M3 | Calibration | T-04; coefficients stored and applied |
 | M4 | Fusion | T-05…T-07 pass at 100 Hz |
 | M5 | Hardening | T-08…T-15; AC-06…AC-10; CI green |
+| M6 | SPI2 slave link | T-16; T-12/T-13 still pass with SPI2 active |
 
 ---
 
@@ -659,7 +682,7 @@ Do not attempt to keep both build systems in one tree. Two build descriptions dr
 App      scheduler · calibration · telemetry · command parser
 Fusion   axis_map · madgwick · baro_filter · altitude
 Sensors  i3g4250d · lsm303agr · bmp280          (portable, no HAL)
-Bsp      bsp_i2c · bsp_spi · bsp_time · bsp_uart · bsp_flash   (HAL, CubeMX handles)
+Bsp      bsp_i2c · bsp_spi · bsp_spi_slave · bsp_time · bsp_uart · bsp_flash   (HAL, CubeMX handles)
 Core     CubeMX-generated init, ISRs → USER CODE hooks only
 ```
 
@@ -684,7 +707,7 @@ TIM6 interrupts at 1 kHz; the ISR only increments a `volatile uint32_t` tick and
 |---|---|---|
 | `imu_task` | 10 ms | read gyro + accel + mag, apply calibration and axis map, Madgwick update |
 | `baro_task` | 40 ms | read BMP280, compensate, altitude, baro filter |
-| `telemetry_task` | 20 ms | pack frame (§23), start USART1 TX DMA; skip and count if previous DMA still busy |
+| `telemetry_task` | 20 ms | pack frame (§23), publish it to SPI2 (§23.6), start USART1 TX DMA; skip and count the UART send if previous DMA still busy (the SPI2 publish is never skipped) |
 | `debug_task` | 1000 ms | pack debug frame (§23.4) |
 | `cmd_task` | idle | consume bytes from the RX ring buffer (§22.4) |
 
@@ -709,6 +732,11 @@ void     bsp_delay_ms(uint32_t ms);                                   /* init on
 int32_t  bsp_uart_send_dma(const uint8_t *buf, uint16_t len);        /* -EBUSY if in flight */
 uint8_t  bsp_uart_tx_ready(void);                                    /* DMA idle */
 int32_t  bsp_flash_write_page(uint32_t addr, const void *data, uint16_t len);
+void     bsp_spi_slave_init(void);                                    /* arm SPI2 with an all-zero frame */
+void     bsp_spi_slave_publish(const uint8_t *frame);                 /* copy 84 B, request re-arm, toggle DRDY; main loop only */
+void     bsp_spi_slave_on_exti(void);                                 /* from HAL_GPIO_EXTI_Callback(PB12): NSS edge or SWIER */
+uint32_t bsp_spi_slave_served(void);                                  /* full 84-byte transactions */
+uint32_t bsp_spi_slave_partial(void);                                 /* transactions ended before 84 bytes */
 
 /* Sensors */
 typedef struct { float x, y, z; } vec3_t;
@@ -792,6 +820,8 @@ Unknown bytes are ignored. Calibration progress and the result of the last attem
 
 USART1 460800 8N1 → ST-LINK/V2-1 VCP. Binary frames only; `printf` text is allowed in Debug builds before the first frame and never interleaved with frames.
 
+SPI2 slave (§23.6) carries the latest data frame (type `0x01`) to an external master in parallel. Debug frames are UART-only.
+
 ### 23.2 Framing
 
 | Field | Value |
@@ -837,7 +867,9 @@ USART1 460800 8N1 → ST-LINK/V2-1 VCP. Binary frames only; `printf` text is all
 | 48 | 2 | u16 | max loop time (µs, reset each frame) |
 | 50 | 2 | u16 | CPU load ‰ |
 | 52 | 2 | u16 | free stack (high-water, bytes) |
-| 54 | 28 | — | reserved = 0 |
+| 54 | 2 | u16 | SPI2 full transactions (wraps) |
+| 56 | 2 | u16 | SPI2 partial transactions (wraps) |
+| 58 | 24 | — | reserved = 0 |
 | 82 | 2 | u16 | CRC16 |
 
 
@@ -860,6 +892,34 @@ USART1 460800 8N1 → ST-LINK/V2-1 VCP. Binary frames only; `printf` text is all
 
 `tools/log.py` validates sync, length, CRC and sequence continuity and writes CSV; `tools/plot.py` plots it.
 
+### 23.6 SPI2 slave transport
+
+#### 23.6.1 Transaction
+
+1. Master pulls NSS (PB12) low and clocks exactly 84 bytes in mode 0, MSB first, SCK ≤ 8 MHz. Bytes sent on MOSI are ignored.
+2. Slave shifts out the most recently published data frame, byte-identical to the UART frame (§23.3).
+3. Master releases NSS. It keeps NSS high ≥ 20 µs before the next transaction (NFR-17).
+
+Bytes clocked beyond 84 are undefined. Before the first frame is published, the slave serves 84 zero bytes (sync invalid). Reading twice between publishes returns the same frame; the master drops duplicates by sequence number. The master validates sync, type, length and CRC exactly as `tools/log.py`.
+
+#### 23.6.2 Data ready
+
+DRDY (PB11) toggles each time a new frame is published (50 Hz), after the new frame is armed. A master that starts a transaction on both edges of DRDY sees every frame and may start immediately; a master that polls gets the latest frame and may see sequence gaps, which is not an error on this link. If a publish lands during a transaction, that transaction completes with the previous frame and the new one is armed at its NSS rising edge.
+
+#### 23.6.3 Implementation constraints
+
+| Constraint | Reason |
+|---|---|
+| Software NSS (SSM = 1, SSI = 0 permanently); PB12 is a GPIO EXTI, not SPI2_NSS | CubeMX cannot map one pin to both SPI2_NSS and EXTI; the edge is needed for re-arming |
+| Re-arm = `HAL_DMA_Abort` on SPI2_TX, `__HAL_RCC_SPI2_FORCE_RESET/RELEASE`, `HAL_SPI_Init`, `HAL_DMA_Start` (published frame → `SPI2->DR`, 84), set `TXDMAEN`, enable SPI | The 4-byte TX FIFO keeps stale bytes after a partial read and cannot be flushed except by a peripheral reset; `HAL_SPI_Abort` waits for an empty FIFO, which never happens in slave mode without master clocks |
+| Re-arm runs only in the EXTI12 ISR, on (a) an NSS rising edge, or (b) a software trigger (`EXTI->SWIER`, line 12) from `publish` with a `volatile` request flag set; for (b) the ISR re-arms only if PB12 reads high (NSS idle), otherwise it leaves the transaction alone and (a) arms the newest frame | Keeps all SPI2/DMA register access in one context; a frame published while idle is served by the very next transaction instead of the one after |
+| `publish` order: fill free buffer → update published index → set request flag → write SWIER → toggle DRDY | EXTI prio 1 preempts the main loop, so the re-arm has completed before DRDY changes |
+| `HAL_SPI_Transmit_DMA` is not used; the DMA channel runs without interrupts | Its completion callback busy-waits (up to 100 ms) in the DMA ISR for the TX FIFO to drain, which in slave mode depends on the master's clock |
+| On an NSS edge (request flag clear), the transaction is "full" when the DMA counter is 0, otherwise "partial"; software-triggered re-arms are not counted | Counters in the debug frame (§23.4) |
+| RX overrun (OVR) is expected and ignored | MOSI data is not read; the reset on NSS clears it |
+| Three 84-byte buffers: one armed (DMA), one published (latest), one free; `publish` fills the free one, then updates the published index (`volatile uint8_t`); the ISR only arms the published index | Lock-free: the armed buffer is never written while DMA reads it, and the published buffer is never torn |
+| EXTI ISR work bounded to the steps above, < 20 µs (NFR-17) | ISRs stay short; prio 1 so the main loop cannot delay re-arming |
+
 ---
 
 ## 24. Test cases
@@ -881,6 +941,7 @@ USART1 460800 8N1 → ST-LINK/V2-1 VCP. Binary frames only; `printf` text is all
 | T-13 | Resources | 60 s run; `size_check.py` | CPU load < 30 % (NFR-11); flash < 64 KB, RAM < 12 KB (NFR-12/13) |
 | T-14 | Fault recovery | disconnect BMP280 SDA for 5 s, reconnect | baro-OK cleared, other data uninterrupted, flag restored < 1 s after reconnect (NFR-15) |
 | T-15 | Calibration persistence | calibrate, `S`, power-cycle | parameters identical after reboot; `D` + power-cycle without `S` keeps stored values |
+| T-16 | SPI2 slave link | external master (second MCU or USB-SPI adapter) at 4 MHz reads 84 bytes on each DRDY edge for 10 min while `log.py` records UART; then 100 reads of 40 bytes interleaved with full reads; logic analyser on NSS + MISO + PC0 | 0 CRC errors, 0 sequence gaps, SPI frames identical to the UART frames with the same sequence; each full read after a partial one is valid; NSS rise → re-armed < 20 µs (NFR-17); UART T-12 metrics and CPU load unchanged (±0.5 %) |
 
 Host tests (§12) cover the numeric parts of T-04, T-09 and the CRC/frame layout of T-12 before hardware runs.
 
@@ -891,3 +952,4 @@ Host tests (§12) cover the numeric parts of T-04, T-09 and the CRC/frame layout
 | Rev | Date | Change |
 |---|---|---|
 | 1.1 | 2026-11-12 | Board MB1035-F303C-E02 (I3G4250D, LSM303AGR) confirmed on hardware; Part B (§21–§25) drafted to replace the unavailable baseline `SPEC.md`; NFR-05/08/14/15 defined; USART1 TX DMA added |
+| 1.2 | 2026-11-17 | SPI2 slave link for an external MCU: §3, §4.1, §7.3 (SPI2, DMA1 Ch5, PB11/PB12, NVIC), NFR-16/17, `bsp_spi_slave` API, §23.6 transport, SPI2 counters in the debug frame, R-20/R-21, M6, T-16 |
