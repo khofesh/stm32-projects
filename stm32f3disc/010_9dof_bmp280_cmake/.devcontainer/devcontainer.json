@@ -1,0 +1,26 @@
+{
+  "name": "010_9dof_bmp280_cmake",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-vscode.cmake-tools",
+        "marus25.cortex-debug"
+      ],
+      "settings": {
+        "cmake.useCMakePresets": "always",
+        "C_Cpp.default.compileCommands": "${workspaceFolder}/build/Debug/compile_commands.json"
+      }
+    }
+  },
+  "mounts": [
+    "source=/dev/bus/usb,target=/dev/bus/usb,type=bind"
+  ],
+  "runArgs": [
+    "--device-cgroup-rule=c 189:* rmw"
+  ],
+  "postCreateCommand": "cmake --preset Debug && cmake -S tests -B build/tests -DCMAKE_BUILD_TYPE=Debug"
+}

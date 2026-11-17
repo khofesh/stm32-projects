@@ -1,0 +1,48 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug (OpenOCD)",
+      "type": "cortex-debug",
+      "request": "launch",
+      "servertype": "openocd",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/build/Debug/010_9dof_bmp280_cmake.elf",
+      "device": "STM32F303VCTx",
+      "configFiles": [
+        "interface/stlink.cfg",
+        "target/stm32f3x.cfg"
+      ],
+      "svdFile": "${workspaceFolder}/.vscode/STM32F303.svd",
+      "runToEntryPoint": "main",
+      "preLaunchTask": "build Debug",
+      "swoConfig": {
+        "enabled": true,
+        "source": "probe",
+        "swoFrequency": 2000000,
+        "cpuFrequency": 72000000,
+        "decoders": [
+          {
+            "port": 0,
+            "type": "console",
+            "label": "ITM"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Attach (OpenOCD)",
+      "type": "cortex-debug",
+      "request": "attach",
+      "servertype": "openocd",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/build/Debug/010_9dof_bmp280_cmake.elf",
+      "device": "STM32F303VCTx",
+      "configFiles": [
+        "interface/stlink.cfg",
+        "target/stm32f3x.cfg"
+      ],
+      "svdFile": "${workspaceFolder}/.vscode/STM32F303.svd"
+    }
+  ]
+}
