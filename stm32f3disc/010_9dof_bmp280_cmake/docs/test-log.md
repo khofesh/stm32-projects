@@ -3,6 +3,64 @@
 Hardware records for `010_9dof_bmp280_cmake`. Host tests are summarised from
 `ctest`; commands and build sizes are in the entries below.
 
+## 2026-11-17 — M6 SPI2 slave link
+
+F3 firmware: `74d3873` (Release, `-O2`), flashed with STM32_Programmer_CLI
+(ST-LINK SN `066BFF494877514867130941`). Master: NUCLEO-L432KC running
+`../010_stm32l4_spi_master` at `74d3873` (Release), SPI1 at 4 MHz, mode 0.
+Wiring per `docs/hardware.md`, with SCK, MISO, MOSI, NSS, DRDY and GND
+connected. The D2–GND parking jumper on the Nucleo was removed: D2 is the
+master's MOSI.
+
+### Build, host tests, resources
+
+| Item | Result |
+|---|---|
+| `ci` build, `-Werror` | pass; FLASH 34 180 B, RAM 4 776 B |
+| Release resources | FLASH 41 788 B, RAM 4 812 B |
+| `ctest --test-dir build/tests` | 2 625 checks, 0 failures |
+| Master host tests (`frame_check`) | 25 checks, 0 failures |
+
+### T-16 SPI2 slave link (10 min)
+
+`tools/t16_compare.py --f3 /dev/ttyACM0 --l4 /dev/ttyACM1 --duration 600 --pairs-at 300`
+(in the master project). The master reads 84 bytes on every DRDY edge and
+forwards each valid frame on its own VCP. The script matches those frames to
+the F3 UART frames by sequence number. At 300 s it starts 100 pairs: a 40-byte
+read, then a full read of the same frame. Frames from the first 2 s and the
+last 5 s are left out of the matching.
+
+| Check | Result |
+|---|---|
+| DRDY edges / full reads | 29 987 / 29 987 (50 Hz) |
+| Valid frames | 29 987; 0 CRC, 0 header, 0 zero-frame errors |
+| Sequence gaps / duplicates | 0 / 0 |
+| Missed DRDY edges / master HAL errors | 0 / 0 |
+| SPI vs UART frames, same sequence | 29 843 byte-identical, 0 mismatches, 0 unmatched on either side |
+| Partial (40 B) → full read pairs | 100 done, 0 failures |
+| DRDY edge → NSS low (master) | max 13 µs |
+| NSS low duration, full read | max 196 µs |
+| F3 debug counters | full transactions +50/s; partial stayed at 4, all counted before the run started |
+| F3 CPU load | 6.6 % (all 600 debug frames) |
+| F3 max loop time | 1 034 µs |
+| F3 free stack (high-water) | 448 B |
+
+Data integrity, sequence continuity, frame identity with the UART and
+recovery after partial reads all pass.
+
+Not closed:
+
+| Item | Reason |
+|---|---|
+| NFR-17 (NSS rise → re-armed < 20 µs) | Needs the logic analyser on NSS + F3 PC0 and the PC0 probe CubeMX step (`docs/toolchain.md`) |
+| CPU/T-12 "unchanged ±0.5 %" | No like-for-like baseline. M5's 7.4 % was a Debug (`-Og`) build; this run is Release (`-O2`). Repeat with the same build and the master disconnected |
+| Free stack 448 B vs 520 B at M5 | Cause not measured; the same build-type caveat applies. Still above zero with margin |
+
+### Bench notes
+
+- The first master run read every frame with byte 0 corrupted (`0xAA` → `0xFA`/`0xFE`/`0xFF`, MISO high for the first 2–7 bits) and the other 83 bytes correct. The same build read cleanly after a reflash, and no timing change was needed. Not reproduced; cause unconfirmed.
+- The L432KC often keeps `FLASH_SR.PEMPTY` set after programming, so a reset boots the ROM bootloader and the master sends nothing. Clear the bit (write 1 to `0x40022010` bit 17) and reset; steps are in the master's `AGENTS.md`.
+
 ## 2026-11-13 — M5 hardening
 
 Firmware: `688e322-dirty` (Debug), flashed with OpenOCD. Board flat on the

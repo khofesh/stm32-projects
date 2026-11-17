@@ -56,6 +56,20 @@ cmake -S tests -B build/tests && cmake --build build/tests && ctest --test-dir b
 
 Output in `build/<Preset>/`. Do not add `.cproject`/Eclipse metadata.
 
+Flash (ST-LINK SN `0670FF574884654867012339`, VCP `/dev/ttyACM1`; F3DISCOVERY is SN `066BFF494877514867130941`, `/dev/ttyACM0`):
+
+```bash
+P=~/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI
+$P -c port=SWD sn=0670FF574884654867012339 mode=UR -w build/Release/010_stm32l4_spi_master.elf -v
+# FLASH_SR.PEMPTY (bit 17) is often left set after programming -> ROM bootloader on reset. Clear it (write 1), then reset.
+$P -c port=SWD sn=0670FF574884654867012339 mode=Hotplug -w32 0x40022010 0x00020000   # only if bit 17 reads 1; reports an error but works
+$P -c port=SWD sn=0670FF574884654867012339 mode=Hotplug -rst
+```
+
+Do not pipe the programmer into `grep -q`: SIGPIPE kills it before `-rst` and leaves the core halted.
+
+T-16: `tools/t16_compare.py --f3 /dev/ttyACM0 --l4 /dev/ttyACM1 --duration 600 --pairs-at 300`
+
 ## Code Style
 
 - C (C11), CMake + arm-none-eabi-gcc toolchain, HAL drivers

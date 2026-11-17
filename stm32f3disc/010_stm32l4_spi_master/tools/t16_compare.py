@@ -63,6 +63,7 @@ class Link:
         self.f3_skipped = None
         self.f3_skipped0 = None
         self.last_seq = None
+        self.cpu = []  # F3 debug frames: (max loop us, cpu permille, free stack)
         self.min_seq = None  # frames before it are warm-up, ignored
 
     def warm(self, seq):
@@ -104,6 +105,8 @@ def reader(name, port, link, stop):
                     link.f3_skipped = sk
                 (link.f3 if name == "f3" else link.l4)[seq] = (f, now)
                 link.pair(seq)
+            elif f[2] == 0x02 and name == "f3":
+                link.cpu.append(struct.unpack_from("<3H", f, 48))
             elif f[2] == T_STATS and name == "l4":
                 link.stats = dict(zip(STATS, struct.unpack_from(f"<{len(STATS)}I", f, 10)))
 
@@ -168,6 +171,11 @@ def main():
     print()
     for k, ok in checks.items():
         print(f"{'PASS' if ok else 'FAIL'}  {k}")
+    if link.cpu:
+        c = [x[1] for x in link.cpu]
+        print(f"F3 CPU {min(c) / 10:.1f}..{max(c) / 10:.1f} % (mean {sum(c) / len(c) / 10:.2f} %), "
+              f"max loop {max(x[0] for x in link.cpu)} us, min free stack {min(x[2] for x in link.cpu)} B, "
+              f"{len(c)} debug frames")
     print(f"max DRDY->NSS {s.get('max_lat_us')} us, max NSS low {s.get('max_xfer_us')} us")
     sys.exit(0 if all(checks.values()) else 1)
 
