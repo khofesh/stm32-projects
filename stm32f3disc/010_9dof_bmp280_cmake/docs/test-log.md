@@ -48,13 +48,35 @@ last 5 s are left out of the matching.
 Data integrity, sequence continuity, frame identity with the UART and
 recovery after partial reads all pass.
 
+### CPU baseline, master disconnected (10 min)
+
+Same image: the F3 flash was read back and is byte-identical to the `74d3873`
+Release `.bin`. All SPI wires and the L432KC were removed, and the F3 was reset
+just before the capture. 600 s capture from `/dev/ttyACM0`, first 2 s left out.
+
+| Check | Master attached (T-16) | Master disconnected |
+|---|---|---|
+| CPU load | 6.6 % | 6.6 % (min = max = mean, 599 debug frames) |
+| Max loop time | 1 034 µs | 1 036 µs |
+| Free stack (high-water) | 448 B | 448 B |
+| Data frames / sequence gaps / frames skipped | — | 29 902 / 0 / 0 |
+| `spi2_full` / `spi2_partial` | +50/s / 4 | 0 / 0 |
+
+The SPI2 slave adds no measurable CPU load (well within ±0.5 %), so the T-12
+CPU criterion passes. Free stack is also identical with and without the
+master, which points to the build type (M5 was Debug), not the SPI2 path, as
+the reason for 448 B vs M5's 520 B.
+
+Before that reset, the F3 had run on after T-16 while the wires were being
+pulled. In that time `spi2_partial` rose from 4 to 306 and free stack fell to
+400 B. This is consistent with edges on NSS/SCK while the pins were floating.
+It is not repeatable as a test, and the reset cleared both.
+
 Not closed:
 
 | Item | Reason |
 |---|---|
 | NFR-17 (NSS rise → re-armed < 20 µs) | Needs the logic analyser on NSS + F3 PC0 and the PC0 probe CubeMX step (`docs/toolchain.md`) |
-| CPU/T-12 "unchanged ±0.5 %" | No like-for-like baseline. M5's 7.4 % was a Debug (`-Og`) build; this run is Release (`-O2`). Repeat with the same build and the master disconnected |
-| Free stack 448 B vs 520 B at M5 | Cause not measured; the same build-type caveat applies. Still above zero with margin |
 
 ### Bench notes
 
