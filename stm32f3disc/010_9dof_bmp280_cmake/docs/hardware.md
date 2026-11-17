@@ -37,6 +37,50 @@ regulator). Address `0x77`: the breakout pulls SDO high; do not tie it low.
 I2C2 needs external pull-ups; the Adafruit breakout provides them. Keep the
 leads short: 400 kHz with a few centimetres of wire.
 
+## SPI2 slave link (T-16)
+
+An external master can read the same 84-byte data frame as the UART link
+(SPEC §23.6). NSS is a GPIO because the same edge re-arms the slave.
+
+| Signal | Pin | Direction | Note |
+|---|---|---|---|
+| NSS | PB12 | in | GPIO EXTI rising edge, internal pull-up; frame boundary only |
+| SCK | PB13 | in | SPI2_SCK (AF5) |
+| MISO | PB14 | out | SPI2_MISO (AF5), push-pull, driven whenever SPI2 is enabled |
+| MOSI | PB15 | in | SPI2_MOSI (AF5), ignored (reserved) |
+| DRDY | PB11 | out | push-pull; toggles after each published frame |
+| GND | GND | — | common ground required |
+
+3.3 V logic only. MISO is never tri-stated, so the link is point-to-point:
+this node must be the only slave on the master's bus segment.
+
+### Reference master sequence
+
+1. Wait for a DRDY edge, or poll and drop duplicates by `seq`. Before the
+   first publish the slave serves 84 zero bytes (invalid sync).
+2. Pull NSS low.
+3. Clock exactly 84 bytes in SPI mode 0, MSB first, at 4–8 MHz. Bytes sent on
+   MOSI are ignored.
+4. Release NSS and keep it high for at least 20 µs before the next
+   transaction (NFR-17).
+5. Validate `AA 55`, type `01`, length `4E` and the CRC16 over bytes 2…81,
+   exactly as `tools/log.py` does.
+
+Reading twice between publishes returns the same frame. A publish that lands
+during a transaction completes that transaction with the previous frame and
+arms the new one at the NSS rising edge.
+
+```c
+/* Buffer is 84 bytes; mode 0, MSB first. */
+gpio_nss_low();
+for (unsigned i = 0; i < 84; i++)
+{
+  rx[i] = spi_transfer(0xFF);
+}
+gpio_nss_high();
+delay_us(20);
+```
+
 ## Latency probe (T-11)
 
 | Signal | Pin | Connector | Note |

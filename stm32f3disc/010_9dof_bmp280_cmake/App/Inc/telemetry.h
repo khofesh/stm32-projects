@@ -63,6 +63,8 @@ typedef struct
   uint16_t max_loop_us;
   uint16_t cpu_load_permille;
   uint16_t free_stack;
+  uint16_t spi2_full;
+  uint16_t spi2_partial;
 } frame_debug_t;
 
 void frame_data_pack(uint8_t out[FRAME_LEN], const frame_data_t *f);
@@ -70,9 +72,10 @@ int32_t frame_data_unpack(const uint8_t in[FRAME_LEN], frame_data_t *f);
 void frame_debug_pack(uint8_t out[FRAME_LEN], const frame_debug_t *f);
 int32_t frame_debug_unpack(const uint8_t in[FRAME_LEN], frame_debug_t *f);
 
-/* Pack and start the DMA transfer. A frame that cannot be sent (-EBUSY while
- * the link is busy, -EIO on a HAL failure) is dropped; data frames are counted
- * in telemetry_skipped(). */
+/* Pack and publish to SPI2, then start the UART DMA transfer. A frame that
+ * cannot be sent over UART (-EBUSY while the link is busy, -EIO on a HAL
+ * failure) is dropped and counted in telemetry_skipped(); the SPI2 publish
+ * always happens. */
 int32_t telemetry_send_data(const frame_data_t *f);
 int32_t telemetry_send_debug(const frame_debug_t *f);
 uint16_t telemetry_skipped(void);

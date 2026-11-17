@@ -89,6 +89,8 @@ add_our_library(bsp Bsp
     Bsp/Src/bsp_i2c.c
     Bsp/Src/bsp_spi.c
     Bsp/Src/bsp_flash.c
+    Bsp/Src/bsp_spi_slave.c
+    Bsp/Src/spi_tbuf.c
     Bsp/Src/bsp_stack.c
 )
 # printf retarget (__io_putchar) only in Debug.

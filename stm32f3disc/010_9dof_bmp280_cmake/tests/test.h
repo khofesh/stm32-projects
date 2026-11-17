@@ -55,5 +55,6 @@ void test_calibration(void);
 void test_madgwick(void);
 void test_altitude(void);
 void test_baro_filter(void);
+void test_spi_tbuf(void);
 
 #endif /* __TEST_H */

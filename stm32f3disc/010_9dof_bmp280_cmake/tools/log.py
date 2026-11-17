@@ -21,7 +21,7 @@ TYPE_DATA = 0x01
 TYPE_DEBUG = 0x02
 
 DATA = struct.Struct("<H I 4f 3f 3f 3f f f h H B B H H")
-DEBUG = struct.Struct("<H I 32s H H H H H H")
+DEBUG = struct.Struct("<H I 32s H H H H H H H H")
 
 DATA_COLUMNS = [
     "seq",
@@ -160,14 +160,15 @@ def main():
             elif frame[2] == TYPE_DEBUG:
                 stats.debug_frames += 1
                 if not args.quiet:
-                    (seq, t_ms, desc, e1, e2, e3, loop_us, cpu, stack) = DEBUG.unpack_from(
+                    (seq, t_ms, desc, e1, e2, e3, loop_us, cpu, stack, spi_full, spi_partial) = DEBUG.unpack_from(
                         frame, 4
                     )
                     build = desc.split(b"\0")[0].decode(errors="replace")
                     print(
                         f"debug seq={seq} t={t_ms} ms build={build} "
                         f"i2c1={e1} i2c2={e2} spi1={e3} max_loop={loop_us} us "
-                        f"cpu={cpu / 10.0:.1f}% free_stack={stack} B",
+                        f"cpu={cpu / 10.0:.1f}% free_stack={stack} B "
+                        f"spi2_full={spi_full} spi2_partial={spi_partial}",
                         file=sys.stderr,
                     )
     except KeyboardInterrupt:

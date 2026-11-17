@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "bsp_uart_stub.h"
+#include "bsp_spi_slave_stub.h"
 #include "crc16.h"
 #include "telemetry.h"
 
@@ -146,6 +147,8 @@ void test_frame_debug_layout(void)
   in.max_loop_us = 4u;
   in.cpu_load_permille = 5u;
   in.free_stack = 6u;
+  in.spi2_full = 7u;
+  in.spi2_partial = 8u;
 
   frame_debug_pack(buf, &in);
 
@@ -157,11 +160,13 @@ void test_frame_debug_layout(void)
   CHECK(buf[48] == 4u);
   CHECK(buf[50] == 5u);
   CHECK(buf[52] == 6u);
+  CHECK(buf[54] == 7u && buf[55] == 0u);
+  CHECK(buf[56] == 8u && buf[57] == 0u);
 
   /* Descriptor is NUL-padded, reserved bytes are zero. */
   CHECK(buf[10] == (uint8_t)'v');
   CHECK(buf[10 + (sizeof(desc) - 1u)] == 0u);
-  for (uint16_t i = 54u; i < 82u; i++)
+  for (uint16_t i = 58u; i < 82u; i++)
   {
     CHECK(buf[i] == 0u);
   }
@@ -175,6 +180,8 @@ void test_frame_debug_layout(void)
   CHECK(out.t_ms == 12345u);
   CHECK(out.max_loop_us == 4u);
   CHECK(out.free_stack == 6u);
+  CHECK(out.spi2_full == 7u);
+  CHECK(out.spi2_partial == 8u);
   for (uint8_t i = 0u; i < 32u; i++)
   {
     CHECK(out.build_git_desc[i] == in.build_git_desc[i]);
@@ -187,37 +194,53 @@ void test_telemetry_send(void)
   frame_debug_t d;
   uint16_t before;
   unsigned calls;
+  unsigned pcalls;
 
   fill_data(&f);
 
   stub_tx_busy = 0;
   stub_tx_fail = 0;
   stub_tx_len = 0;
+  stub_spi_pub_calls = 0;
+  stub_spi_pub_len = 0;
   CHECK(telemetry_send_data(&f) == 0);
   CHECK(stub_tx_len == FRAME_LEN);
   CHECK(stub_tx[0] == 0xAAu && stub_tx[1] == 0x55u && stub_tx[2] == 0x01u);
+  /* The same bytes went to SPI2. */
+  CHECK(stub_spi_pub_calls == 1u);
+  CHECK(stub_spi_pub_len == FRAME_LEN);
+  CHECK(memcmp(stub_spi_pub, stub_tx, FRAME_LEN) == 0);
 
-  /* Busy link: dropped and counted without touching the DMA. */
+  /* Busy link: dropped and counted, but SPI2 still gets the frame. */
   before = telemetry_skipped();
   calls = stub_tx_calls;
+  pcalls = stub_spi_pub_calls;
   stub_tx_busy = 1;
   CHECK(telemetry_send_data(&f) == -EBUSY);
   CHECK(telemetry_skipped() == (uint16_t)(before + 1u));
   CHECK(stub_tx_calls == calls);
+  CHECK(stub_spi_pub_calls == pcalls + 1u);
+  CHECK(stub_spi_pub_len == FRAME_LEN);
+  CHECK(stub_spi_pub[0] == 0xAAu && stub_spi_pub[1] == 0x55u && stub_spi_pub[2] == 0x01u);
+  CHECK(stub_spi_pub[4] == 0x34u && stub_spi_pub[5] == 0x12u);
   memset(&d, 0, sizeof(d));
   CHECK(telemetry_send_debug(&d) == -EBUSY);
   CHECK(stub_tx_calls == calls);
+  CHECK(stub_spi_pub_calls == pcalls + 1u); /* debug frames stay UART-only */
   stub_tx_busy = 0;
 
-  /* HAL failure: reported as -EIO, still counted. */
+  /* HAL failure: reported as -EIO, still counted, still published. */
+  pcalls = stub_spi_pub_calls;
   stub_tx_fail = 1;
   CHECK(telemetry_send_data(&f) == -EIO);
   CHECK(telemetry_skipped() == (uint16_t)(before + 2u));
+  CHECK(stub_spi_pub_calls == pcalls + 1u);
   stub_tx_fail = 0;
 
   /* The skipped counter rides in the next frame. */
   CHECK(telemetry_send_data(&f) == 0);
   CHECK(stub_tx[78] == (uint8_t)(before + 2u));
+  CHECK(memcmp(stub_spi_pub, stub_tx, FRAME_LEN) == 0);
 }
 
 void test_frame(void)

@@ -13,6 +13,7 @@ int main(void)
   test_madgwick();
   test_altitude();
   test_baro_filter();
+  test_spi_tbuf();
 
   printf("%d check(s), %d failure(s)\n", test_checks, test_failures);
   return (test_failures == 0) ? 0 : 1;

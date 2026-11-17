@@ -21,6 +21,7 @@
 #include "calibration.h"
 #include "cmd.h"
 #include "bsp_spi.h"
+#include "bsp_spi_slave.h"
 #include "bsp_stack.h"
 #include "bsp_time.h"
 #include "bsp_uart.h"
@@ -246,6 +247,8 @@ static void fault_task(uint32_t now)
 
 void app_init(void)
 {
+  /* Registered before anything can publish: arms the all-zero frame. */
+  bsp_spi_slave_init();
   bsp_time_init();
   bsp_stack_init();
   dwt_init();
@@ -470,6 +473,8 @@ static void debug_task(void)
   d->max_loop_us = (s_max_loop_us > UINT16_MAX) ? UINT16_MAX : (uint16_t)s_max_loop_us;
   d->cpu_load_permille = s_cpu_load_permille;
   d->free_stack = (uint16_t)bsp_stack_free_bytes();
+  d->spi2_full = (uint16_t)bsp_spi_slave_served();
+  d->spi2_partial = (uint16_t)bsp_spi_slave_partial();
 
   s_max_loop_us = 0u;
   s_debug_pending = 1u;
@@ -595,5 +600,14 @@ void app_run(void)
         s_max_loop_us = us;
       }
     }
+  }
+}
+
+/* PB12: NSS rising edge, or the software trigger from a publish. */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  if (GPIO_Pin == SPI_NSS_Pin)
+  {
+    bsp_spi_slave_on_exti();
   }
 }

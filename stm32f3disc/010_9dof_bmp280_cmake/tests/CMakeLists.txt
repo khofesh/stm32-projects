@@ -20,14 +20,17 @@ add_executable(unit_tests
     test_madgwick.c
     test_altitude.c
     test_baro_filter.c
+    test_spi_tbuf.c
     stubs/bsp_uart_stub.c
     stubs/bsp_flash_stub.c
     stubs/bmp280_regs_stub.c
+    stubs/bsp_spi_slave_stub.c
     ../App/Src/crc16.c
     ../App/Src/telemetry.c
     ../App/Src/board_axes.c
     ../App/Src/cal_store.c
     ../App/Src/calibration.c
+    ../Bsp/Src/spi_tbuf.c
     ../Fusion/Src/axis_map.c
     ../Fusion/Src/calib_math.c
     ../Fusion/Src/madgwick.c

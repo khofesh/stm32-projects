@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "bsp_uart.h"
+#include "bsp_spi_slave.h"
 #include "crc16.h"
 
 #define OFF_SEQ 4u
@@ -34,8 +35,14 @@
 #define DBG_OFF_MAX_LOOP 48u
 #define DBG_OFF_CPU 50u
 #define DBG_OFF_STACK 52u
+#define DBG_OFF_SPI2_FULL 54u
+#define DBG_OFF_SPI2_PARTIAL 56u
+#define DBG_OFF_RESERVED 58u
+
+_Static_assert(FRAME_LEN == BSP_SPI_SLAVE_FRAME_LEN, "SPI2 slave frame length differs from the telemetry frame");
 
 static uint8_t s_tx_data[FRAME_LEN];
+static uint8_t s_spi_data[FRAME_LEN];
 static uint8_t s_tx_debug[FRAME_LEN];
 static uint16_t s_skipped;
 
@@ -194,7 +201,9 @@ void frame_debug_pack(uint8_t out[FRAME_LEN], const frame_debug_t *f)
   put_u16(&out[DBG_OFF_MAX_LOOP], f->max_loop_us);
   put_u16(&out[DBG_OFF_CPU], f->cpu_load_permille);
   put_u16(&out[DBG_OFF_STACK], f->free_stack);
-  memset(&out[DBG_OFF_STACK + 2u], 0, OFF_CRC - (DBG_OFF_STACK + 2u));
+  put_u16(&out[DBG_OFF_SPI2_FULL], f->spi2_full);
+  put_u16(&out[DBG_OFF_SPI2_PARTIAL], f->spi2_partial);
+  memset(&out[DBG_OFF_RESERVED], 0, OFF_CRC - DBG_OFF_RESERVED);
   finish(out);
 }
 
@@ -224,28 +233,37 @@ int32_t frame_debug_unpack(const uint8_t in[FRAME_LEN], frame_debug_t *f)
   f->max_loop_us = get_u16(&in[DBG_OFF_MAX_LOOP]);
   f->cpu_load_permille = get_u16(&in[DBG_OFF_CPU]);
   f->free_stack = get_u16(&in[DBG_OFF_STACK]);
+  f->spi2_full = get_u16(&in[DBG_OFF_SPI2_FULL]);
+  f->spi2_partial = get_u16(&in[DBG_OFF_SPI2_PARTIAL]);
   return 0;
 }
 
 int32_t telemetry_send_data(const frame_data_t *f)
 {
   frame_data_t copy;
+  uint8_t *out;
+  uint8_t busy;
   int32_t st;
 
   if (f == NULL)
   {
     return -EINVAL;
   }
-  /* Never repack a buffer the DMA may still be reading. */
-  if (bsp_uart_tx_ready() == 0u)
+  /* The SPI2 publish is never skipped; the UART link drops instead. Never
+   * repack s_tx_data while its DMA may still be reading it. */
+  busy = (bsp_uart_tx_ready() == 0u) ? 1u : 0u;
+  out = (busy != 0u) ? s_spi_data : s_tx_data;
+  copy = *f;
+  copy.frames_skipped = s_skipped;
+  frame_data_pack(out, &copy);
+  bsp_spi_slave_publish(out);
+
+  if (busy != 0u)
   {
     s_skipped++;
     return -EBUSY;
   }
-  copy = *f;
-  copy.frames_skipped = s_skipped;
-  frame_data_pack(s_tx_data, &copy);
-  st = bsp_uart_send_dma(s_tx_data, (uint16_t)FRAME_LEN);
+  st = bsp_uart_send_dma(out, (uint16_t)FRAME_LEN);
   if (st != 0)
   {
     s_skipped++;
