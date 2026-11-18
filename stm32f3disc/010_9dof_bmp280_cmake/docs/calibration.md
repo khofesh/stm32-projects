@@ -14,6 +14,9 @@ Operator procedure for T-04 (calibration) and T-15 (persistence), for
 - The command channel is the same USART1 link, one ASCII byte per command
   (`G`, `A`, `M`, `B`, `S`, `D`, `R`). Send no line ending; unknown bytes are
   ignored. Frames are not paused during calibration.
+- `tools/cal.py <CMD>` sends one command and prints the result
+  (`status`, `calib_state`, |a|, |m|); exit code 1 on reject. `tools/cal.py M 40`
+  runs a 40 s magnetometer capture, `tools/cal.py watch` prints the current state.
 
 At boot the firmware loads the stored parameters and starts a gyro-bias attempt
 automatically. It succeeds only if the board is still for the first 2 s;
@@ -47,6 +50,10 @@ Calibration results apply immediately. `S` only persists them.
 Boot auto-calibration performs the same check and only replaces the stored bias
 when it passes.
 
+The boot attempt runs on a cold board; the bias shifts as it warms. On
+2026-11-18 it left 0.26 °/s on X. Run `G` again after a few minutes powered,
+then `S`; residual dropped to < 0.03 °/s.
+
 ## 4. Accelerometer, six positions — `A` ×6
 
 The firmware calibrates the body-frame axes after the T-03 axis map. Each `A`
@@ -67,6 +74,12 @@ lie within 10° of that axis and the per-axis standard deviation must stay below
    zero; start again.
 
 Poses must be distinct: the plus and minus orientation of each body axis.
+On the F3DISCOVERY these are: flat face up, face down, USB end up, USB end
+down, and each long edge up.
+
+Hand-held poses fail the 0.1 m/s² motion limit even when the tilt is only
+4–6°. Prop the board against a rigid block, let go, wait ~1 s, then send `A`.
+A rejected pose keeps the count; just retry it.
 
 ## 5. Magnetometer — `M` start / `M` stop
 
@@ -84,6 +97,13 @@ Poses must be distinct: the plus and minus orientation of each body axis.
    complete motion.
 
 Stopping before 20 s (2000 samples) always rejects the capture.
+
+After calibration, check |m| at the spot where the board will be used. A clean
+field reads 25–65 µT and stays constant as the board rotates. On 2026-11-18 the
+rotation spot read 31 µT, while the desk spot next to equipment read ≈ 100 µT:
+that is a local disturbance, not a calibration fault, and heading is wrong
+there. Keep the USB cable slack during the tumble so it does not limit
+coverage.
 
 ## 6. Barometer reference — `B`
 
@@ -152,3 +172,25 @@ the image is kept below 64 KB so it never reaches this page.
 | Mag after `M` rotation | \|m\| standard deviation < 5 % over a full rotation |
 | Baro after `B` | pressure deviation < 3 Pa during capture |
 | Persistence after `S` + power-cycle | identical parameters, status bits 4–7 set |
+
+## 11. Example session with `tools/cal.py`
+
+Full T-04 run (2026-11-18). Each command blocks until the capture ends and
+prints `status`, `calib_state`, |a| and |m|; exit code 1 means rejected.
+
+```bash
+tools/cal.py watch          # sensors OK? status bits 0-3
+tools/cal.py A              # repeat per pose until accel_n=6 / status bit 5
+tools/cal.py M 40           # start, tumble 40 s, stop; status bit 6, IMU-only clears
+tools/cal.py G              # board warm and still; status bit 4
+tools/cal.py B              # optional: board at the 0 m reference
+tools/cal.py S              # persist
+tools/log.py --port /dev/ttyACM0 --csv run.csv --limit 2000   # verify, board still
+```
+
+Expected after `S`: `status` `0x80FF` in a Debug build (`0x00FF` Release),
+`calib_state` `0x00`, |a| ≈ 9.80 m/s², gyro mean < 0.1 °/s, |m| 25–65 µT.
+
+`tools/log.py` does not flush the serial buffer on open. If another tool just
+used the port, drop the first frames (look for a `t_ms` jump) before computing
+statistics.

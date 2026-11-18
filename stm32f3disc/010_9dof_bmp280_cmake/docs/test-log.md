@@ -3,6 +3,51 @@
 Hardware records for `010_9dof_bmp280_cmake`. Host tests are summarised from
 `ctest`; commands and build sizes are in the entries below.
 
+## 2026-11-18 — T-04 full recalibration (accel, mag, gyro)
+
+F3 firmware: `3899f62` (Debug), flashed with STM32_Programmer_CLI (ST-LINK SN
+`066BFF494877514867130941`). FLASH 43 332 / 65 536 B, RAM 4 812 / 12 288 B.
+Host tests: `ctest --test-dir build/tests`, pass. Commands sent with
+`tools/cal.py` (new); captures decoded with `tools/log.py` (2 000 frames).
+
+### Baseline (accel and mag uncalibrated)
+
+`status` `0x849F`: all sensors OK, gyro cal and baro reference set,
+`IMU-only` set. Board flat and still: |a| 9.41 m/s² (σ 0.05), |m| 106 µT
+(σ 0.34), |q| 1 ± 1e-7. Link clean: 0 CRC, length or sequence errors; 20 ms
+frame period, 0 overruns, CPU 7.5 %, max loop 1.25 ms, free stack 528 B.
+
+### Calibration
+
+| Step | Result |
+|---|---|
+| `A` × 6 (±X, ±Y, ±Z) | accepted; two poses rejected once for motion (tilt 4°/6.5°, inside 10°) and passed on retry; |a| 9.41 → 9.80 m/s² |
+| `M`, 40 s tumble | accepted; `IMU-only` cleared; |m| 106 → 31.3 µT |
+| `G` (board warm, still) | accepted; residual bias X 0.26 → 0.004 °/s |
+| `S` (after M, again after G) | no reject; `status` `0x80FF` |
+
+### After calibration (board flat and still)
+
+| Signal | Value |
+|---|---|
+| `status` | `0x80FF`: sensors OK, gyro/accel/mag cal, baro reference |
+| \|a\| | 9.802 m/s², σ 0.058 |
+| \|m\| (rotation spot) | 31.3 µT, σ 0.36; dip −40.8°, σ 0.67° |
+| Roll / pitch | −1.8° / −3.5°, σ ≈ 0.14° (surface tilt) |
+| Yaw, 40 s | 66.6°, σ 0.23°, no drift |
+| Gyro mean, 30 s | X −0.004, Y −0.005, Z −0.028 °/s (σ ≈ 0.15 °/s) |
+| Yaw after `G`, 30 s | σ 0.16°, drift 0.4° |
+| Overruns / skipped | 0 / 0 |
+
+At the desk spot used for the `G` check |m| reads ≈ 100 µT against 31 µT at the
+rotation spot: a local field disturbance (nearby equipment), not a
+calibration fault. Heading is only meaningful away from it.
+
+`tools/log.py` does not flush the host serial buffer on open; a capture started
+right after another tool used the port began with 19 stale frames (69 s
+`t_ms` jump, 1 CRC error at the boundary). They were excluded from the
+statistics above.
+
 ## 2026-11-17 — M6 SPI2 slave link
 
 F3 firmware: `74d3873` (Release, `-O2`), flashed with STM32_Programmer_CLI
